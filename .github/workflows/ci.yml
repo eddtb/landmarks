@@ -26,6 +26,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # expo-env.d.ts and .expo/types are gitignored; regenerate them for typecheck
+      - name: Generate Expo types
+        run: npx expo customize tsconfig.json
+
       - name: Typecheck
         run: npm run typecheck
 
