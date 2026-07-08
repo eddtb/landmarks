@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { fetch } from 'expo/fetch';
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 import { Place, PlaceCategory, PlaceWithDistance } from '@/types/place';
 import { Coordinates } from '@/utils/geo';
@@ -8,22 +8,36 @@ import { Coordinates } from '@/utils/geo';
 /**
  * The app's only data source: our own API routes.
  *
- * On native the request needs an absolute URL: in development that's the
- * Metro dev server (hostUri); in production builds it's the deployed origin
- * configured on the expo-router plugin. Web can stay relative.
+ * On native the request needs an absolute URL. In development that's the
+ * Metro dev server, but where to find it depends on how the app runs:
+ * Expo Go exposes it as hostUri, while native dev builds (expo run:ios)
+ * only reveal it through the JS bundle's own URL. Production builds use
+ * the deployed origin configured on the expo-router plugin. Web stays
+ * relative.
  */
 function apiUrl(path: string): string {
   if (Platform.OS === 'web') {
     return path;
   }
+
+  // Expo Go
   const hostUri = Constants.expoConfig?.hostUri;
   if (hostUri) {
     return `http://${hostUri}${path}`;
   }
+
+  // Native dev build: derive the Metro origin from the bundle URL
+  const scriptURL: string | undefined = NativeModules?.SourceCode?.scriptURL;
+  if (scriptURL?.startsWith('http')) {
+    return `${new URL(scriptURL).origin}${path}`;
+  }
+
+  // Production build with a deployed server
   const origin = Constants.expoConfig?.extra?.router?.origin;
   if (typeof origin === 'string') {
     return `${origin.replace(/\/$/, '')}${path}`;
   }
+
   throw new Error('No API origin configured for this build');
 }
 
