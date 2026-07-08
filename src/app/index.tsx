@@ -54,7 +54,7 @@ export default function BrowseScreen() {
 function PlacesList({ center, locationDenied }: { center: Coordinates; locationDenied: boolean }) {
   const [category, setCategory] = useState<PlaceCategory>('landmark');
   const [refreshing, setRefreshing] = useState(false);
-  const { state, refresh } = usePlaces(category, center);
+  const { state, refresh, loadMore, loadingMore } = usePlaces(category, center);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -104,10 +104,21 @@ function PlacesList({ center, locationDenied }: { center: Coordinates; locationD
             contentContainerStyle={styles.list}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             showsVerticalScrollIndicator={false}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
             ListEmptyComponent={
               <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
                 Nothing here yet — try another section.
               </ThemedText>
+            }
+            ListFooterComponent={
+              loadingMore ? (
+                <ActivityIndicator style={styles.footer} />
+              ) : !state.hasMore && state.places.length > 0 ? (
+                <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
+                  That&apos;s everything nearby.
+                </ThemedText>
+              ) : null
             }
           />
         )}
@@ -144,5 +155,9 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     paddingTop: Spacing.six,
+  },
+  footer: {
+    textAlign: 'center',
+    paddingVertical: Spacing.four,
   },
 });

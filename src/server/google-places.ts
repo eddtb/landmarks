@@ -6,17 +6,21 @@ import { Coordinates, distanceMeters } from '@/utils/geo';
  * never in the app bundle. The Places API key must not leak past here.
  */
 
-const SearchEndpoint = 'https://places.googleapis.com/v1/places:searchNearby';
+// Text Search (not Nearby Search): only Text Search supports pageToken
+// pagination, which the infinite scroll needs. Capped by Google at 60
+// results (3 pages of 20) per query.
+const SearchEndpoint = 'https://places.googleapis.com/v1/places:searchText';
 
-/** Place types per section — Places API (New) "Table A" types. */
-const CategoryTypes: Record<PlaceCategory, string[]> = {
-  landmark: ['tourist_attraction', 'museum', 'historical_landmark', 'art_gallery', 'park'],
-  restaurant: ['restaurant', 'cafe'],
-  pub: ['pub', 'bar'],
+/** Search phrasing per section — Text Search takes a query, not type lists. */
+const CategoryQueries: Record<PlaceCategory, string> = {
+  landmark: 'tourist attractions, landmarks and museums',
+  restaurant: 'restaurants and cafes',
+  pub: 'pubs and bars',
 };
 
 /** Only the fields we map — the field mask also controls Google billing tier. */
 const FieldMask = [
+  'nextPageToken',
   'places.id',
   'places.displayName',
   'places.location',
@@ -73,6 +77,11 @@ export function mapGooglePlace(
   return { ...place, distanceMeters: distanceMeters(userLocation, place.coordinates) };
 }
 
+export type SearchPage = {
+  places: PlaceWithDistance[];
+  nextPageToken?: string;
+};
+
 export async function searchNearby(options: {
   apiKey: string;
   category: PlaceCategory;
@@ -80,8 +89,10 @@ export async function searchNearby(options: {
   radius?: number;
   /** Origin of the incoming request, used to build photo-proxy URLs. */
   origin: string;
-}): Promise<PlaceWithDistance[]> {
-  const { apiKey, category, center, radius = DefaultRadiusMeters, origin } = options;
+  /** Token from a previous page; all other options must be unchanged. */
+  pageToken?: string;
+}): Promise<SearchPage> {
+  const { apiKey, category, center, radius = DefaultRadiusMeters, origin, pageToken } = options;
 
   const response = await fetch(SearchEndpoint, {
     method: 'POST',
@@ -91,14 +102,15 @@ export async function searchNearby(options: {
       'X-Goog-FieldMask': FieldMask,
     },
     body: JSON.stringify({
-      includedTypes: CategoryTypes[category],
-      maxResultCount: 20,
-      // Nearest matches, not most prominent — the product is "what's closest
+      textQuery: CategoryQueries[category],
+      pageSize: 20,
+      // Nearest matches, not most relevant — the product is "what's closest
       // to me", so an unremarkable café 50m away beats a landmark 1.4km away.
       rankPreference: 'DISTANCE',
-      locationRestriction: {
+      locationBias: {
         circle: { center, radius },
       },
+      ...(pageToken ? { pageToken } : {}),
     }),
   });
 
@@ -107,9 +119,11 @@ export async function searchNearby(options: {
     throw new Error(`Places API ${response.status}: ${detail.slice(0, 500)}`);
   }
 
-  const body = (await response.json()) as { places?: GooglePlace[] };
-  return (body.places ?? [])
+  const body = (await response.json()) as { places?: GooglePlace[]; nextPageToken?: string };
+  const places = (body.places ?? [])
     .map((googlePlace) => mapGooglePlace(googlePlace, category, origin, center))
     .filter((place): place is PlaceWithDistance => place !== null)
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+  return { places, nextPageToken: body.nextPageToken };
 }

@@ -37,13 +37,14 @@ export async function GET(request: Request) {
   }
 
   try {
-    const places = await searchNearby({
+    const page = await searchNearby({
       apiKey,
       category,
       center,
       origin: url.origin,
+      pageToken: url.searchParams.get('pageToken') ?? undefined,
     });
-    return Response.json({ places });
+    return Response.json(page);
   } catch (error) {
     console.error('Nearby search failed:', error);
     return Response.json({ error: 'Places lookup failed' }, { status: 502 });
