@@ -10,9 +10,11 @@ jest.mock('@/data/places-client', () => ({
 }));
 
 const Center = { latitude: 51.5055, longitude: -0.0906 };
-const landmarks = placesByCategory('landmark', Center);
-const pageOne = landmarks.slice(0, 2);
-const pageTwo = landmarks.slice(2, 4);
+const landmarks = placesByCategory('landmark', Center); // sorted nearest first
+// Page 1 holds FARTHER places, page 2 nearer ones — mirroring Google's
+// non-distance-partitioned pagination — so these tests prove re-sorting.
+const pageOne = landmarks.slice(2, 4);
+const pageTwo = landmarks.slice(0, 2);
 
 describe('usePlaces', () => {
   beforeEach(() => mockFetchNearbyPlaces.mockReset());
@@ -36,9 +38,10 @@ describe('usePlaces', () => {
 
     await result.current.loadMore();
 
+    // Re-sorted globally: page 2's nearer places rank above page 1's
     await waitFor(() =>
       expect(result.current.state).toMatchObject({
-        places: [...pageOne, ...pageTwo],
+        places: landmarks.slice(0, 4),
         hasMore: false,
       })
     );

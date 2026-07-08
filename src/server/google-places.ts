@@ -6,10 +6,13 @@ import { Coordinates, distanceMeters } from '@/utils/geo';
  * never in the app bundle. The Places API key must not leak past here.
  */
 
-// Text Search (not Nearby Search): only Text Search supports pageToken
-// pagination, which the infinite scroll needs. Capped by Google at 60
-// results (3 pages of 20) per query.
-const SearchEndpoint = 'https://places.googleapis.com/v1/places:searchText';
+// Two endpoints, two jobs. Nearby Search ranks strictly by distance but
+// cannot paginate (20 max); Text Search paginates (60 max) but its
+// "DISTANCE" ranking still mixes in relevance, so its first page can miss
+// the truly nearest places. The first page merges both; later pages come
+// from Text Search tokens.
+const TextSearchEndpoint = 'https://places.googleapis.com/v1/places:searchText';
+const NearbySearchEndpoint = 'https://places.googleapis.com/v1/places:searchNearby';
 
 /** Search phrasing per section — Text Search takes a query, not type lists. */
 const CategoryQueries: Record<PlaceCategory, string> = {
@@ -18,9 +21,15 @@ const CategoryQueries: Record<PlaceCategory, string> = {
   pub: 'pubs and bars',
 };
 
+/** Place types per section — Nearby Search "Table A" types. */
+const CategoryTypes: Record<PlaceCategory, string[]> = {
+  landmark: ['tourist_attraction', 'museum', 'historical_landmark', 'art_gallery', 'park'],
+  restaurant: ['restaurant', 'cafe'],
+  pub: ['pub', 'bar'],
+};
+
 /** Only the fields we map — the field mask also controls Google billing tier. */
-const FieldMask = [
-  'nextPageToken',
+const PlaceFieldMask = [
   'places.id',
   'places.displayName',
   'places.location',
@@ -30,6 +39,10 @@ const FieldMask = [
   'places.currentOpeningHours.openNow',
   'places.photos.name',
 ].join(',');
+
+// Nearby Search rejects mask fields it can't return, so nextPageToken
+// may only be requested from Text Search.
+const TextSearchFieldMask = `nextPageToken,${PlaceFieldMask}`;
 
 export const DefaultRadiusMeters = 1500;
 
@@ -82,6 +95,89 @@ export type SearchPage = {
   nextPageToken?: string;
 };
 
+/** Dedupe by id (first occurrence wins) and sort nearest first. */
+export function dedupeAndSortByDistance(...lists: PlaceWithDistance[][]): PlaceWithDistance[] {
+  const seen = new Set<string>();
+  const merged: PlaceWithDistance[] = [];
+  for (const place of lists.flat()) {
+    if (!seen.has(place.id)) {
+      seen.add(place.id);
+      merged.push(place);
+    }
+  }
+  return merged.sort((a, b) => a.distanceMeters - b.distanceMeters);
+}
+
+type SearchContext = {
+  apiKey: string;
+  category: PlaceCategory;
+  center: Coordinates;
+  radius: number;
+  origin: string;
+};
+
+async function callPlacesApi(
+  endpoint: string,
+  apiKey: string,
+  fieldMask: string,
+  body: object
+): Promise<{ places?: GooglePlace[]; nextPageToken?: string }> {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': fieldMask,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Places API ${response.status}: ${detail.slice(0, 500)}`);
+  }
+
+  return (await response.json()) as { places?: GooglePlace[]; nextPageToken?: string };
+}
+
+function mapAll(body: { places?: GooglePlace[] }, context: SearchContext): PlaceWithDistance[] {
+  return (body.places ?? [])
+    .map((googlePlace) =>
+      mapGooglePlace(googlePlace, context.category, context.origin, context.center)
+    )
+    .filter((place): place is PlaceWithDistance => place !== null);
+}
+
+/** Paginated Text Search — relevance-tinted even with DISTANCE ranking. */
+async function textSearchPage(context: SearchContext, pageToken?: string): Promise<SearchPage> {
+  const body = await callPlacesApi(TextSearchEndpoint, context.apiKey, TextSearchFieldMask, {
+    textQuery: CategoryQueries[context.category],
+    pageSize: 20,
+    rankPreference: 'DISTANCE',
+    locationBias: {
+      circle: { center: context.center, radius: context.radius },
+    },
+    ...(pageToken ? { pageToken } : {}),
+  });
+  return {
+    places: dedupeAndSortByDistance(mapAll(body, context)),
+    nextPageToken: body.nextPageToken,
+  };
+}
+
+/** Strictly-nearest 20 — Nearby Search cannot paginate but never misses close places. */
+async function nearestTwenty(context: SearchContext): Promise<PlaceWithDistance[]> {
+  const body = await callPlacesApi(NearbySearchEndpoint, context.apiKey, PlaceFieldMask, {
+    includedTypes: CategoryTypes[context.category],
+    maxResultCount: 20,
+    rankPreference: 'DISTANCE',
+    locationRestriction: {
+      circle: { center: context.center, radius: context.radius },
+    },
+  });
+  return mapAll(body, context);
+}
+
 export async function searchNearby(options: {
   apiKey: string;
   category: PlaceCategory;
@@ -92,38 +188,23 @@ export async function searchNearby(options: {
   /** Token from a previous page; all other options must be unchanged. */
   pageToken?: string;
 }): Promise<SearchPage> {
-  const { apiKey, category, center, radius = DefaultRadiusMeters, origin, pageToken } = options;
+  const { radius = DefaultRadiusMeters, pageToken, ...rest } = options;
+  const context: SearchContext = { ...rest, radius };
 
-  const response = await fetch(SearchEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': FieldMask,
-    },
-    body: JSON.stringify({
-      textQuery: CategoryQueries[category],
-      pageSize: 20,
-      // Nearest matches, not most relevant — the product is "what's closest
-      // to me", so an unremarkable café 50m away beats a landmark 1.4km away.
-      rankPreference: 'DISTANCE',
-      locationBias: {
-        circle: { center, radius },
-      },
-      ...(pageToken ? { pageToken } : {}),
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Places API ${response.status}: ${detail.slice(0, 500)}`);
+  // Later pages: Text Search token only (the client merges and re-sorts).
+  if (pageToken) {
+    return textSearchPage(context, pageToken);
   }
 
-  const body = (await response.json()) as { places?: GooglePlace[]; nextPageToken?: string };
-  const places = (body.places ?? [])
-    .map((googlePlace) => mapGooglePlace(googlePlace, category, origin, center))
-    .filter((place): place is PlaceWithDistance => place !== null)
-    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+  // First page: guarantee the truly nearest places (Nearby Search) while
+  // also starting Text Search pagination for the infinite scroll.
+  const [nearest, textPage] = await Promise.all([
+    nearestTwenty(context),
+    textSearchPage(context),
+  ]);
 
-  return { places, nextPageToken: body.nextPageToken };
+  return {
+    places: dedupeAndSortByDistance(nearest, textPage.places),
+    nextPageToken: textPage.nextPageToken,
+  };
 }

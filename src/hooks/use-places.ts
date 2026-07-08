@@ -78,12 +78,17 @@ export function usePlaces(
           if (current.status !== 'ready') {
             return current;
           }
-          // Dedupe on append — pagination should not repeat, but be safe
+          // Google's pages are not distance-partitioned: a later page can
+          // contain nearer places. Dedupe and re-sort the whole list so
+          // ordering stays globally correct.
           const seen = new Set(current.places.map((place) => place.id));
           const fresh = page.places.filter((place) => !seen.has(place.id));
+          const places = [...current.places, ...fresh].sort(
+            (a, b) => a.distanceMeters - b.distanceMeters
+          );
           return {
             status: 'ready',
-            places: [...current.places, ...fresh],
+            places,
             hasMore: !!page.nextPageToken,
           };
         });
