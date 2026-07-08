@@ -1,8 +1,9 @@
 import { Place, PlaceCategory } from '@/types/place';
+import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
  * Placeholder data so the UI can be built and tested before the Google Places
- * API route exists. Shaped like the real data will be; replaced in the
+ * API route exists. Coordinates are real; the list is replaced in the
  * "real data" milestone.
  */
 export const MockPlaces: Place[] = [
@@ -10,7 +11,7 @@ export const MockPlaces: Place[] = [
     id: 'tower-bridge',
     name: 'Tower Bridge',
     category: 'landmark',
-    distanceMeters: 350,
+    coordinates: { latitude: 51.5055, longitude: -0.0754 },
     rating: 4.8,
     photoUrl: 'https://picsum.photos/seed/tower-bridge/800/500',
     address: 'Tower Bridge Rd, London SE1 2UP',
@@ -23,7 +24,7 @@ export const MockPlaces: Place[] = [
     id: 'st-pauls-cathedral',
     name: "St Paul's Cathedral",
     category: 'landmark',
-    distanceMeters: 1200,
+    coordinates: { latitude: 51.5138, longitude: -0.0984 },
     rating: 4.7,
     photoUrl: 'https://picsum.photos/seed/st-pauls/800/500',
     address: "St Paul's Churchyard, London EC4M 8AD",
@@ -36,7 +37,7 @@ export const MockPlaces: Place[] = [
     id: 'tate-modern',
     name: 'Tate Modern',
     category: 'landmark',
-    distanceMeters: 900,
+    coordinates: { latitude: 51.5076, longitude: -0.0994 },
     rating: 4.6,
     photoUrl: 'https://picsum.photos/seed/tate-modern/800/500',
     address: 'Bankside, London SE1 9TG',
@@ -49,7 +50,7 @@ export const MockPlaces: Place[] = [
     id: 'southwark-cathedral',
     name: 'Southwark Cathedral',
     category: 'landmark',
-    distanceMeters: 550,
+    coordinates: { latitude: 51.5061, longitude: -0.0897 },
     rating: 4.6,
     photoUrl: 'https://picsum.photos/seed/southwark-cathedral/800/500',
     address: 'London Bridge, London SE1 9DA',
@@ -62,20 +63,20 @@ export const MockPlaces: Place[] = [
     id: 'the-shard-view',
     name: 'The View from The Shard',
     category: 'landmark',
-    distanceMeters: 650,
+    coordinates: { latitude: 51.5045, longitude: -0.0865 },
     rating: 4.5,
     photoUrl: 'https://picsum.photos/seed/the-shard/800/500',
     address: '32 London Bridge St, London SE1 9SG',
     hours: 'Open 10:00 – 22:00',
     website: 'https://www.theviewfromtheshard.com',
     story:
-      "The Shard, designed by Renzo Piano and completed in 2012, is the tallest building in the United Kingdom at 310 metres. Its viewing gallery on floors 68–72 offers panoramic views of up to 40 miles across London on a clear day.",
+      'The Shard, designed by Renzo Piano and completed in 2012, is the tallest building in the United Kingdom at 310 metres. Its viewing gallery on floors 68–72 offers panoramic views of up to 40 miles across London on a clear day.',
   },
   {
     id: 'padella',
     name: 'Padella',
     category: 'restaurant',
-    distanceMeters: 500,
+    coordinates: { latitude: 51.5053, longitude: -0.0906 },
     rating: 4.6,
     photoUrl: 'https://picsum.photos/seed/padella/800/500',
     address: '6 Southwark St, London SE1 1TQ',
@@ -86,7 +87,7 @@ export const MockPlaces: Place[] = [
     id: 'monmouth-coffee',
     name: 'Monmouth Coffee Company',
     category: 'restaurant',
-    distanceMeters: 480,
+    coordinates: { latitude: 51.5055, longitude: -0.091 },
     rating: 4.7,
     photoUrl: 'https://picsum.photos/seed/monmouth/800/500',
     address: '2 Park St, London SE1 9AB',
@@ -97,7 +98,7 @@ export const MockPlaces: Place[] = [
     id: 'borough-market-kitchen',
     name: 'Borough Market Kitchen',
     category: 'restaurant',
-    distanceMeters: 520,
+    coordinates: { latitude: 51.5056, longitude: -0.0917 },
     rating: 4.5,
     photoUrl: 'https://picsum.photos/seed/borough-market/800/500',
     address: 'Borough Market, 8 Southwark St, London SE1 1TL',
@@ -108,7 +109,7 @@ export const MockPlaces: Place[] = [
     id: 'the-george-inn',
     name: 'The George Inn',
     category: 'pub',
-    distanceMeters: 420,
+    coordinates: { latitude: 51.5041, longitude: -0.09 },
     rating: 4.5,
     photoUrl: 'https://picsum.photos/seed/george-inn/800/500',
     address: '75-77 Borough High St, London SE1 1NH',
@@ -121,7 +122,7 @@ export const MockPlaces: Place[] = [
     id: 'the-anchor-bankside',
     name: 'The Anchor Bankside',
     category: 'pub',
-    distanceMeters: 700,
+    coordinates: { latitude: 51.5069, longitude: -0.0922 },
     rating: 4.3,
     photoUrl: 'https://picsum.photos/seed/anchor-bankside/800/500',
     address: '34 Park St, London SE1 9EF',
@@ -131,7 +132,7 @@ export const MockPlaces: Place[] = [
     id: 'the-market-porter',
     name: 'The Market Porter',
     category: 'pub',
-    distanceMeters: 510,
+    coordinates: { latitude: 51.5052, longitude: -0.0912 },
     rating: 4.4,
     photoUrl: 'https://picsum.photos/seed/market-porter/800/500',
     address: '9 Stoney St, London SE1 9AA',
@@ -139,11 +140,19 @@ export const MockPlaces: Place[] = [
   },
 ];
 
-/** Places for one section, nearest first — the shape the list screen renders. */
-export function placesByCategory(category: PlaceCategory): Place[] {
-  return MockPlaces.filter((place) => place.category === category).sort(
-    (a, b) => a.distanceMeters - b.distanceMeters
-  );
+export type PlaceWithDistance = Place & { distanceMeters: number };
+
+/** Places for one section with distances from the user, nearest first. */
+export function placesByCategory(
+  category: PlaceCategory,
+  userLocation: Coordinates
+): PlaceWithDistance[] {
+  return MockPlaces.filter((place) => place.category === category)
+    .map((place) => ({
+      ...place,
+      distanceMeters: distanceMeters(userLocation, place.coordinates),
+    }))
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
 export function placeById(id: string): Place | undefined {

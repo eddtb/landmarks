@@ -11,6 +11,7 @@
     "expo-glass-effect": "~56.0.4",
     "expo-image": "~56.0.11",
     "expo-linking": "~56.0.14",
+    "expo-location": "~56.0.20",
     "expo-router": "~56.2.12",
     "expo-splash-screen": "~56.0.11",
     "expo-status-bar": "~56.0.4",
@@ -51,7 +52,9 @@
   "jest": {
     "preset": "jest-expo",
     "resolver": "react-native-worklets/jest/resolver",
-    "setupFilesAfterEnv": ["./jest-setup.js"],
+    "setupFilesAfterEnv": [
+      "./jest-setup.js"
+    ],
     "moduleNameMapper": {
       "\\.(css)$": "<rootDir>/jest-style-mock.js",
       "^@/assets/(.*)$": "<rootDir>/assets/$1"
