@@ -1,4 +1,4 @@
-import { Place, PlaceCategory } from '@/types/place';
+import { Place, PlaceCategory, PlaceWithDistance } from '@/types/place';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
@@ -139,8 +139,6 @@ export const MockPlaces: Place[] = [
     hours: 'Open 11:00 – 23:00',
   },
 ];
-
-export type PlaceWithDistance = Place & { distanceMeters: number };
 
 /** Places for one section with distances from the user, nearest first. */
 export function placesByCategory(
