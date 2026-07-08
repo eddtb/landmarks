@@ -10,87 +10,37 @@ jest.mock('@/data/places-client', () => ({
 }));
 
 const Center = { latitude: 51.5055, longitude: -0.0906 };
-const landmarks = placesByCategory('landmark', Center); // sorted nearest first
-// Page 1 holds FARTHER places, page 2 nearer ones — mirroring Google's
-// non-distance-partitioned pagination — so these tests prove re-sorting.
-const pageOne = landmarks.slice(2, 4);
-const pageTwo = landmarks.slice(0, 2);
+const landmarks = placesByCategory('landmark', Center);
 
 describe('usePlaces', () => {
   beforeEach(() => mockFetchNearbyPlaces.mockReset());
 
-  test('loads the first page and reports whether more exist', async () => {
-    mockFetchNearbyPlaces.mockResolvedValue({ places: pageOne, nextPageToken: 'page-2' });
+  test('loads places for the category and location', async () => {
+    mockFetchNearbyPlaces.mockResolvedValue(landmarks);
 
     const { result } = await renderHook(() => usePlaces('landmark', Center));
 
     await waitFor(() => expect(result.current.state.status).toBe('ready'));
-    expect(result.current.state).toMatchObject({ places: pageOne, hasMore: true });
+    expect(result.current.state).toMatchObject({ places: landmarks });
+    expect(mockFetchNearbyPlaces).toHaveBeenCalledWith('landmark', Center);
   });
 
-  test('loadMore appends the next page and stops at the end', async () => {
-    mockFetchNearbyPlaces
-      .mockResolvedValueOnce({ places: pageOne, nextPageToken: 'page-2' })
-      .mockResolvedValueOnce({ places: pageTwo, nextPageToken: undefined });
-
-    const { result } = await renderHook(() => usePlaces('landmark', Center));
-    await waitFor(() => expect(result.current.state.status).toBe('ready'));
-
-    await result.current.loadMore();
-
-    // Re-sorted globally: page 2's nearer places rank above page 1's
-    await waitFor(() =>
-      expect(result.current.state).toMatchObject({
-        places: landmarks.slice(0, 4),
-        hasMore: false,
-      })
-    );
-    // Second call carried the page token
-    expect(mockFetchNearbyPlaces).toHaveBeenLastCalledWith('landmark', Center, 'page-2');
-
-    // No token left — loadMore is now a no-op
-    await result.current.loadMore();
-    expect(mockFetchNearbyPlaces).toHaveBeenCalledTimes(2);
-  });
-
-  test('loadMore drops duplicates across pages', async () => {
-    mockFetchNearbyPlaces
-      .mockResolvedValueOnce({ places: pageOne, nextPageToken: 'page-2' })
-      .mockResolvedValueOnce({ places: [pageOne[0], ...pageTwo], nextPageToken: undefined });
-
-    const { result } = await renderHook(() => usePlaces('landmark', Center));
-    await waitFor(() => expect(result.current.state.status).toBe('ready'));
-
-    await result.current.loadMore();
-
-    await waitFor(() => {
-      const state = result.current.state;
-      expect(state.status).toBe('ready');
-      if (state.status === 'ready') {
-        const ids = state.places.map((place) => place.id);
-        expect(new Set(ids).size).toBe(ids.length);
-      }
-    });
-  });
-
-  test('a failed loadMore keeps the current list', async () => {
-    mockFetchNearbyPlaces
-      .mockResolvedValueOnce({ places: pageOne, nextPageToken: 'page-2' })
-      .mockRejectedValueOnce(new Error('boom'));
-
-    const { result } = await renderHook(() => usePlaces('landmark', Center));
-    await waitFor(() => expect(result.current.state.status).toBe('ready'));
-
-    await result.current.loadMore();
-
-    expect(result.current.state).toMatchObject({ status: 'ready', places: pageOne });
-  });
-
-  test('errors on the first page surface as error state', async () => {
+  test('errors surface as error state', async () => {
     mockFetchNearbyPlaces.mockRejectedValue(new Error('boom'));
 
     const { result } = await renderHook(() => usePlaces('landmark', Center));
 
     await waitFor(() => expect(result.current.state.status).toBe('error'));
+  });
+
+  test('refresh reloads places', async () => {
+    mockFetchNearbyPlaces.mockResolvedValueOnce(landmarks.slice(0, 1));
+    const { result } = await renderHook(() => usePlaces('landmark', Center));
+    await waitFor(() => expect(result.current.state.status).toBe('ready'));
+
+    mockFetchNearbyPlaces.mockResolvedValueOnce(landmarks);
+    await result.current.refresh();
+
+    await waitFor(() => expect(result.current.state).toMatchObject({ places: landmarks }));
   });
 });

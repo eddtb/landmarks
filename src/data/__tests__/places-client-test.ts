@@ -27,29 +27,15 @@ describe('fetchNearbyPlaces', () => {
     expect(requested).toContain('lat=51.5');
     expect(requested).toContain('lng=-0.09');
     expect(requested).toContain('category=pub');
-    expect(requested).not.toContain('pageToken');
   });
 
-  test('passes the page token when fetching the next page', async () => {
-    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ places: [] }) });
-
-    await fetchNearbyPlaces('pub', Center, 'token-123');
-
-    const requested = mockFetch.mock.calls[0][0] as string;
-    expect(requested).toContain('pageToken=token-123');
-  });
-
-  test('returns places plus the next page token, and caches by id', async () => {
+  test('returns the places from the response and caches them by id', async () => {
     const place = { ...MockPlaces[0], distanceMeters: 42 };
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ places: [place], nextPageToken: 'token-456' }),
-    });
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ places: [place] }) });
 
-    const page = await fetchNearbyPlaces('landmark', Center);
+    const places = await fetchNearbyPlaces('landmark', Center);
 
-    expect(page.places).toHaveLength(1);
-    expect(page.nextPageToken).toBe('token-456');
+    expect(places).toHaveLength(1);
     expect(getCachedPlace(place.id)?.name).toBe(place.name);
   });
 

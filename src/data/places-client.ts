@@ -61,35 +61,26 @@ function apiUrl(path: string): string {
 // without a second network round-trip.
 const placeCache = new Map<string, Place>();
 
-export type PlacesPage = {
-  places: PlaceWithDistance[];
-  nextPageToken?: string;
-};
-
 export async function fetchNearbyPlaces(
   category: PlaceCategory,
-  center: Coordinates,
-  pageToken?: string
-): Promise<PlacesPage> {
+  center: Coordinates
+): Promise<PlaceWithDistance[]> {
   const params = new URLSearchParams({
     lat: String(center.latitude),
     lng: String(center.longitude),
     category,
   });
-  if (pageToken) {
-    params.set('pageToken', pageToken);
-  }
 
   const response = await fetch(apiUrl(`/api/places?${params}`));
   if (!response.ok) {
     throw new Error(`Places request failed with status ${response.status}`);
   }
 
-  const body = (await response.json()) as PlacesPage;
+  const body = (await response.json()) as { places: PlaceWithDistance[] };
   for (const place of body.places) {
     placeCache.set(place.id, place);
   }
-  return body;
+  return body.places;
 }
 
 export function getCachedPlace(id: string): Place | undefined {
