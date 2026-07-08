@@ -29,9 +29,9 @@ const NearTowerBridge = { latitude: 51.5055, longitude: -0.0754 };
 describe('<BrowseScreen />', () => {
   beforeEach(() => {
     mockFetchNearbyPlaces.mockReset();
-    mockFetchNearbyPlaces.mockImplementation(async (category: PlaceCategory, center) => ({
-      places: placesByCategory(category, center),
-    }));
+    mockFetchNearbyPlaces.mockImplementation(async (category: PlaceCategory, center) =>
+      placesByCategory(category, center)
+    );
   });
 
   test('shows landmarks from the API when location is ready', async () => {

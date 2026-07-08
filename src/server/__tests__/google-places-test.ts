@@ -1,5 +1,4 @@
-import { dedupeAndSortByDistance, mapGooglePlace } from '@/server/google-places';
-import { PlaceWithDistance } from '@/types/place';
+import { mapGooglePlace } from '@/server/google-places';
 
 const Origin = 'http://localhost:8081';
 const User = { latitude: 51.5055, longitude: -0.0906 };
@@ -76,19 +75,5 @@ describe('mapGooglePlace', () => {
     expect(
       mapGooglePlace({ id: 'x', displayName: { text: 'No location' } }, 'pub', Origin, User)
     ).toBeNull();
-  });
-});
-
-describe('dedupeAndSortByDistance', () => {
-  const stub = (id: string, distanceMeters: number) => ({ id, distanceMeters }) as PlaceWithDistance;
-
-  test('merges lists, dropping duplicate ids', () => {
-    const merged = dedupeAndSortByDistance([stub('a', 10), stub('b', 30)], [stub('a', 10), stub('c', 20)]);
-    expect(merged.map((place) => place.id)).toEqual(['a', 'c', 'b']);
-  });
-
-  test('sorts nearest first across sources', () => {
-    const merged = dedupeAndSortByDistance([stub('far', 900)], [stub('near', 5)], [stub('mid', 300)]);
-    expect(merged.map((place) => place.id)).toEqual(['near', 'mid', 'far']);
   });
 });
