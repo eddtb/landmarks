@@ -5,8 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { PlaceWithDistance } from '@/data/mock-places';
-import { CategoryLabels } from '@/types/place';
+import { CategoryLabels, PlaceWithDistance } from '@/types/place';
 import { formatDistance, formatRating } from '@/utils/format';
 
 type Props = {

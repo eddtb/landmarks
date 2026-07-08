@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react-native';
 
 import PlaceDetailScreen from '@/app/place/[id]';
+import { MockPlaces } from '@/data/mock-places';
+import { cachePlaces } from '@/data/places-client';
 
 const mockUseLocalSearchParams = jest.fn();
 
@@ -14,7 +16,14 @@ jest.mock('expo-router', () => {
   };
 });
 
+jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
+
 describe('<PlaceDetailScreen />', () => {
+  beforeAll(() => {
+    // Simulate places fetched earlier by the browse screen
+    cachePlaces(MockPlaces);
+  });
+
   test('shows place facts and the Story section for a landmark', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);

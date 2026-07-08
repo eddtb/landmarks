@@ -16,6 +16,8 @@ export type Place = {
   story?: string;
 };
 
+export type PlaceWithDistance = Place & { distanceMeters: number };
+
 export const CategoryLabels: Record<PlaceCategory, string> = {
   landmark: 'Landmark',
   restaurant: 'Restaurant',

@@ -6,13 +6,13 @@ import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { placeById } from '@/data/mock-places';
+import { getCachedPlace } from '@/data/places-client';
 import { CategoryLabels } from '@/types/place';
 import { formatRating } from '@/utils/format';
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const place = placeById(id);
+  const place = getCachedPlace(id);
 
   if (!place) {
     return (
