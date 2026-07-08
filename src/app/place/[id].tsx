@@ -8,7 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { placeById } from '@/data/mock-places';
 import { CategoryLabels } from '@/types/place';
-import { formatDistance, formatRating } from '@/utils/format';
+import { formatRating } from '@/utils/format';
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -34,8 +34,7 @@ export default function PlaceDetailScreen() {
         <View style={styles.body}>
           <ThemedText type="subtitle">{place.name}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {CategoryLabels[place.category]} · {formatDistance(place.distanceMeters)} ·{' '}
-            {formatRating(place.rating)}
+            {CategoryLabels[place.category]} · {formatRating(place.rating)}
           </ThemedText>
 
           <View style={styles.facts}>
