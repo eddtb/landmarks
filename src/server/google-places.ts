@@ -93,7 +93,9 @@ export async function searchNearby(options: {
     body: JSON.stringify({
       includedTypes: CategoryTypes[category],
       maxResultCount: 20,
-      rankPreference: 'POPULARITY',
+      // Nearest matches, not most prominent — the product is "what's closest
+      // to me", so an unremarkable café 50m away beats a landmark 1.4km away.
+      rankPreference: 'DISTANCE',
       locationRestriction: {
         circle: { center, radius },
       },
