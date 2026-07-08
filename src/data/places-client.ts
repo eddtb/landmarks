@@ -26,7 +26,23 @@ function apiUrl(path: string): string {
     return `http://${hostUri}${path}`;
   }
 
-  // Native dev build: derive the Metro origin from the bundle URL
+  // Native dev build: ask React Native where the dev server is
+  if (__DEV__) {
+    try {
+      // Internal RN module — no public equivalent for dev builds yet
+      const getDevServer =
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        require('react-native/Libraries/Core/Devtools/getDevServer').default;
+      const devServerUrl: string | undefined = getDevServer?.()?.url;
+      if (devServerUrl?.startsWith('http')) {
+        return `${new URL(devServerUrl).origin}${path}`;
+      }
+    } catch {
+      // fall through to the other sources
+    }
+  }
+
+  // Native dev build (older architecture): the bundle URL knows the origin
   const scriptURL: string | undefined = NativeModules?.SourceCode?.scriptURL;
   if (scriptURL?.startsWith('http')) {
     return `${new URL(scriptURL).origin}${path}`;
