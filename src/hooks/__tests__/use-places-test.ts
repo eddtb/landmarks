@@ -42,5 +42,9 @@ describe('usePlaces', () => {
     await result.current.refresh();
 
     await waitFor(() => expect(result.current.state).toMatchObject({ places: landmarks }));
+    // Pull-to-refresh must bypass the session cache
+    expect(mockFetchNearbyPlaces).toHaveBeenLastCalledWith('landmark', Center, {
+      forceRefresh: true,
+    });
   });
 });
