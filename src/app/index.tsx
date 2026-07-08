@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -18,7 +18,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useLocation } from '@/hooks/use-location';
 import { usePlaces } from '@/hooks/use-places';
-import { PlaceCategory } from '@/types/place';
+import { PlaceCategory, PlaceWithDistance } from '@/types/place';
 import { Coordinates, FallbackCoordinates } from '@/utils/geo';
 
 export default function BrowseScreen() {
@@ -55,12 +55,20 @@ function PlacesList({ center, locationDenied }: { center: Coordinates; locationD
   const [category, setCategory] = useState<PlaceCategory>('landmark');
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = usePlaces(category, center);
+  const listRef = useRef<FlatList<PlaceWithDistance>>(null);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  const onSelectCategory = useCallback((next: PlaceCategory) => {
+    setCategory(next);
+    // The FlatList is shared across sections — without this, a new section
+    // opens at the previous section's scroll position.
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, []);
 
   return (
     <ThemedView style={styles.container}>
@@ -76,7 +84,7 @@ function PlacesList({ center, locationDenied }: { center: Coordinates; locationD
               you.
             </ThemedText>
           )}
-          <SectionPicker selected={category} onSelect={setCategory} />
+          <SectionPicker selected={category} onSelect={onSelectCategory} />
         </View>
 
         {state.status === 'loading' && (
@@ -98,6 +106,7 @@ function PlacesList({ center, locationDenied }: { center: Coordinates; locationD
 
         {state.status === 'ready' && (
           <FlatList
+            ref={listRef}
             data={state.places}
             keyExtractor={(place) => place.id}
             renderItem={({ item }) => <PlaceCard place={item} />}
