@@ -61,10 +61,28 @@ function apiUrl(path: string): string {
 // without a second network round-trip.
 const placeCache = new Map<string, Place>();
 
+// Each section's list, cached per category + position for the session.
+// Switching between sections costs no network; pull-to-refresh bypasses.
+const listCache = new Map<string, PlaceWithDistance[]>();
+
+function listCacheKey(category: PlaceCategory, center: Coordinates): string {
+  // ~11m grid: position jitter should not needlessly bust the cache
+  return `${category}|${center.latitude.toFixed(4)}|${center.longitude.toFixed(4)}`;
+}
+
 export async function fetchNearbyPlaces(
   category: PlaceCategory,
-  center: Coordinates
+  center: Coordinates,
+  options?: { forceRefresh?: boolean }
 ): Promise<PlaceWithDistance[]> {
+  const cacheKey = listCacheKey(category, center);
+  if (!options?.forceRefresh) {
+    const cached = listCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
   const params = new URLSearchParams({
     lat: String(center.latitude),
     lng: String(center.longitude),
@@ -77,6 +95,7 @@ export async function fetchNearbyPlaces(
   }
 
   const body = (await response.json()) as { places: PlaceWithDistance[] };
+  listCache.set(cacheKey, body.places);
   for (const place of body.places) {
     placeCache.set(place.id, place);
   }

@@ -42,7 +42,11 @@ export function usePlaces(
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
     try {
-      const places = await fetchNearbyPlaces(category, { latitude, longitude });
+      const places = await fetchNearbyPlaces(
+        category,
+        { latitude, longitude },
+        { forceRefresh: true }
+      );
       if (id === requestId.current) {
         setState({ status: 'ready', places });
       }
