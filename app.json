@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.anonymous.landmarks"
+      "bundleIdentifier": "com.eddtb.landmarks"
     },
     "android": {
       "adaptiveIcon": {
