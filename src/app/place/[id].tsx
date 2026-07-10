@@ -37,6 +37,7 @@ export default function PlaceDetailScreen() {
           <ThemedText type="subtitle">{place.name}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {CategoryLabels[place.category]} · {formatRating(place.rating)}
+            {place.ratingCount ? ` (${place.ratingCount.toLocaleString()} reviews)` : ''}
           </ThemedText>
 
           <View style={styles.facts}>
@@ -53,7 +54,7 @@ export default function PlaceDetailScreen() {
             )}
           </View>
 
-          {storyState.status === 'ready' && (
+          {storyState.status === 'ready' ? (
             <View style={styles.story}>
               <ThemedText type="smallBold">Story</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
@@ -65,7 +66,15 @@ export default function PlaceDetailScreen() {
                 </ExternalLink>
               )}
             </View>
-          )}
+          ) : place.description ? (
+            // Fallback chain: no Wikipedia article -> Google's editorial summary
+            <View style={styles.story}>
+              <ThemedText type="smallBold">About</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {place.description}
+              </ThemedText>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </ThemedView>

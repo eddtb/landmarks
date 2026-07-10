@@ -12,6 +12,8 @@ const fullGooglePlace = {
   websiteUri: 'https://boroughmarket.org.uk',
   currentOpeningHours: { openNow: true },
   photos: [{ name: 'places/ChIJtest123/photos/photoref' }],
+  editorialSummary: { text: 'Historic food market with artisan stalls.' },
+  userRatingCount: 68411,
 };
 
 describe('mapGooglePlace', () => {
@@ -26,6 +28,8 @@ describe('mapGooglePlace', () => {
       address: '8 Southwark St, London SE1 1TL',
       website: 'https://boroughmarket.org.uk',
       hours: 'Open now',
+      description: 'Historic food market with artisan stalls.',
+      ratingCount: 68411,
     });
     expect(place?.distanceMeters).toBeGreaterThan(0);
     expect(place?.distanceMeters).toBeLessThan(200);

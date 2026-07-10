@@ -31,6 +31,8 @@ const PlaceFieldMask = [
   'places.websiteUri',
   'places.currentOpeningHours.openNow',
   'places.photos.name',
+  'places.editorialSummary',
+  'places.userRatingCount',
 ].join(',');
 
 export const DefaultRadiusMeters = 1500;
@@ -44,6 +46,8 @@ type GooglePlace = {
   websiteUri?: string;
   currentOpeningHours?: { openNow?: boolean };
   photos?: { name: string }[];
+  editorialSummary?: { text?: string };
+  userRatingCount?: number;
 };
 
 export function mapGooglePlace(
@@ -74,6 +78,8 @@ export function mapGooglePlace(
     address: googlePlace.formattedAddress ?? '',
     hours: openNow === undefined ? undefined : openNow ? 'Open now' : 'Closed now',
     website: website?.startsWith('https://') ? (website as `https://${string}`) : undefined,
+    description: googlePlace.editorialSummary?.text,
+    ratingCount: googlePlace.userRatingCount,
   };
 
   return { ...place, distanceMeters: distanceMeters(userLocation, place.coordinates) };

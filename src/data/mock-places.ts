@@ -77,6 +77,8 @@ export const MockPlaces: Place[] = [
     name: 'Padella',
     category: 'restaurant',
     coordinates: { latitude: 51.5053, longitude: -0.0906 },
+    description: 'Compact, buzzy spot serving handmade pasta at counter seats.',
+    ratingCount: 12840,
     rating: 4.6,
     photoUrl: 'https://picsum.photos/seed/padella/800/500',
     address: '6 Southwark St, London SE1 1TQ',
