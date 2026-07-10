@@ -18,13 +18,23 @@ jest.mock('expo-router', () => {
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
+const mockFetchStory = jest.fn();
+jest.mock('@/data/story-client', () => ({
+  fetchStory: (...args: unknown[]) => mockFetchStory(...args),
+}));
+
 describe('<PlaceDetailScreen />', () => {
   beforeAll(() => {
     // Simulate places fetched earlier by the browse screen
     cachePlaces(MockPlaces);
   });
 
-  test('shows place facts and the Story section for a landmark', async () => {
+  beforeEach(() => {
+    mockFetchStory.mockReset();
+    mockFetchStory.mockResolvedValue(null);
+  });
+
+  test('shows place facts and the built-in story for demo places', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
@@ -32,9 +42,25 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('Tower Bridge Rd, London SE1 2UP')).toBeOnTheScreen();
     expect(screen.getByText('Story')).toBeOnTheScreen();
     expect(screen.getByText(/bascule and suspension bridge/)).toBeOnTheScreen();
+    // Built-in story — Wikipedia is not consulted
+    expect(mockFetchStory).not.toHaveBeenCalled();
   });
 
-  test('omits the Story section when a place has none', async () => {
+  test('fetches a Wikipedia story for places without one', async () => {
+    mockFetchStory.mockResolvedValue({
+      story: 'Padella is famous for its pasta.',
+      title: 'Padella',
+      url: 'https://en.wikipedia.org/wiki/Padella',
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'padella' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText('Story')).toBeOnTheScreen();
+    expect(screen.getByText('Padella is famous for its pasta.')).toBeOnTheScreen();
+    expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
+  });
+
+  test('omits the Story section when no article matches', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'padella' });
     await render(<PlaceDetailScreen />);
 
