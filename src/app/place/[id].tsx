@@ -7,12 +7,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { getCachedPlace } from '@/data/places-client';
+import { useStory } from '@/hooks/use-story';
 import { CategoryLabels } from '@/types/place';
 import { formatRating } from '@/utils/format';
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const place = getCachedPlace(id);
+  const storyState = useStory(place);
 
   if (!place) {
     return (
@@ -51,12 +53,17 @@ export default function PlaceDetailScreen() {
             )}
           </View>
 
-          {place.story && (
+          {storyState.status === 'ready' && (
             <View style={styles.story}>
               <ThemedText type="smallBold">Story</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {place.story}
+                {storyState.story.story}
               </ThemedText>
+              {!!storyState.story.url && (
+                <ExternalLink href={storyState.story.url as `https://${string}`}>
+                  <ThemedText type="linkPrimary">From Wikipedia</ThemedText>
+                </ExternalLink>
+              )}
             </View>
           )}
         </View>

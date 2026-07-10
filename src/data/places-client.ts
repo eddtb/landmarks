@@ -15,7 +15,7 @@ import { Coordinates } from '@/utils/geo';
  * the deployed origin configured on the expo-router plugin. Web stays
  * relative.
  */
-function apiUrl(path: string): string {
+export function apiUrl(path: string): string {
   if (Platform.OS === 'web') {
     return path;
   }
