@@ -105,6 +105,33 @@ describe('<PlaceDetailScreen />', () => {
     expect(await screen.findByText('This place could not be found.')).toBeOnTheScreen();
   });
 
+  test('renders reviews when details include them', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      reviews: [
+        { author: 'Ada L.', rating: 5, text: 'Splendid views.', when: '2 months ago' },
+        { author: 'Brunel Jr.', rating: 4, text: 'Solid Victorian engineering.' },
+      ],
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText('What people say')).toBeOnTheScreen();
+    expect(screen.getByText('Splendid views.')).toBeOnTheScreen();
+    expect(screen.getByText(/Ada L\. · 2 months ago/)).toBeOnTheScreen();
+    expect(screen.getByText('Solid Victorian engineering.')).toBeOnTheScreen();
+  });
+
+  test('omits the reviews section when details have none', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    await screen.findByText('Tower Bridge');
+    expect(screen.queryByText('What people say')).not.toBeOnTheScreen();
+  });
+
   test('cold deep link renders from fetched details without a cached summary', async () => {
     mockFetchPlaceDetails.mockResolvedValue({
       id: 'cold-start-place',
