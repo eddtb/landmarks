@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ExternalLink } from '@/components/external-link';
+import { PhotoGallery } from '@/components/photo-gallery';
+import { ReviewList } from '@/components/review-list';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -68,7 +70,11 @@ export default function PlaceDetailScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}>
-        <Image source={{ uri: place.photoUrl }} style={styles.photo} contentFit="cover" />
+        {details?.photoUrls && details.photoUrls.length > 1 ? (
+          <PhotoGallery photoUrls={details.photoUrls} />
+        ) : (
+          <Image source={{ uri: place.photoUrl }} style={styles.photo} contentFit="cover" />
+        )}
         <View style={styles.body}>
           <ThemedText type="subtitle">{place.name}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
@@ -154,6 +160,10 @@ export default function PlaceDetailScreen() {
               </ThemedText>
             </View>
           ) : null}
+
+          {details?.reviews && details.reviews.length > 0 && (
+            <ReviewList reviews={details.reviews} />
+          )}
         </View>
       </ScrollView>
     </ThemedView>
