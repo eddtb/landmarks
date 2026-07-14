@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ExternalLink } from '@/components/external-link';
@@ -12,6 +13,11 @@ import { useStory } from '@/hooks/use-story';
 import { useTheme } from '@/hooks/use-theme';
 import { CategoryLabels, Place } from '@/types/place';
 import { formatRating } from '@/utils/format';
+
+/** Google's weekdayHours is Monday-first; JS's getDay() is Sunday-first (0-6). */
+function todayIndex(): number {
+  return (new Date().getDay() + 6) % 7;
+}
 
 /** Platform-appropriate deep link, so "Directions" opens the user's own Maps app. */
 function directionsUrl({ coordinates, name }: Place): string {
@@ -36,6 +42,7 @@ export default function PlaceDetailScreen() {
   const details = state.status === 'ready' ? state.details : undefined;
   const storyState = useStory(place);
   const theme = useTheme();
+  const [hoursExpanded, setHoursExpanded] = useState(false);
 
   if (!place) {
     if (state.status === 'loading') {
@@ -67,6 +74,7 @@ export default function PlaceDetailScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             {CategoryLabels[place.category]} · {formatRating(place.rating)}
             {place.ratingCount ? ` (${place.ratingCount.toLocaleString()} reviews)` : ''}
+            {details?.priceLevel ? ` · ${details.priceLevel}` : ''}
           </ThemedText>
 
           <View style={styles.facts}>
@@ -75,6 +83,23 @@ export default function PlaceDetailScreen() {
               <ThemedText type="small" themeColor="textSecondary">
                 {place.hours}
               </ThemedText>
+            )}
+            {details?.weekdayHours && details.weekdayHours.length > 0 && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setHoursExpanded((expanded) => !expanded)}>
+                {hoursExpanded ? (
+                  details.weekdayHours.map((line) => (
+                    <ThemedText key={line} type="small" themeColor="textSecondary">
+                      {line}
+                    </ThemedText>
+                  ))
+                ) : (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {details.weekdayHours[todayIndex()]}
+                  </ThemedText>
+                )}
+              </Pressable>
             )}
             {place.website && (
               <ExternalLink href={place.website}>
