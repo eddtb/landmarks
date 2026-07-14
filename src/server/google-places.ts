@@ -33,6 +33,7 @@ const PlaceFieldMask = [
   'places.photos.name',
   'places.editorialSummary',
   'places.userRatingCount',
+  'places.nationalPhoneNumber',
 ].join(',');
 
 export const DefaultRadiusMeters = 1500;
@@ -48,6 +49,7 @@ type GooglePlace = {
   photos?: { name: string }[];
   editorialSummary?: { text?: string };
   userRatingCount?: number;
+  nationalPhoneNumber?: string;
 };
 
 export function mapGooglePlace(
@@ -80,6 +82,7 @@ export function mapGooglePlace(
     website: website?.startsWith('https://') ? (website as `https://${string}`) : undefined,
     description: googlePlace.editorialSummary?.text,
     ratingCount: googlePlace.userRatingCount,
+    phone: googlePlace.nationalPhoneNumber,
   };
 
   return { ...place, distanceMeters: distanceMeters(userLocation, place.coordinates) };

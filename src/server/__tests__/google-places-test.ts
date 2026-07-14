@@ -14,6 +14,7 @@ const fullGooglePlace = {
   photos: [{ name: 'places/ChIJtest123/photos/photoref' }],
   editorialSummary: { text: 'Historic food market with artisan stalls.' },
   userRatingCount: 68411,
+  nationalPhoneNumber: '020 7407 1002',
 };
 
 describe('mapGooglePlace', () => {
@@ -30,6 +31,7 @@ describe('mapGooglePlace', () => {
       hours: 'Open now',
       description: 'Historic food market with artisan stalls.',
       ratingCount: 68411,
+      phone: '020 7407 1002',
     });
     expect(place?.distanceMeters).toBeGreaterThan(0);
     expect(place?.distanceMeters).toBeLessThan(200);
@@ -72,6 +74,16 @@ describe('mapGooglePlace', () => {
       User
     );
     expect(place?.hours).toBeUndefined();
+  });
+
+  test('omits phone when Google has no number on file', () => {
+    const place = mapGooglePlace(
+      { ...fullGooglePlace, nationalPhoneNumber: undefined },
+      'restaurant',
+      Origin,
+      User
+    );
+    expect(place?.phone).toBeUndefined();
   });
 
   test('returns null for places missing name or location', () => {

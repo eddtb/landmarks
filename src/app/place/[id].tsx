@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
+import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
@@ -8,13 +9,29 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { getCachedPlace } from '@/data/places-client';
 import { useStory } from '@/hooks/use-story';
-import { CategoryLabels } from '@/types/place';
+import { useTheme } from '@/hooks/use-theme';
+import { CategoryLabels, Place } from '@/types/place';
 import { formatRating } from '@/utils/format';
+
+/** Platform-appropriate deep link, so "Directions" opens the user's own Maps app. */
+function directionsUrl({ coordinates, name }: Place): string {
+  const { latitude, longitude } = coordinates;
+  const label = encodeURIComponent(name);
+
+  return (
+    Platform.select({
+      ios: `maps:0,0?q=${label}@${latitude},${longitude}`,
+      android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`,
+      default: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`,
+    }) ?? `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+  );
+}
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const place = getCachedPlace(id);
   const storyState = useStory(place);
+  const theme = useTheme();
 
   if (!place) {
     return (
@@ -51,6 +68,31 @@ export default function PlaceDetailScreen() {
               <ExternalLink href={place.website}>
                 <ThemedText type="linkPrimary">Visit website</ThemedText>
               </ExternalLink>
+            )}
+          </View>
+
+          <View style={styles.actions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => Linking.openURL(directionsUrl(place))}
+              style={({ pressed }) => [
+                styles.action,
+                { backgroundColor: theme.backgroundElement },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold">Directions</ThemedText>
+            </Pressable>
+            {place.phone && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => Linking.openURL(`tel:${place.phone}`)}
+                style={({ pressed }) => [
+                  styles.action,
+                  { backgroundColor: theme.backgroundElement },
+                  pressed && { opacity: 0.85 },
+                ]}>
+                <ThemedText type="smallBold">Call</ThemedText>
+              </Pressable>
             )}
           </View>
 
@@ -108,6 +150,15 @@ const styles = StyleSheet.create({
   },
   facts: {
     gap: Spacing.one,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  action: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
   },
   story: {
     gap: Spacing.two,

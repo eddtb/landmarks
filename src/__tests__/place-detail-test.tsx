@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
+import * as Linking from 'expo-linking';
 
 import PlaceDetailScreen from '@/app/place/[id]';
 import { MockPlaces } from '@/data/mock-places';
@@ -18,6 +19,8 @@ jest.mock('expo-router', () => {
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
+jest.mock('expo-linking', () => ({ openURL: jest.fn() }));
+
 const mockFetchStory = jest.fn();
 jest.mock('@/data/story-client', () => ({
   fetchStory: (...args: unknown[]) => mockFetchStory(...args),
@@ -32,6 +35,7 @@ describe('<PlaceDetailScreen />', () => {
   beforeEach(() => {
     mockFetchStory.mockReset();
     mockFetchStory.mockResolvedValue(null);
+    jest.mocked(Linking.openURL).mockReset();
   });
 
   test('shows place facts and the built-in story for demo places', async () => {
@@ -86,5 +90,34 @@ describe('<PlaceDetailScreen />', () => {
     await render(<PlaceDetailScreen />);
 
     expect(screen.getByText('This place could not be found.')).toBeOnTheScreen();
+  });
+
+  test('opens the maps app with the place coordinates when Directions is pressed', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    fireEvent.press(screen.getByText('Directions'));
+
+    expect(Linking.openURL).toHaveBeenCalledTimes(1);
+    const url = jest.mocked(Linking.openURL).mock.calls[0][0];
+    expect(url).toContain('51.5055');
+    expect(url).toContain('-0.0754');
+  });
+
+  test('hides Call when the place has no phone number', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(screen.queryByText('Call')).not.toBeOnTheScreen();
+  });
+
+  test('dials the place phone number when Call is pressed', async () => {
+    cachePlaces([{ ...MockPlaces[0], id: 'with-phone', phone: '020 7407 1002' }]);
+    mockUseLocalSearchParams.mockReturnValue({ id: 'with-phone' });
+    await render(<PlaceDetailScreen />);
+
+    fireEvent.press(screen.getByText('Call'));
+
+    expect(Linking.openURL).toHaveBeenCalledWith('tel:020 7407 1002');
   });
 });
