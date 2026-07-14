@@ -19,6 +19,11 @@ jest.mock('@/data/places-client', () => ({
   getCachedPlace: jest.fn(),
 }));
 
+const mockFetchNearbyHistory = jest.fn();
+jest.mock('@/data/history-client', () => ({
+  fetchNearbyHistory: (...args: unknown[]) => mockFetchNearbyHistory(...args),
+}));
+
 function locationState(status: LocationStatus, coordinates: object | null = null) {
   mockUseLocation.mockReturnValue({ status, coordinates, requestPermission: jest.fn() });
 }
@@ -32,6 +37,16 @@ describe('<BrowseScreen />', () => {
     mockFetchNearbyPlaces.mockImplementation(async (category: PlaceCategory, center) =>
       placesByCategory(category, center)
     );
+    mockFetchNearbyHistory.mockReset();
+    mockFetchNearbyHistory.mockResolvedValue([
+      {
+        pageId: 42,
+        title: 'Borough Compter',
+        coordinates: { latitude: 51.5045, longitude: -0.0905 },
+        distanceMeters: 112,
+        url: 'https://en.wikipedia.org/wiki/Borough_Compter',
+      },
+    ]);
   });
 
   test('shows landmarks from the API when location is ready', async () => {
@@ -52,6 +67,19 @@ describe('<BrowseScreen />', () => {
     fireEvent.press(screen.getByText('Pubs'));
 
     expect(await screen.findByText('The George Inn')).toBeOnTheScreen();
+    expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
+  });
+
+  test('the History section shows nearby Wikipedia articles', async () => {
+    locationState('ready', NearTowerBridge);
+    await render(<BrowseScreen />);
+    await screen.findByText('Tower Bridge');
+
+    fireEvent.press(screen.getByText('History'));
+
+    expect(await screen.findByText('Borough Compter')).toBeOnTheScreen();
+    expect(screen.getByText(/History · 112 m/)).toBeOnTheScreen();
+    expect(screen.getByText('From Wikipedia, near your location')).toBeOnTheScreen();
     expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
   });
 

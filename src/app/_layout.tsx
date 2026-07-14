@@ -14,6 +14,7 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="place/[id]" options={{ title: '', headerBackTitle: 'Nearby' }} />
+        <Stack.Screen name="history/[pageId]" options={{ title: '', headerBackTitle: 'Nearby' }} />
       </Stack>
     </ThemeProvider>
   );

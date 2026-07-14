@@ -1,4 +1,5 @@
-import { Coordinates } from '@/utils/geo';
+import { HistoryItem } from '@/types/history';
+import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
  * Server-side only. Finds the Wikipedia article for a place by searching
@@ -125,4 +126,83 @@ export async function findStory(
     title: summary.title,
     url: summary.content_urls?.desktop?.page ?? `https://en.wikipedia.org/wiki/${title}`,
   };
+}
+
+type GeosearchEntry = {
+  pageid: number;
+  title: string;
+  lat: number;
+  lon: number;
+};
+
+type BatchPage = {
+  pageid: number;
+  title: string;
+  extract?: string;
+  thumbnail?: { source?: string };
+  fullurl?: string;
+};
+
+/** Pure assembly step, unit-testable without network. */
+export function buildHistoryItems(
+  entries: GeosearchEntry[],
+  pages: Record<string, BatchPage>,
+  center: Coordinates
+): HistoryItem[] {
+  const pagesById = new Map(Object.values(pages).map((page) => [page.pageid, page]));
+
+  return entries
+    .map((entry) => {
+      const page = pagesById.get(entry.pageid);
+      const coordinates = { latitude: entry.lat, longitude: entry.lon };
+      return {
+        pageId: entry.pageid,
+        title: entry.title,
+        coordinates,
+        distanceMeters: distanceMeters(center, coordinates),
+        extract: page?.extract || undefined,
+        thumbnailUrl: page?.thumbnail?.source,
+        url: page?.fullurl ?? `https://en.wikipedia.org/?curid=${entry.pageid}`,
+      };
+    })
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+}
+
+/**
+ * Wikipedia articles physically near the user — including things with no
+ * business listing anywhere: vanished buildings, incidents, old boundaries.
+ * One geosearch + one batch query for extracts/thumbnails/urls.
+ */
+export async function findNearbyHistory(
+  center: Coordinates,
+  radius = 1500
+): Promise<HistoryItem[]> {
+  const geoUrl =
+    'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
+    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=20`;
+
+  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent } });
+  if (!geoResponse.ok) {
+    throw new Error(`Wikipedia geosearch failed with status ${geoResponse.status}`);
+  }
+  const geo = (await geoResponse.json()) as { query?: { geosearch?: GeosearchEntry[] } };
+  const entries = geo.query?.geosearch ?? [];
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const pageIds = entries.map((entry) => entry.pageid).join('|');
+  const batchUrl =
+    'https://en.wikipedia.org/w/api.php?action=query&format=json' +
+    `&pageids=${pageIds}` +
+    '&prop=pageimages%7Cextracts%7Cinfo&exintro=1&explaintext=1&exlimit=max' +
+    '&pithumbsize=800&pilimit=max&inprop=url';
+
+  const batchResponse = await fetch(batchUrl, { headers: { 'User-Agent': UserAgent } });
+  if (!batchResponse.ok) {
+    throw new Error(`Wikipedia batch query failed with status ${batchResponse.status}`);
+  }
+  const batch = (await batchResponse.json()) as { query?: { pages?: Record<string, BatchPage> } };
+
+  return buildHistoryItems(entries, batch.query?.pages ?? {}, center);
 }
