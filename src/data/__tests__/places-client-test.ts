@@ -1,4 +1,9 @@
-import { cachePlaces, fetchNearbyPlaces, getCachedPlace } from '@/data/places-client';
+import {
+  cachePlaces,
+  fetchNearbyPlaces,
+  fetchPlaceDetails,
+  getCachedPlace,
+} from '@/data/places-client';
 import { MockPlaces } from '@/data/mock-places';
 
 const mockFetch = jest.fn();
@@ -94,6 +99,36 @@ describe('fetchNearbyPlaces', () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
     await fetchNearbyPlaces('landmark', center);
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('fetchPlaceDetails', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  const details = { ...MockPlaces[0], photoUrls: [MockPlaces[0].photoUrl], phone: '020 1234 5678' };
+
+  test('fetches /api/place/:id and caches per place', async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ place: details }) });
+
+    const first = await fetchPlaceDetails('details-cache-test');
+    const second = await fetchPlaceDetails('details-cache-test');
+
+    expect(mockFetch.mock.calls[0][0]).toContain('/api/place/details-cache-test');
+    expect(first?.phone).toBe('020 1234 5678');
+    expect(second).toEqual(first);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('resolves null on 404 (unknown place)', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 404 });
+
+    expect(await fetchPlaceDetails('narnia-details')).toBeNull();
+  });
+
+  test('throws on server errors', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 502 });
+
+    await expect(fetchPlaceDetails('boom-details')).rejects.toThrow('502');
   });
 });
 

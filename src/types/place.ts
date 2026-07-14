@@ -21,6 +21,18 @@ export type Place = {
 
 export type PlaceWithDistance = Place & { distanceMeters: number };
 
+/** Rich fields fetched one place at a time from /api/place/[id] (M1: two-tier fetching). */
+export type PlaceDetails = Place & {
+  /** e.g. ["Monday: 9:00 AM – 5:00 PM", ...] */
+  weekdayHours?: string[];
+  phone?: string;
+  mapsUri?: string;
+  /** "£" | "££" | "£££" | "££££" */
+  priceLevel?: string;
+  /** All photos, proxied — photoUrl remains the first one. */
+  photoUrls: string[];
+};
+
 export const CategoryLabels: Record<PlaceCategory, string> = {
   landmark: 'Landmark',
   restaurant: 'Restaurant',
