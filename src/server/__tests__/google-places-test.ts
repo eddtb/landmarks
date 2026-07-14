@@ -28,6 +28,19 @@ const googlePlace = {
   nationalPhoneNumber: '020 7407 1002',
   googleMapsUri: 'https://maps.google.com/?cid=123',
   priceLevel: 'PRICE_LEVEL_MODERATE',
+  reviews: [
+    {
+      rating: 5,
+      text: { text: 'Wonderful market, great cheese.' },
+      authorAttribution: { displayName: 'Ada L.' },
+      relativePublishTimeDescription: '2 months ago',
+    },
+    {
+      rating: 4,
+      text: { text: '' }, // empty text — must be dropped
+      authorAttribution: { displayName: 'Ghost' },
+    },
+  ],
 };
 
 describe('mapGooglePlace (lean list mapping)', () => {
@@ -110,6 +123,23 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
     expect(details?.hours).toBeUndefined();
     expect(details?.weekdayHours).toBeUndefined();
     expect(details?.priceLevel).toBeUndefined();
+  });
+
+  test('maps reviews, dropping entries without text', () => {
+    const details = mapGooglePlaceDetails(googlePlace, Origin);
+
+    expect(details?.reviews).toHaveLength(1);
+    expect(details?.reviews?.[0]).toEqual({
+      author: 'Ada L.',
+      rating: 5,
+      text: 'Wonderful market, great cheese.',
+      when: '2 months ago',
+    });
+  });
+
+  test('omits reviews entirely when none survive filtering', () => {
+    const details = mapGooglePlaceDetails({ ...googlePlace, reviews: [] }, Origin);
+    expect(details?.reviews).toBeUndefined();
   });
 
   test('always provides at least a placeholder photo', () => {

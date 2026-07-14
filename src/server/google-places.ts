@@ -1,4 +1,4 @@
-import { Place, PlaceCategory, PlaceDetails, PlaceWithDistance } from '@/types/place';
+import { Place, PlaceCategory, PlaceDetails, PlaceReview, PlaceWithDistance } from '@/types/place';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
@@ -54,6 +54,10 @@ const DetailsFieldMask = [
   'nationalPhoneNumber',
   'googleMapsUri',
   'priceLevel',
+  'reviews.rating',
+  'reviews.text.text',
+  'reviews.authorAttribution.displayName',
+  'reviews.relativePublishTimeDescription',
 ].join(',');
 
 export const DefaultRadiusMeters = 1500;
@@ -82,7 +86,28 @@ type GooglePlace = {
   nationalPhoneNumber?: string;
   googleMapsUri?: string;
   priceLevel?: string;
+  reviews?: {
+    rating?: number;
+    text?: { text?: string };
+    authorAttribution?: { displayName?: string };
+    relativePublishTimeDescription?: string;
+  }[];
 };
+
+const MaxReviews = 4;
+
+function mapReviews(googleReviews: GooglePlace['reviews']): PlaceReview[] | undefined {
+  const reviews = (googleReviews ?? [])
+    .filter((review) => !!review.text?.text && !!review.authorAttribution?.displayName)
+    .slice(0, MaxReviews)
+    .map((review) => ({
+      author: review.authorAttribution!.displayName!,
+      rating: review.rating,
+      text: review.text!.text!,
+      when: review.relativePublishTimeDescription,
+    }));
+  return reviews.length > 0 ? reviews : undefined;
+}
 
 function photoProxyUrl(photoName: string, origin: string): string {
   return `${origin}/api/photo?name=${encodeURIComponent(photoName)}`;
@@ -169,6 +194,7 @@ export function mapGooglePlaceDetails(
     priceLevel: googlePlace.priceLevel
       ? PriceLevelSymbols[googlePlace.priceLevel]
       : undefined,
+    reviews: mapReviews(googlePlace.reviews),
   };
 }
 

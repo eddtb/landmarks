@@ -21,8 +21,17 @@ export type Place = {
 
 export type PlaceWithDistance = Place & { distanceMeters: number };
 
+export type PlaceReview = {
+  author: string;
+  rating?: number;
+  text: string;
+  /** e.g. "2 months ago" */
+  when?: string;
+};
+
 /** Rich fields fetched one place at a time from /api/place/[id] (M1: two-tier fetching). */
 export type PlaceDetails = Place & {
+  reviews?: PlaceReview[];
   /** e.g. ["Monday: 9:00 AM – 5:00 PM", ...] */
   weekdayHours?: string[];
   phone?: string;
