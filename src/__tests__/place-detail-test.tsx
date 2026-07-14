@@ -175,4 +175,72 @@ describe('<PlaceDetailScreen />', () => {
 
     expect(Linking.openURL).toHaveBeenCalledWith('tel:020 7407 1002');
   });
+
+  test('shows the price level in the meta line once details load', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      priceLevel: '££',
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText(/· ££$/)).toBeOnTheScreen();
+  });
+
+  test('shows no price level when details lack one', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    await screen.findByText('Tower Bridge');
+    expect(screen.queryByText(/£/)).not.toBeOnTheScreen();
+  });
+
+  const weekdayHours = [
+    'Monday: 9:00 AM – 6:00 PM',
+    'Tuesday: 9:00 AM – 6:00 PM',
+    'Wednesday: 9:00 AM – 6:00 PM',
+    'Thursday: 9:00 AM – 6:00 PM',
+    'Friday: 9:00 AM – 6:00 PM',
+    'Saturday: 10:00 AM – 4:00 PM',
+    'Sunday: Closed',
+  ];
+
+  test("shows only today's hours until expanded, then all seven days", async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      weekdayHours,
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    await screen.findByText('Tower Bridge');
+    // Plain hours line stays visible alongside the collapsed weekday row
+    expect(screen.getByText('Open 09:30 – 18:00')).toBeOnTheScreen();
+
+    // Collapsed: exactly one weekday line is shown (today's, whichever day that is)
+    const collapsedLine = weekdayHours.find((line) => screen.queryByText(line));
+    expect(collapsedLine).toBeDefined();
+    expect(weekdayHours.filter((line) => screen.queryByText(line))).toHaveLength(1);
+
+    await fireEvent.press(screen.getByText(collapsedLine as string));
+
+    // Expanded: all seven days are shown
+    weekdayHours.forEach((line) => {
+      expect(screen.getByText(line)).toBeOnTheScreen();
+    });
+  });
+
+  test('shows no weekday hours row when details lack it', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    await screen.findByText('Tower Bridge');
+    weekdayHours.forEach((line) => {
+      expect(screen.queryByText(line)).not.toBeOnTheScreen();
+    });
+  });
 });
