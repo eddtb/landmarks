@@ -1,9 +1,14 @@
-import { Place, PlaceCategory, PlaceWithDistance } from '@/types/place';
+import { Place, PlaceCategory, PlaceDetails, PlaceWithDistance } from '@/types/place';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
  * Server-side only: everything in this module runs inside API routes,
  * never in the app bundle. The Places API key must not leak past here.
+ *
+ * Two-tier fetching: the list search requests a lean field mask (users see
+ * 20 cards but tap ~1), and the rich fields are fetched one place at a time
+ * via Place Details. This keeps the per-search billing tier low and makes
+ * the expensive fields affordable exactly where they're seen.
  *
  * Nearby Search ranks strictly by distance — the product is "the nearest
  * places, nearest first", one page of 20, no pagination. (Text Search
@@ -13,6 +18,7 @@ import { Coordinates, distanceMeters } from '@/utils/geo';
  */
 
 const NearbySearchEndpoint = 'https://places.googleapis.com/v1/places:searchNearby';
+const PlaceDetailsEndpoint = 'https://places.googleapis.com/v1/places';
 
 /** Place types per section — Places API (New) "Table A" types. */
 const CategoryTypes: Record<PlaceCategory, string[]> = {
@@ -21,36 +27,82 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
   pub: ['pub', 'bar'],
 };
 
-/** Only the fields we map — the field mask also controls Google billing tier. */
-const PlaceFieldMask = [
+/** Lean mask for the list — what a card shows, nothing more. */
+const ListFieldMask = [
   'places.id',
   'places.displayName',
   'places.location',
   'places.rating',
-  'places.formattedAddress',
-  'places.websiteUri',
-  'places.currentOpeningHours.openNow',
-  'places.photos.name',
-  'places.editorialSummary',
   'places.userRatingCount',
-  'places.nationalPhoneNumber',
+  'places.photos.name',
+].join(',');
+
+/** Rich mask for one tapped place — Place Details uses top-level field names. */
+const DetailsFieldMask = [
+  'id',
+  'displayName',
+  'location',
+  'types',
+  'rating',
+  'userRatingCount',
+  'formattedAddress',
+  'websiteUri',
+  'currentOpeningHours.openNow',
+  'regularOpeningHours.weekdayDescriptions',
+  'photos.name',
+  'editorialSummary',
+  'nationalPhoneNumber',
+  'googleMapsUri',
+  'priceLevel',
 ].join(',');
 
 export const DefaultRadiusMeters = 1500;
+const MaxDetailPhotos = 6;
+
+const PriceLevelSymbols: Record<string, string> = {
+  PRICE_LEVEL_INEXPENSIVE: '£',
+  PRICE_LEVEL_MODERATE: '££',
+  PRICE_LEVEL_EXPENSIVE: '£££',
+  PRICE_LEVEL_VERY_EXPENSIVE: '££££',
+};
 
 type GooglePlace = {
   id: string;
   displayName?: { text?: string };
   location?: { latitude?: number; longitude?: number };
+  types?: string[];
   rating?: number;
   formattedAddress?: string;
   websiteUri?: string;
   currentOpeningHours?: { openNow?: boolean };
+  regularOpeningHours?: { weekdayDescriptions?: string[] };
   photos?: { name: string }[];
   editorialSummary?: { text?: string };
   userRatingCount?: number;
   nationalPhoneNumber?: string;
+  googleMapsUri?: string;
+  priceLevel?: string;
 };
+
+function photoProxyUrl(photoName: string, origin: string): string {
+  return `${origin}/api/photo?name=${encodeURIComponent(photoName)}`;
+}
+
+function placeholderPhotoUrl(id: string): string {
+  return `https://picsum.photos/seed/${encodeURIComponent(id)}/800/500`;
+}
+
+/** Details responses carry Google types, not our section — infer ours. */
+export function categoryFromTypes(types: string[] | undefined): PlaceCategory {
+  const typeSet = new Set(types ?? []);
+  if (CategoryTypes.pub.some((type) => typeSet.has(type))) {
+    return 'pub';
+  }
+  if (CategoryTypes.restaurant.some((type) => typeSet.has(type))) {
+    return 'restaurant';
+  }
+  return 'landmark';
+}
 
 export function mapGooglePlace(
   googlePlace: GooglePlace,
@@ -65,8 +117,6 @@ export function mapGooglePlace(
   }
 
   const photoName = googlePlace.photos?.[0]?.name;
-  const website = googlePlace.websiteUri;
-  const openNow = googlePlace.currentOpeningHours?.openNow;
 
   const place: Place = {
     id: googlePlace.id,
@@ -75,17 +125,51 @@ export function mapGooglePlace(
     coordinates: { latitude, longitude },
     rating: googlePlace.rating ?? 0,
     photoUrl: photoName
-      ? `${origin}/api/photo?name=${encodeURIComponent(photoName)}`
-      : `https://picsum.photos/seed/${encodeURIComponent(googlePlace.id)}/800/500`,
+      ? photoProxyUrl(photoName, origin)
+      : placeholderPhotoUrl(googlePlace.id),
     address: googlePlace.formattedAddress ?? '',
-    hours: openNow === undefined ? undefined : openNow ? 'Open now' : 'Closed now',
-    website: website?.startsWith('https://') ? (website as `https://${string}`) : undefined,
-    description: googlePlace.editorialSummary?.text,
     ratingCount: googlePlace.userRatingCount,
-    phone: googlePlace.nationalPhoneNumber,
   };
 
   return { ...place, distanceMeters: distanceMeters(userLocation, place.coordinates) };
+}
+
+export function mapGooglePlaceDetails(
+  googlePlace: GooglePlace,
+  origin: string
+): PlaceDetails | null {
+  const { latitude, longitude } = googlePlace.location ?? {};
+  const name = googlePlace.displayName?.text;
+  if (!name || latitude === undefined || longitude === undefined) {
+    return null;
+  }
+
+  const website = googlePlace.websiteUri;
+  const openNow = googlePlace.currentOpeningHours?.openNow;
+  const photoUrls = (googlePlace.photos ?? [])
+    .slice(0, MaxDetailPhotos)
+    .map((photo) => photoProxyUrl(photo.name, origin));
+
+  return {
+    id: googlePlace.id,
+    name,
+    category: categoryFromTypes(googlePlace.types),
+    coordinates: { latitude, longitude },
+    rating: googlePlace.rating ?? 0,
+    ratingCount: googlePlace.userRatingCount,
+    photoUrl: photoUrls[0] ?? placeholderPhotoUrl(googlePlace.id),
+    photoUrls: photoUrls.length > 0 ? photoUrls : [placeholderPhotoUrl(googlePlace.id)],
+    address: googlePlace.formattedAddress ?? '',
+    hours: openNow === undefined ? undefined : openNow ? 'Open now' : 'Closed now',
+    weekdayHours: googlePlace.regularOpeningHours?.weekdayDescriptions,
+    website: website?.startsWith('https://') ? (website as `https://${string}`) : undefined,
+    description: googlePlace.editorialSummary?.text,
+    phone: googlePlace.nationalPhoneNumber,
+    mapsUri: googlePlace.googleMapsUri,
+    priceLevel: googlePlace.priceLevel
+      ? PriceLevelSymbols[googlePlace.priceLevel]
+      : undefined,
+  };
 }
 
 export async function searchNearby(options: {
@@ -103,7 +187,7 @@ export async function searchNearby(options: {
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': PlaceFieldMask,
+      'X-Goog-FieldMask': ListFieldMask,
     },
     body: JSON.stringify({
       includedTypes: CategoryTypes[category],
@@ -127,4 +211,30 @@ export async function searchNearby(options: {
     .map((googlePlace) => mapGooglePlace(googlePlace, category, origin, center))
     .filter((place): place is PlaceWithDistance => place !== null)
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
+}
+
+export async function getPlaceDetails(options: {
+  apiKey: string;
+  placeId: string;
+  origin: string;
+}): Promise<PlaceDetails | null> {
+  const { apiKey, placeId, origin } = options;
+
+  const response = await fetch(`${PlaceDetailsEndpoint}/${encodeURIComponent(placeId)}`, {
+    headers: {
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': DetailsFieldMask,
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Place Details ${response.status}: ${detail.slice(0, 500)}`);
+  }
+
+  const body = (await response.json()) as GooglePlace;
+  return mapGooglePlaceDetails(body, origin);
 }

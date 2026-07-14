@@ -1,13 +1,13 @@
 import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { getCachedPlace } from '@/data/places-client';
+import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
 import { useTheme } from '@/hooks/use-theme';
 import { CategoryLabels, Place } from '@/types/place';
@@ -29,11 +29,23 @@ function directionsUrl({ coordinates, name }: Place): string {
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const place = getCachedPlace(id);
+  const { summary, state } = usePlaceDetails(id);
+  // Rich details when loaded; the list's cached summary until then
+  const place = state.status === 'ready' ? state.details : summary;
+  // phone/mapsUri only exist once details load — undefined while showing the summary
+  const details = state.status === 'ready' ? state.details : undefined;
   const storyState = useStory(place);
   const theme = useTheme();
 
   if (!place) {
+    if (state.status === 'loading') {
+      return (
+        <ThemedView style={styles.notFound}>
+          <Stack.Screen options={{ title: '' }} />
+          <ActivityIndicator />
+        </ThemedView>
+      );
+    }
     return (
       <ThemedView style={styles.notFound}>
         <Stack.Screen options={{ title: 'Not found' }} />
@@ -74,7 +86,7 @@ export default function PlaceDetailScreen() {
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => Linking.openURL(directionsUrl(place))}
+              onPress={() => Linking.openURL(details?.mapsUri ?? directionsUrl(place))}
               style={({ pressed }) => [
                 styles.action,
                 { backgroundColor: theme.backgroundElement },
@@ -82,10 +94,10 @@ export default function PlaceDetailScreen() {
               ]}>
               <ThemedText type="smallBold">Directions</ThemedText>
             </Pressable>
-            {place.phone && (
+            {details?.phone && (
               <Pressable
                 accessibilityRole="button"
-                onPress={() => Linking.openURL(`tel:${place.phone}`)}
+                onPress={() => Linking.openURL(`tel:${details.phone}`)}
                 style={({ pressed }) => [
                   styles.action,
                   { backgroundColor: theme.backgroundElement },
