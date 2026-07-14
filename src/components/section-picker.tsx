@@ -5,15 +5,19 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { PlaceCategory } from '@/types/place';
 
-const Sections: { value: PlaceCategory; label: string }[] = [
+/** The browse sections: the three place categories plus hidden history. */
+export type Section = PlaceCategory | 'history';
+
+const Sections: { value: Section; label: string }[] = [
   { value: 'landmark', label: 'Landmarks' },
   { value: 'restaurant', label: 'Restaurants' },
   { value: 'pub', label: 'Pubs' },
+  { value: 'history', label: 'History' },
 ];
 
 type Props = {
-  selected: PlaceCategory;
-  onSelect: (category: PlaceCategory) => void;
+  selected: Section;
+  onSelect: (section: Section) => void;
 };
 
 export function SectionPicker({ selected, onSelect }: Props) {
