@@ -60,12 +60,25 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
   });
 
-  test('omits the Story section when no article matches', async () => {
+  test("falls back to Google's About text when no article matches", async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'padella' });
     await render(<PlaceDetailScreen />);
 
     expect(screen.getByText('Padella')).toBeOnTheScreen();
     expect(screen.queryByText('Story')).not.toBeOnTheScreen();
+    expect(await screen.findByText('About')).toBeOnTheScreen();
+    expect(screen.getByText(/handmade pasta at counter seats/)).toBeOnTheScreen();
+    // Review count joins the meta line
+    expect(screen.getByText(/12,840 reviews/)).toBeOnTheScreen();
+  });
+
+  test('shows nothing extra when a place has neither story nor description', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'the-anchor-bankside' });
+    await render(<PlaceDetailScreen />);
+
+    expect(screen.getByText('The Anchor Bankside')).toBeOnTheScreen();
+    expect(screen.queryByText('Story')).not.toBeOnTheScreen();
+    expect(screen.queryByText('About')).not.toBeOnTheScreen();
   });
 
   test('handles unknown ids gracefully', async () => {

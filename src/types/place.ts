@@ -12,6 +12,9 @@ export type Place = {
   address: string;
   hours?: string;
   website?: `https://${string}`;
+  /** Google's short editorial description — the fallback when no Wikipedia article exists. */
+  description?: string;
+  ratingCount?: number;
   /** Wikipedia-style summary. Present mostly for genuine landmarks. */
   story?: string;
 };
