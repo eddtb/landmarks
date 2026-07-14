@@ -30,23 +30,32 @@ export function useLocation(): {
       return;
     }
     let cancelled = false;
+    let subscription: Location.LocationSubscription | undefined;
 
     (async () => {
-      // Last known fix is instant when available; a fresh fix can take seconds.
+      // Last known fix is instant when available; the watch takes over from there.
       const lastKnown = await Location.getLastKnownPositionAsync();
       if (!cancelled && lastKnown) {
         setCoordinates(lastKnown.coords);
       }
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      if (!cancelled) {
-        setCoordinates(current.coords);
+      // Live position: emits an initial fix, then again every ~10m walked,
+      // so distances tick down and the list re-sorts as you move.
+      subscription = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.Balanced, distanceInterval: 10 },
+        (update) => {
+          if (!cancelled) {
+            setCoordinates(update.coords);
+          }
+        }
+      );
+      if (cancelled) {
+        subscription.remove();
       }
     })();
 
     return () => {
       cancelled = true;
+      subscription?.remove();
     };
   }, [granted]);
 

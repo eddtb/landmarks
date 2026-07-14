@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 
 import BrowseScreen from '@/app/index';
 import { placesByCategory } from '@/data/mock-places';
@@ -22,6 +22,12 @@ jest.mock('@/data/places-client', () => ({
 const mockFetchNearbyHistory = jest.fn();
 jest.mock('@/data/history-client', () => ({
   fetchNearbyHistory: (...args: unknown[]) => mockFetchNearbyHistory(...args),
+}));
+
+const mockGeocodeAsync = jest.fn();
+jest.mock('expo-location', () => ({
+  geocodeAsync: (...args: unknown[]) => mockGeocodeAsync(...args),
+  watchHeadingAsync: jest.fn(async () => ({ remove: jest.fn() })),
 }));
 
 function locationState(status: LocationStatus, coordinates: object | null = null) {
@@ -97,12 +103,36 @@ describe('<BrowseScreen />', () => {
     expect(screen.getByText('Finding places near you…')).toBeOnTheScreen();
   });
 
-  test('falls back to central London with a notice when denied', async () => {
+  test('falls back to central London with a search option when denied', async () => {
     locationState('denied');
     await render(<BrowseScreen />);
 
-    expect(screen.getByText(/Location is off — showing central London/)).toBeOnTheScreen();
+    expect(screen.getByText(/Location is off — enable it in Settings/)).toBeOnTheScreen();
+    expect(screen.getByPlaceholderText('Search near a place…')).toBeOnTheScreen();
     expect(await screen.findByText('Tate Modern')).toBeOnTheScreen();
+  });
+
+  test('denied + manual search recenters via free geocoding', async () => {
+    jest.useFakeTimers();
+    locationState('denied');
+    // "Tower Bridge" typed -> geocoder returns its coordinates
+    mockGeocodeAsync.mockResolvedValue([{ latitude: 51.5055, longitude: -0.0754 }]);
+    await render(<BrowseScreen />);
+    await screen.findByText('Tate Modern');
+
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText('Search near a place…'), 'Tower Bridge', {
+      submitEditing: true,
+    });
+
+    expect(mockGeocodeAsync).toHaveBeenCalledWith('Tower Bridge');
+    // Places were refetched around the searched position
+    await screen.findByText('Tower Bridge');
+    expect(mockFetchNearbyPlaces).toHaveBeenLastCalledWith('landmark', {
+      latitude: 51.5055,
+      longitude: -0.0754,
+    });
+    jest.useRealTimers();
   });
 
   test('shows an error state with retry when the API fails', async () => {
