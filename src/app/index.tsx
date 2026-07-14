@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import * as Location from 'expo-location';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -6,6 +7,7 @@ import {
   Pressable,
   RefreshControl,
   StyleSheet,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,14 +19,18 @@ import { Section, SectionPicker } from '@/components/section-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useFetchAnchor } from '@/hooks/use-fetch-anchor';
+import { useHeading } from '@/hooks/use-heading';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlaces } from '@/hooks/use-places';
+import { useTheme } from '@/hooks/use-theme';
 import { PlaceCategory } from '@/types/place';
-import { Coordinates, FallbackCoordinates } from '@/utils/geo';
+import { arrowTowards, Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
 
 export default function BrowseScreen() {
   const { status, coordinates, requestPermission } = useLocation();
+  const [manualCenter, setManualCenter] = useState<Coordinates | null>(null);
 
   if (status === 'priming') {
     return (
@@ -47,14 +53,42 @@ export default function BrowseScreen() {
 
   return (
     <PlacesList
-      center={coordinates ?? FallbackCoordinates}
+      center={coordinates ?? manualCenter ?? FallbackCoordinates}
       locationDenied={status === 'denied'}
+      onManualCenter={setManualCenter}
     />
   );
 }
 
-function PlacesList({ center, locationDenied }: { center: Coordinates; locationDenied: boolean }) {
+function PlacesList({
+  center,
+  locationDenied,
+  onManualCenter,
+}: {
+  center: Coordinates;
+  locationDenied: boolean;
+  onManualCenter: (center: Coordinates) => void;
+}) {
   const [section, setSection] = useState<Section>('landmark');
+  const [searchText, setSearchText] = useState('');
+  const theme = useTheme();
+
+  const onSearchSubmit = useCallback(async () => {
+    const query = searchText.trim();
+    if (!query) {
+      return;
+    }
+    try {
+      // On-device geocoding — free, no Google billing
+      const results = await Location.geocodeAsync(query);
+      const first = results[0];
+      if (first) {
+        onManualCenter({ latitude: first.latitude, longitude: first.longitude });
+      }
+    } catch (error) {
+      console.warn('Geocoding failed:', error);
+    }
+  }, [searchText, onManualCenter]);
 
   return (
     <ThemedView style={styles.container}>
@@ -62,13 +96,26 @@ function PlacesList({ center, locationDenied }: { center: Coordinates; locationD
         <View style={styles.header}>
           <ThemedText type="subtitle">Nearby</ThemedText>
           {locationDenied && (
-            <ThemedText
-              type="small"
-              themeColor="textSecondary"
-              onPress={() => Linking.openSettings()}>
-              Location is off — showing central London. Enable it in Settings to see places near
-              you.
-            </ThemedText>
+            <>
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                onPress={() => Linking.openSettings()}>
+                Location is off — enable it in Settings, or search a place to explore:
+              </ThemedText>
+              <TextInput
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={onSearchSubmit}
+                placeholder="Search near a place…"
+                placeholderTextColor={theme.textSecondary}
+                returnKeyType="search"
+                style={[
+                  styles.search,
+                  { backgroundColor: theme.backgroundElement, color: theme.text },
+                ]}
+              />
+            </>
           )}
           <SectionPicker selected={section} onSelect={setSection} />
         </View>
@@ -86,7 +133,23 @@ function PlacesList({ center, locationDenied }: { center: Coordinates; locationD
 
 function PlacesBody({ category, center }: { category: PlaceCategory; center: Coordinates }) {
   const [refreshing, setRefreshing] = useState(false);
-  const { state, refresh } = usePlaces(category, center);
+  // Fetch from a stable anchor (moves after ~250m walked); distances and
+  // ordering below track the live position on every GPS update.
+  const anchor = useFetchAnchor(center);
+  const { state, refresh } = usePlaces(category, anchor);
+  const heading = useHeading(true);
+
+  const livePlaces = useMemo(() => {
+    if (state.status !== 'ready') {
+      return [];
+    }
+    return state.places
+      .map((place) => ({
+        ...place,
+        distanceMeters: distanceMeters(center, place.coordinates),
+      }))
+      .sort((a, b) => a.distanceMeters - b.distanceMeters);
+  }, [state, center]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -117,9 +180,14 @@ function PlacesBody({ category, center }: { category: PlaceCategory; center: Coo
 
   return (
     <FlatList
-      data={state.places}
+      data={livePlaces}
       keyExtractor={(place) => place.id}
-      renderItem={({ item }) => <PlaceCard place={item} />}
+      renderItem={({ item }) => (
+        <PlaceCard
+          place={item}
+          arrow={heading === null ? undefined : arrowTowards(center, item.coordinates, heading)}
+        />
+      )}
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
@@ -226,5 +294,11 @@ const styles = StyleSheet.create({
   footer: {
     textAlign: 'center',
     paddingVertical: Spacing.four,
+  },
+  search: {
+    borderRadius: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    fontSize: 14,
   },
 });
