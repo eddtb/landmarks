@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { fetch } from 'expo/fetch';
 import { NativeModules, Platform } from 'react-native';
 
-import { Place, PlaceCategory, PlaceWithDistance } from '@/types/place';
+import { Place, PlaceCategory, PlaceDetails, PlaceWithDistance } from '@/types/place';
 import { Coordinates } from '@/utils/geo';
 
 /**
@@ -104,6 +104,28 @@ export async function fetchNearbyPlaces(
 
 export function getCachedPlace(id: string): Place | undefined {
   return placeCache.get(id);
+}
+
+// Rich details, cached per place per session (two-tier fetching).
+const detailsCache = new Map<string, PlaceDetails>();
+
+export async function fetchPlaceDetails(id: string): Promise<PlaceDetails | null> {
+  const cached = detailsCache.get(id);
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(apiUrl(`/api/place/${encodeURIComponent(id)}`));
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`Place details request failed with status ${response.status}`);
+  }
+
+  const body = (await response.json()) as { place: PlaceDetails };
+  detailsCache.set(id, body.place);
+  return body.place;
 }
 
 /** Test seam: lets tests seed the cache without network. */

@@ -23,6 +23,16 @@ jest.mock('@/data/story-client', () => ({
   fetchStory: (...args: unknown[]) => mockFetchStory(...args),
 }));
 
+// Two-tier fetch: keep the real summary cache, mock only the details call
+const mockFetchPlaceDetails = jest.fn();
+jest.mock('@/data/places-client', () => {
+  const actual = jest.requireActual('@/data/places-client');
+  return {
+    ...actual,
+    fetchPlaceDetails: (...args: unknown[]) => mockFetchPlaceDetails(...args),
+  };
+});
+
 describe('<PlaceDetailScreen />', () => {
   beforeAll(() => {
     // Simulate places fetched earlier by the browse screen
@@ -32,6 +42,9 @@ describe('<PlaceDetailScreen />', () => {
   beforeEach(() => {
     mockFetchStory.mockReset();
     mockFetchStory.mockResolvedValue(null);
+    mockFetchPlaceDetails.mockReset();
+    // Default: details lookup finds nothing extra; screens render from summary
+    mockFetchPlaceDetails.mockResolvedValue(null);
   });
 
   test('shows place facts and the built-in story for demo places', async () => {
@@ -85,6 +98,27 @@ describe('<PlaceDetailScreen />', () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'narnia' });
     await render(<PlaceDetailScreen />);
 
-    expect(screen.getByText('This place could not be found.')).toBeOnTheScreen();
+    expect(await screen.findByText('This place could not be found.')).toBeOnTheScreen();
+  });
+
+  test('cold deep link renders from fetched details without a cached summary', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      id: 'cold-start-place',
+      name: 'The Mayflower',
+      category: 'pub',
+      coordinates: { latitude: 51.5015, longitude: -0.0536 },
+      rating: 4.5,
+      ratingCount: 3200,
+      photoUrl: 'https://example.com/photo.jpg',
+      photoUrls: ['https://example.com/photo.jpg'],
+      address: '117 Rotherhithe St, London SE16 4NF',
+      hours: 'Open now',
+      phone: '020 7237 4088',
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'cold-start-place' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText('The Mayflower')).toBeOnTheScreen();
+    expect(screen.getByText('117 Rotherhithe St, London SE16 4NF')).toBeOnTheScreen();
   });
 });

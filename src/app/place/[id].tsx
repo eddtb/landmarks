@@ -1,22 +1,32 @@
 import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { getCachedPlace } from '@/data/places-client';
+import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
 import { CategoryLabels } from '@/types/place';
 import { formatRating } from '@/utils/format';
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const place = getCachedPlace(id);
+  const { summary, state } = usePlaceDetails(id);
+  // Rich details when loaded; the list's cached summary until then
+  const place = state.status === 'ready' ? state.details : summary;
   const storyState = useStory(place);
 
   if (!place) {
+    if (state.status === 'loading') {
+      return (
+        <ThemedView style={styles.notFound}>
+          <Stack.Screen options={{ title: '' }} />
+          <ActivityIndicator />
+        </ThemedView>
+      );
+    }
     return (
       <ThemedView style={styles.notFound}>
         <Stack.Screen options={{ title: 'Not found' }} />
