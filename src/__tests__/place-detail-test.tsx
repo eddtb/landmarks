@@ -134,6 +134,20 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('Solid Victorian engineering.')).toBeOnTheScreen();
   });
 
+  test('shows the Gemini review summary with disclosure when present', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      reviewSummary: 'People say this board game cafe has a huge games library.',
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText(/board game cafe has a huge games library/)).toBeOnTheScreen();
+    expect(screen.getByText('Summarized with Gemini')).toBeOnTheScreen();
+  });
+
   test('omits the reviews section when details have none', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);

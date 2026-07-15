@@ -171,8 +171,8 @@ export default function PlaceDetailScreen() {
             </View>
           ) : null}
 
-          {details?.reviews && details.reviews.length > 0 && (
-            <ReviewList reviews={details.reviews} />
+          {((details?.reviews && details.reviews.length > 0) || details?.reviewSummary) && (
+            <ReviewList reviews={details?.reviews ?? []} summary={details?.reviewSummary} />
           )}
         </View>
       </ScrollView>
