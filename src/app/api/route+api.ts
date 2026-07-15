@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       route: {
         seconds: Math.round(meters / 1.33),
         meters,
-        steps: [{ instruction: 'Head towards your destination', meters }],
+        steps: [{ instruction: 'Head towards your destination', meters, start: from, end: to }],
       },
       demo: true,
     });
