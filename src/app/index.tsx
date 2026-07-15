@@ -18,13 +18,11 @@ import { PlaceCard } from '@/components/place-card';
 import { Section, SectionPicker } from '@/components/section-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { TodayCard } from '@/components/today-card';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useFetchAnchor } from '@/hooks/use-fetch-anchor';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlaces } from '@/hooks/use-places';
-import { useToday } from '@/hooks/use-today';
 import { useTheme } from '@/hooks/use-theme';
 import { PlaceCategory } from '@/types/place';
 import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
@@ -124,8 +122,6 @@ function PlacesList({
             cross-section state; the session caches make revisits instant */}
         {section === 'history' ? (
           <HistoryBody key="history" center={center} />
-        ) : section === 'today' ? (
-          <TodayBody key="today" center={center} />
         ) : (
           <PlacesBody key={section} category={section} center={center} />
         )}
@@ -197,67 +193,6 @@ function PlacesBody({ category, center }: { category: PlaceCategory; center: Coo
         state.places.length > 0 ? (
           <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
             The {state.places.length} closest places
-          </ThemedText>
-        ) : null
-      }
-    />
-  );
-}
-
-function TodayBody({ center }: { center: Coordinates }) {
-  const [refreshing, setRefreshing] = useState(false);
-  // Events are day-scoped and area-scoped, not step-scoped: fetch from
-  // the stable anchor so walking a street doesn't re-research the area
-  const anchor = useFetchAnchor(center);
-  const { state, refresh } = useToday(anchor);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
-  }, [refresh]);
-
-  if (state.status === 'loading') {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-        <ThemedText type="small" themeColor="textSecondary">
-          Checking what&apos;s on near you today…
-        </ThemedText>
-      </View>
-    );
-  }
-
-  if (state.status === 'error') {
-    return (
-      <View style={styles.centered}>
-        <ThemedText type="small" themeColor="textSecondary">
-          Couldn&apos;t check today&apos;s events right now.
-        </ThemedText>
-        <Pressable accessibilityRole="button" onPress={refresh}>
-          <ThemedText type="linkPrimary">Try again</ThemedText>
-        </Pressable>
-      </View>
-    );
-  }
-
-  return (
-    <FlatList
-      data={state.events}
-      keyExtractor={(event) => `${event.title}|${event.venue}`}
-      renderItem={({ item }) => <TodayCard event={item} />}
-      contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      showsVerticalScrollIndicator={false}
-      ListEmptyComponent={
-        <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-          Quiet day nearby — nothing confirmed on today.
-        </ThemedText>
-      }
-      ListFooterComponent={
-        state.events.length > 0 ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
-            Researched by AI from event listings — check the source before you go
           </ThemedText>
         ) : null
       }

@@ -24,15 +24,9 @@ jest.mock('@/data/history-client', () => ({
   fetchNearbyHistory: (...args: unknown[]) => mockFetchNearbyHistory(...args),
 }));
 
-const mockFetchTodayNearby = jest.fn();
-jest.mock('@/data/today-client', () => ({
-  fetchTodayNearby: (...args: unknown[]) => mockFetchTodayNearby(...args),
-}));
-
 const mockGeocodeAsync = jest.fn();
 jest.mock('expo-location', () => ({
   geocodeAsync: (...args: unknown[]) => mockGeocodeAsync(...args),
-  reverseGeocodeAsync: jest.fn(async () => [{ district: 'Deptford' }]),
   watchHeadingAsync: jest.fn(async () => ({ remove: jest.fn() })),
 }));
 
@@ -49,8 +43,6 @@ describe('<BrowseScreen />', () => {
     mockFetchNearbyPlaces.mockImplementation(async (category: PlaceCategory, center) =>
       placesByCategory(category, center)
     );
-    mockFetchTodayNearby.mockReset();
-    mockFetchTodayNearby.mockResolvedValue([]);
     mockFetchNearbyHistory.mockReset();
     mockFetchNearbyHistory.mockResolvedValue([
       {
@@ -95,41 +87,6 @@ describe('<BrowseScreen />', () => {
 
     expect(await screen.findByText('Southbank Snooker & Pool Club')).toBeOnTheScreen();
     expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
-  });
-
-  test("the Today section shows today's events with venue and time", async () => {
-    mockFetchTodayNearby.mockResolvedValue([
-      {
-        title: 'Live music',
-        venue: 'Trafalgar Tavern',
-        time: '8pm',
-        sourceUrl: 'https://www.trafalgartavern.co.uk/whats-on',
-        distanceMeters: 850,
-      },
-    ]);
-    locationState('ready', NearTowerBridge);
-    await render(<BrowseScreen />);
-    await screen.findByText('Tower Bridge');
-
-    fireEvent.press(screen.getByText('Today'));
-
-    expect(await screen.findByText('Live music')).toBeOnTheScreen();
-    expect(screen.getByText(/Trafalgar Tavern · 8pm · 850 m/)).toBeOnTheScreen();
-    expect(screen.getByText(/Researched by AI from event listings/)).toBeOnTheScreen();
-    expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
-  });
-
-  test('a quiet day shows the empty state, not an error', async () => {
-    mockFetchTodayNearby.mockResolvedValue([]);
-    locationState('ready', NearTowerBridge);
-    await render(<BrowseScreen />);
-    await screen.findByText('Tower Bridge');
-
-    fireEvent.press(screen.getByText('Today'));
-
-    expect(
-      await screen.findByText('Quiet day nearby — nothing confirmed on today.')
-    ).toBeOnTheScreen();
   });
 
   test('the History section shows nearby Wikipedia articles', async () => {

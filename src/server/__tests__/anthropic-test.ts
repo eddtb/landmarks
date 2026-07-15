@@ -1,4 +1,4 @@
-import { parseBusynessPattern, parseTodayEvents, parseWhatsOnEvents } from '@/server/anthropic';
+import { parseBusynessPattern, parseWhatsOnEvents } from '@/server/anthropic';
 
 describe('parseWhatsOnEvents', () => {
   test('parses a fenced JSON array of events', () => {
@@ -106,51 +106,3 @@ describe('parseBusynessPattern', () => {
   });
 });
 
-describe('parseTodayEvents', () => {
-  test('parses events behind narration, keeping only complete sourced ones', () => {
-    const events = parseTodayEvents(
-      'I found several things on today. ```json\n' +
-        JSON.stringify([
-          {
-            title: 'Live music',
-            venue: 'Trafalgar Tavern',
-            time: 'Evening',
-            sourceUrl: 'https://www.trafalgartavern.co.uk/whats-on',
-          },
-          { title: 'No venue', time: '8pm', sourceUrl: 'https://example.com' },
-          { title: 'No source', venue: 'Somewhere', time: '9pm' },
-          {
-            title: 'Insecure',
-            venue: 'Elsewhere',
-            time: '7pm',
-            sourceUrl: 'http://example.com',
-          },
-        ]) +
-        '\n```'
-    );
-
-    expect(events).toEqual([
-      {
-        title: 'Live music',
-        venue: 'Trafalgar Tavern',
-        time: 'Evening',
-        sourceUrl: 'https://www.trafalgartavern.co.uk/whats-on',
-      },
-    ]);
-  });
-
-  test('caps the list at twelve events', () => {
-    const many = Array.from({ length: 20 }, (_, index) => ({
-      title: `Event ${index}`,
-      venue: 'Venue',
-      time: 'All day',
-      sourceUrl: 'https://example.com',
-    }));
-    expect(parseTodayEvents(JSON.stringify(many))).toHaveLength(12);
-  });
-
-  test('returns nothing for prose or malformed JSON', () => {
-    expect(parseTodayEvents('Nothing much on today.')).toEqual([]);
-    expect(parseTodayEvents('[{"title": "Broken"')).toEqual([]);
-  });
-});
