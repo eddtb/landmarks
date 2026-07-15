@@ -16,6 +16,10 @@ export type Place = {
   photoUrl: string;
   address: string;
   hours?: string;
+  /** From the live opening hours — undefined when Google doesn't know. */
+  openNow?: boolean;
+  /** "£" | "££" | "£££" | "££££" */
+  priceLevel?: string;
   website?: `https://${string}`;
   /** Google's short editorial description — the fallback when no Wikipedia article exists. */
   description?: string;
@@ -53,8 +57,6 @@ export type PlaceDetails = Place & {
   kitchenWeekdayHours?: string[];
   phone?: string;
   mapsUri?: string;
-  /** "£" | "££" | "£££" | "££££" */
-  priceLevel?: string;
   /** All photos, proxied — photoUrl remains the first one. */
   photoUrls: string[];
 };

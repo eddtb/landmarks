@@ -82,6 +82,8 @@ describe('<BrowseScreen />', () => {
 
     expect(await screen.findByText('The George Inn')).toBeOnTheScreen();
     expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
+    // The Anchor is closed in the mock data — only the negative is marked
+    expect(screen.getByText(/Pub · .* · Closed/)).toBeOnTheScreen();
   });
 
   test('the Activities section shows activity venues', async () => {

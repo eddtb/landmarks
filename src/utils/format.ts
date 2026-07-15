@@ -16,3 +16,11 @@ export function formatWalkTime(seconds: number): string {
   const minutes = Math.max(1, Math.round(seconds / 60));
   return `${minutes} min walk`;
 }
+
+/** 847 -> "847", 2310 -> "2.3k" — evidence for the rating, card-sized */
+export function formatRatingCount(count: number): string {
+  if (count < 1000) {
+    return String(count);
+  }
+  return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+}
