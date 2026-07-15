@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { Compass } from '@/components/compass';
 import { PointerDial } from '@/components/pointer-dial';
+import { RouteMap } from '@/components/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { fetchWalkingRoute } from '@/data/route-client';
@@ -106,6 +107,7 @@ function RouteSteps({ from, to }: { from: Coordinates; to: Coordinates }) {
 
   return (
     <View style={styles.steps}>
+      <RouteMap route={route} destination={to} />
       {guidance && (
         <View style={styles.guidance}>
           <PointerDial
