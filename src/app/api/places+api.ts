@@ -2,7 +2,7 @@ import { placesByCategory } from '@/data/mock-places';
 import { searchNearby } from '@/server/google-places';
 import { PlaceCategory } from '@/types/place';
 
-const Categories: PlaceCategory[] = ['landmark', 'restaurant', 'pub', 'activity'];
+const Categories: PlaceCategory[] = ['landmark', 'food', 'drink', 'activity'];
 
 /**
  * GET /api/places?lat=51.5&lng=-0.09&category=landmark
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Categories.includes(category)) {
     return Response.json(
-      { error: 'Expected lat, lng, and category (landmark | restaurant | pub)' },
+      { error: 'Expected lat, lng, and category (landmark | food | drink | activity)' },
       { status: 400 }
     );
   }

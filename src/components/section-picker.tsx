@@ -5,13 +5,13 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { PlaceCategory } from '@/types/place';
 
-/** The browse sections: the three place categories plus hidden history. */
+/** The browse sections: the four place categories plus history. */
 export type Section = PlaceCategory | 'history';
 
 const Sections: { value: Section; label: string }[] = [
   { value: 'landmark', label: 'Landmarks' },
-  { value: 'restaurant', label: 'Restaurants' },
-  { value: 'pub', label: 'Pubs' },
+  { value: 'food', label: 'Food' },
+  { value: 'drink', label: 'Drinks' },
   { value: 'activity', label: 'Activities' },
   { value: 'history', label: 'History' },
 ];

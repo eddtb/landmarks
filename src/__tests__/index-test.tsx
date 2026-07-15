@@ -70,7 +70,7 @@ describe('<BrowseScreen />', () => {
     await render(<BrowseScreen />);
     await screen.findByText('Tower Bridge');
 
-    fireEvent.press(screen.getByText('Pubs'));
+    fireEvent.press(screen.getByText('Drinks'));
 
     expect(await screen.findByText('The George Inn')).toBeOnTheScreen();
     expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();

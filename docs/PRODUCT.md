@@ -7,13 +7,17 @@
 1. **Open** — on first launch, a friendly explanation screen describes why the app
    wants location, *then* triggers the system permission dialog (pre-permission
    priming — measurably better acceptance rates than cold-prompting).
-2. **Browse** — three sections, switchable at the top of the home screen:
-   - **Landmarks** — sights, monuments, museums, historic sites, parks, viewpoints
-   - **Restaurants** — restaurants and cafes
-   - **Pubs** — pubs and bars
+2. **Browse** — five sections, switchable at the top of the home screen:
+   - **Landmarks** — sights, monuments, museums, historic sites, parks, gardens
+   - **Food** — anywhere you go to eat: restaurants, cafes, bakeries, dessert spots
+   - **Drinks** — anywhere you go for the drink: pubs, bars, wine bars, coffee shops
+   - **Activities** — things you do or watch: bowling, snooker, cinema, comedy,
+     theatre, spas (not gyms or stadiums — outings, not memberships or fixtures)
+   - **History** — nearby Wikipedia articles for the incurably curious
 
    Each section is a scrollable list of nearby places sorted by proximity:
-   photo card, name, category, distance, rating.
+   photo card, name, Google's specific place type ("Wine Bar", "Bakery"),
+   walk time, rating.
 3. **Detail** — tapping a card opens a detail screen: photos, rating, address,
    opening hours, website link, and a **Story** section containing a Wikipedia
    summary when one exists (shown only when available — a cathedral has a story,

@@ -32,13 +32,13 @@ describe('fetchNearbyPlaces', () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ places: [] }) });
     const center = freshCenter();
 
-    await fetchNearbyPlaces('pub', center);
+    await fetchNearbyPlaces('drink', center);
 
     const requested = mockFetch.mock.calls[0][0] as string;
     expect(requested).toContain('/api/places?');
     expect(requested).toContain(`lat=${center.latitude}`);
     expect(requested).toContain('lng=-0.09');
-    expect(requested).toContain('category=pub');
+    expect(requested).toContain('category=drink');
   });
 
   test('returns the places from the response and caches them by id', async () => {
@@ -55,9 +55,9 @@ describe('fetchNearbyPlaces', () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ places: [] }) });
     const center = freshCenter();
 
-    await fetchNearbyPlaces('pub', center);
-    await fetchNearbyPlaces('pub', center);
-    await fetchNearbyPlaces('pub', center);
+    await fetchNearbyPlaces('drink', center);
+    await fetchNearbyPlaces('drink', center);
+    await fetchNearbyPlaces('drink', center);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -66,9 +66,9 @@ describe('fetchNearbyPlaces', () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ places: [] }) });
     const center = freshCenter();
 
-    await fetchNearbyPlaces('pub', center);
+    await fetchNearbyPlaces('drink', center);
     await fetchNearbyPlaces('landmark', center);
-    await fetchNearbyPlaces('pub', center);
+    await fetchNearbyPlaces('drink', center);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
@@ -77,15 +77,15 @@ describe('fetchNearbyPlaces', () => {
     const center = freshCenter();
     const place = { ...MockPlaces[0], distanceMeters: 42 };
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ places: [] }) });
-    await fetchNearbyPlaces('pub', center);
+    await fetchNearbyPlaces('drink', center);
 
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ places: [place] }) });
-    const refreshed = await fetchNearbyPlaces('pub', center, { forceRefresh: true });
+    const refreshed = await fetchNearbyPlaces('drink', center, { forceRefresh: true });
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(refreshed).toHaveLength(1);
     // The cache now holds the refreshed list
-    const again = await fetchNearbyPlaces('pub', center);
+    const again = await fetchNearbyPlaces('drink', center);
     expect(again).toHaveLength(1);
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });

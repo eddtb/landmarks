@@ -85,7 +85,7 @@ export default function PlaceDetailScreen() {
         <View style={styles.body}>
           <ThemedText type="subtitle">{place.name}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {CategoryLabels[place.category]} · {formatRating(place.rating)}
+            {place.primaryLabel ?? CategoryLabels[place.category]} · {formatRating(place.rating)}
             {place.ratingCount ? ` (${place.ratingCount.toLocaleString()} reviews)` : ''}
             {details?.priceLevel ? ` · ${details.priceLevel}` : ''}
           </ThemedText>

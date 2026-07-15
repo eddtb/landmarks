@@ -187,7 +187,7 @@ describe('<PlaceDetailScreen />', () => {
     mockFetchPlaceDetails.mockResolvedValue({
       id: 'cold-start-place',
       name: 'The Mayflower',
-      category: 'pub',
+      category: 'drink',
       coordinates: { latitude: 51.5015, longitude: -0.0536 },
       rating: 4.5,
       ratingCount: 3200,

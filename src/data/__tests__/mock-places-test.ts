@@ -6,13 +6,13 @@ const UserLocation = { latitude: 51.5055, longitude: -0.0906 };
 describe('placesByCategory', () => {
   test('every section has places to show', () => {
     expect(placesByCategory('landmark', UserLocation).length).toBeGreaterThan(0);
-    expect(placesByCategory('restaurant', UserLocation).length).toBeGreaterThan(0);
-    expect(placesByCategory('pub', UserLocation).length).toBeGreaterThan(0);
+    expect(placesByCategory('food', UserLocation).length).toBeGreaterThan(0);
+    expect(placesByCategory('drink', UserLocation).length).toBeGreaterThan(0);
   });
 
   test('returns only places of the requested category', () => {
-    for (const place of placesByCategory('pub', UserLocation)) {
-      expect(place.category).toBe('pub');
+    for (const place of placesByCategory('drink', UserLocation)) {
+      expect(place.category).toBe('drink');
     }
   });
 
