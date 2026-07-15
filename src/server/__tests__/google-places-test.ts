@@ -72,6 +72,8 @@ describe('mapGooglePlace (lean list mapping)', () => {
       primaryLabel: 'Market',
       rating: 4.6,
       ratingCount: 68411,
+      openNow: true,
+      priceLevel: '££',
     });
     expect(place?.distanceMeters).toBeGreaterThan(0);
     expect(place?.distanceMeters).toBeLessThan(200);

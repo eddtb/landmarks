@@ -95,7 +95,11 @@ const CategoryExcludedPrimaryTypes: Partial<Record<PlaceCategory, string[]>> = {
   ],
 };
 
-/** Lean mask for the list — what a card shows, nothing more. */
+/**
+ * Lean mask for the list — what a card shows, nothing more. (SKU note:
+ * routingSummaries already bills list queries at the top tier, so the
+ * Enterprise-tier openNow/priceLevel fields ride along for free.)
+ */
 const ListFieldMask = [
   'places.id',
   'places.displayName',
@@ -105,6 +109,8 @@ const ListFieldMask = [
   'places.photos.name',
   'places.businessStatus',
   'places.primaryTypeDisplayName',
+  'places.currentOpeningHours.openNow',
+  'places.priceLevel',
   'routingSummaries',
 ].join(',');
 
@@ -325,6 +331,8 @@ export function mapGooglePlace(
       : streetViewUrl(origin, { latitude, longitude }),
     address: googlePlace.formattedAddress ?? '',
     ratingCount: googlePlace.userRatingCount,
+    openNow: googlePlace.currentOpeningHours?.openNow,
+    priceLevel: googlePlace.priceLevel ? PriceLevelSymbols[googlePlace.priceLevel] : undefined,
   };
 
   return { ...place, distanceMeters: distanceMeters(userLocation, place.coordinates) };
