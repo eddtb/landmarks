@@ -1,6 +1,7 @@
 import {
   applyRoutingSummaries,
   categoryFromTypes,
+  passesQualityGate,
   mapGooglePlace,
   mapGooglePlaceDetails,
 } from '@/server/google-places';
@@ -192,5 +193,24 @@ describe('applyRoutingSummaries', () => {
   test('preserves nulls from failed mappings', () => {
     const result = applyRoutingSummaries([null], [{ legs: [{ duration: '10s' }] }]);
     expect(result[0]).toBeNull();
+  });
+});
+
+describe('passesQualityGate', () => {
+  const base = { id: 'x', userRatingCount: 10 };
+
+  test('operational, rated places pass', () => {
+    expect(passesQualityGate(base)).toBe(true);
+    expect(passesQualityGate({ ...base, businessStatus: 'OPERATIONAL' })).toBe(true);
+  });
+
+  test('possibly or actually closed places are dropped', () => {
+    expect(passesQualityGate({ ...base, businessStatus: 'CLOSED_TEMPORARILY' })).toBe(false);
+    expect(passesQualityGate({ ...base, businessStatus: 'CLOSED_PERMANENTLY' })).toBe(false);
+  });
+
+  test('never-rated places are dropped', () => {
+    expect(passesQualityGate({ id: 'x' })).toBe(false);
+    expect(passesQualityGate({ id: 'x', userRatingCount: 0 })).toBe(false);
   });
 });
