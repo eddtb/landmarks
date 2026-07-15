@@ -15,7 +15,7 @@ export const Colors = {
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
     /** The one interactive colour — links, toggles, walk times, the route line. */
-    accent: '#1F5FD6',
+    accent: '#6A4BDB',
     /** Semantic only, never decoration: a venue confirmed open. */
     open: '#1E8A4C',
     /** Semantic only: time-sensitive warnings — closes soon, usually busy. */
@@ -29,7 +29,7 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
-    accent: '#6E9BF0',
+    accent: '#A18BF5',
     open: '#4CC38A',
     signal: '#F0A24A',
     closed: '#E5716F',

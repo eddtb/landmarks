@@ -132,7 +132,7 @@ function RouteSteps({ from, to }: { from: Coordinates; to: Coordinates }) {
             style={[
               styles.step,
               { backgroundColor: theme.backgroundElement },
-              isCurrent && styles.currentStep,
+              isCurrent && [styles.currentStep, { borderColor: theme.accent }],
             ]}>
             <ThemedText type="smallBold" themeColor="textSecondary" style={styles.stepNumber}>
               {index + 1}
@@ -198,6 +198,5 @@ const styles = StyleSheet.create({
   },
   currentStep: {
     borderWidth: 1,
-    borderColor: '#3c87f7',
   },
 });
