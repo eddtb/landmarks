@@ -334,56 +334,77 @@ export async function searchNearby(options: {
     origin,
   } = options;
 
-  const response = await fetch(NearbySearchEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': ListFieldMask,
-    },
-    body: JSON.stringify({
-      // Activities filter on PRIMARY type: matching full tag lists lets
-      // every yoga studio (tagged with broad sports types) consume the
-      // nearest-20 slots before real venues make the response.
-      ...(category === 'activity'
-        ? { includedPrimaryTypes: CategoryTypes[category] }
-        : { includedTypes: CategoryTypes[category] }),
-      ...(CategoryExcludedTypes[category]
-        ? { excludedTypes: CategoryExcludedTypes[category] }
-        : {}),
-      ...(CategoryExcludedPrimaryTypes[category]
-        ? { excludedPrimaryTypes: CategoryExcludedPrimaryTypes[category] }
-        : {}),
-      maxResultCount: 20,
-      // Nearest matches, not most prominent — the product is "what's closest
-      // to me", so an unremarkable café 50m away beats a landmark 1.4km away.
-      rankPreference: 'DISTANCE',
-      locationRestriction: {
-        circle: { center, radius },
+  async function runQuery(rankPreference: 'DISTANCE' | 'POPULARITY') {
+    const response = await fetch(NearbySearchEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': ListFieldMask,
       },
-      // Real walking times along streets, computed relative to the searcher
-      routingParameters: {
-        origin: center,
-        travelMode: 'WALK',
-      },
-    }),
-  });
+      body: JSON.stringify({
+        // Activities filter on PRIMARY type: matching full tag lists lets
+        // every yoga studio (tagged with broad sports types) consume the
+        // nearest-20 slots before real venues make the response.
+        ...(category === 'activity'
+          ? { includedPrimaryTypes: CategoryTypes[category] }
+          : { includedTypes: CategoryTypes[category] }),
+        ...(CategoryExcludedTypes[category]
+          ? { excludedTypes: CategoryExcludedTypes[category] }
+          : {}),
+        ...(CategoryExcludedPrimaryTypes[category]
+          ? { excludedPrimaryTypes: CategoryExcludedPrimaryTypes[category] }
+          : {}),
+        maxResultCount: 20,
+        rankPreference,
+        locationRestriction: {
+          circle: { center, radius },
+        },
+        // Real walking times along streets, computed relative to the searcher
+        routingParameters: {
+          origin: center,
+          travelMode: 'WALK',
+        },
+      }),
+    });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Places API ${response.status}: ${detail.slice(0, 500)}`);
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Places API ${response.status}: ${detail.slice(0, 500)}`);
+    }
+
+    const body = (await response.json()) as {
+      places?: GooglePlace[];
+      routingSummaries?: RoutingSummary[];
+    };
+    const mapped = (body.places ?? []).map((googlePlace) =>
+      passesQualityGate(googlePlace) ? mapGooglePlace(googlePlace, category, origin, center) : null
+    );
+    return applyRoutingSummaries(mapped, body.routingSummaries).filter(
+      (place): place is PlaceWithDistance => place !== null
+    );
   }
 
-  const body = (await response.json()) as {
-    places?: GooglePlace[];
-    routingSummaries?: RoutingSummary[];
-  };
-  const mapped = (body.places ?? []).map((googlePlace) =>
-    passesQualityGate(googlePlace) ? mapGooglePlace(googlePlace, category, origin, center) : null
-  );
-  return applyRoutingSummaries(mapped, body.routingSummaries)
-    .filter((place): place is PlaceWithDistance => place !== null)
-    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+  // Landmarks are the one category where significance matters: dense
+  // micro-venues (pocket galleries, pocket parks) can eat all nearest-20
+  // slots while the World Heritage site 800m away never makes the
+  // response. Merge nearest with most-prominent; display stays
+  // distance-sorted. Other categories: nearest-first alone is correct —
+  // any pub is a pub.
+  const queries =
+    category === 'landmark'
+      ? await Promise.all([runQuery('DISTANCE'), runQuery('POPULARITY')])
+      : [await runQuery('DISTANCE')];
+
+  const seen = new Set<string>();
+  const merged: PlaceWithDistance[] = [];
+  for (const place of queries.flat()) {
+    if (!seen.has(place.id)) {
+      seen.add(place.id);
+      merged.push(place);
+    }
+  }
+  return merged.sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
 export async function getPlaceDetails(options: {
