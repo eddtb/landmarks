@@ -10,11 +10,9 @@ import { formatDistance, formatRating } from '@/utils/format';
 
 type Props = {
   place: PlaceWithDistance;
-  /** Compass arrow towards the place, when the device knows its heading. */
-  arrow?: string;
 };
 
-export function PlaceCard({ place, arrow }: Props) {
+export function PlaceCard({ place }: Props) {
   const theme = useTheme();
 
   return (
@@ -37,8 +35,8 @@ export function PlaceCard({ place, arrow }: Props) {
             {place.name}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {CategoryLabels[place.category]} · {arrow ? `${arrow} ` : ''}
-            {formatDistance(place.distanceMeters)} · {formatRating(place.rating)}
+            {CategoryLabels[place.category]} · {formatDistance(place.distanceMeters)} ·{' '}
+            {formatRating(place.rating)}
           </ThemedText>
         </View>
       </Pressable>

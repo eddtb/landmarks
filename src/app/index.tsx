@@ -20,13 +20,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useFetchAnchor } from '@/hooks/use-fetch-anchor';
-import { useHeading } from '@/hooks/use-heading';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlaces } from '@/hooks/use-places';
 import { useTheme } from '@/hooks/use-theme';
 import { PlaceCategory } from '@/types/place';
-import { arrowTowards, Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
+import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
 
 export default function BrowseScreen() {
   const { status, coordinates, requestPermission } = useLocation();
@@ -137,7 +136,6 @@ function PlacesBody({ category, center }: { category: PlaceCategory; center: Coo
   // ordering below track the live position on every GPS update.
   const anchor = useFetchAnchor(center);
   const { state, refresh } = usePlaces(category, anchor);
-  const heading = useHeading(true);
 
   const livePlaces = useMemo(() => {
     if (state.status !== 'ready') {
@@ -182,12 +180,7 @@ function PlacesBody({ category, center }: { category: PlaceCategory; center: Coo
     <FlatList
       data={livePlaces}
       keyExtractor={(place) => place.id}
-      renderItem={({ item }) => (
-        <PlaceCard
-          place={item}
-          arrow={heading === null ? undefined : arrowTowards(center, item.coordinates, heading)}
-        />
-      )}
+      renderItem={({ item }) => <PlaceCard place={item} />}
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}

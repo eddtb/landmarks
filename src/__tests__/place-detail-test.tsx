@@ -19,6 +19,16 @@ jest.mock('expo-router', () => {
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
+// The detail screens render a Compass, which needs these hooks
+jest.mock('@/hooks/use-location', () => ({
+  useLocation: () => ({ coordinates: { latitude: 51.5055, longitude: -0.0906 } }),
+}));
+jest.mock('@/hooks/use-heading', () => ({
+  useHeading: () => null,
+}));
+
+
+
 jest.mock('expo-linking', () => ({ openURL: jest.fn() }));
 
 const mockFetchStory = jest.fn();
