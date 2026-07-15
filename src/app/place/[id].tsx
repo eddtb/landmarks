@@ -11,10 +11,12 @@ import { ReviewList } from '@/components/review-list';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useBusyness } from '@/hooks/use-busyness';
 import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
 import { useTheme } from '@/hooks/use-theme';
 import { useWhatsOn } from '@/hooks/use-whats-on';
+import { describeBusyness } from '@/utils/busyness';
 import { CategoryLabels, Place } from '@/types/place';
 import { formatRating } from '@/utils/format';
 
@@ -51,6 +53,7 @@ export default function PlaceDetailScreen() {
   const details = state.status === 'ready' ? state.details : undefined;
   const storyState = useStory(place);
   const whatsOn = useWhatsOn(place);
+  const busyness = useBusyness(place);
   const theme = useTheme();
   const [hoursExpanded, setHoursExpanded] = useState(false);
   const [kitchenExpanded, setKitchenExpanded] = useState(false);
@@ -139,6 +142,12 @@ export default function PlaceDetailScreen() {
                   </ThemedText>
                 )}
               </Pressable>
+            )}
+            {busyness.status === 'ready' && (
+              <ThemedText type="small" themeColor="textSecondary">
+                {describeBusyness(busyness.pattern, new Date())}
+                {busyness.pattern.note ? ` — ${busyness.pattern.note}` : ''} · AI estimate
+              </ThemedText>
             )}
             {place.website && (
               <ExternalLink href={place.website}>
