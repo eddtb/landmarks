@@ -18,6 +18,7 @@ import { placeStateLabel } from '@/components/place-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useBlurb } from '@/hooks/use-blurb';
 import { useBusyness } from '@/hooks/use-busyness';
 import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
@@ -44,6 +45,9 @@ export default function PlaceScreen() {
   const storyState = useStory(place);
   const whatsOn = useWhatsOn(place);
   const busyness = useBusyness(place);
+  // Trust chain: Wikipedia story → Google editorial → AI research.
+  // The blurb is only consulted once the first two have come up empty.
+  const blurb = useBlurb(place, storyState.status === 'none' && !place?.description);
   const theme = useTheme();
   const [hoursExpanded, setHoursExpanded] = useState(false);
 
@@ -169,12 +173,21 @@ export default function PlaceScreen() {
               )}
             </View>
           ) : place.description ? (
-            // Fallback chain: no Wikipedia article -> Google's editorial summary
             <View style={styles.section}>
               <ThemedText type="eyebrow" themeColor="textSecondary">
                 About
               </ThemedText>
               <ThemedText type="storySerif">{place.description}</ThemedText>
+            </View>
+          ) : blurb.status === 'ready' ? (
+            <View style={styles.section}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                About
+              </ThemedText>
+              <ThemedText type="storySerif">{blurb.blurb}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Researched by AI from public sources
+              </ThemedText>
             </View>
           ) : null}
 

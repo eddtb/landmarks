@@ -48,6 +48,11 @@ jest.mock('@/data/busyness-client', () => ({
   fetchBusyness: (...args: unknown[]) => mockFetchBusyness(...args),
 }));
 
+const mockFetchBlurb = jest.fn();
+jest.mock('@/data/blurb-client', () => ({
+  fetchBlurb: (...args: unknown[]) => mockFetchBlurb(...args),
+}));
+
 // Two-tier fetch: keep the real summary cache, mock only the details call
 const mockFetchPlaceDetails = jest.fn();
 jest.mock('@/data/places-client', () => {
@@ -71,6 +76,8 @@ describe('<PlaceDetailScreen />', () => {
     mockFetchWhatsOn.mockResolvedValue([]);
     mockFetchBusyness.mockReset();
     mockFetchBusyness.mockResolvedValue(null);
+    mockFetchBlurb.mockReset();
+    mockFetchBlurb.mockResolvedValue(null);
     mockFetchPlaceDetails.mockReset();
     // Default: details lookup finds nothing extra; screens render from summary
     mockFetchPlaceDetails.mockResolvedValue(null);
@@ -122,6 +129,26 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('The Anchor Bankside')).toBeOnTheScreen();
     expect(screen.queryByText('Story')).not.toBeOnTheScreen();
     expect(screen.queryByText('About')).not.toBeOnTheScreen();
+  });
+
+  test('an AI blurb fills the gap when the trust chain comes up empty', async () => {
+    mockFetchBlurb.mockResolvedValue(
+      'An artist-run project space in the Fuel Tank studios on Creekside.'
+    );
+    mockUseLocalSearchParams.mockReturnValue({ id: 'the-anchor-bankside' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText('About')).toBeOnTheScreen();
+    expect(screen.getByText(/artist-run project space/)).toBeOnTheScreen();
+    expect(screen.getByText('Researched by AI from public sources')).toBeOnTheScreen();
+  });
+
+  test('a place with its own story never asks the AI', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    await screen.findByText('Story');
+    expect(mockFetchBlurb).not.toHaveBeenCalled();
   });
 
   test("shows What's on events for venues that have them", async () => {

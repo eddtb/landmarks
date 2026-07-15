@@ -213,6 +213,66 @@ export function parseBusynessPattern(text: string): BusynessPattern | null {
   };
 }
 
+/**
+ * The last link in the description trust chain: Wikipedia story →
+ * Google editorial → this → nothing. Claude researches what a place
+ * actually is; the must-decline rule means "nothing found" beats a
+ * confident invention — for junk listings especially (the motivating
+ * case: a gallery whose owner-entered data is 24/7 hours and a
+ * Cantonese address).
+ */
+function blurbPrompt(name: string, typeLabel: string, address: string): string {
+  return [
+    `In one or two plain, factual sentences, describe what "${name}" (${typeLabel}) at ${address} actually is, for a local discovery app. Use web search.`,
+    '',
+    'Rules:',
+    '- Only state what a web source confirms; no guessing, no marketing tone.',
+    '- If you cannot find reliable information about this specific place, decline.',
+    '- Respond with ONLY JSON, no other text: {"blurb": string} or {"blurb": null} to decline.',
+  ].join('\n');
+}
+
+/** Pure parsing step, unit-testable without network. */
+export function parseBlurb(text: string): string | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  const blurb = (parsed as { blurb?: unknown })?.blurb;
+  if (typeof blurb !== 'string') {
+    return null;
+  }
+  // The web-search tooling laces answers with <cite> tags — strip them
+  const trimmed = blurb
+    .replace(/<\/?cite[^>]*>/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  // Too short to inform or long enough to be rambling — decline instead
+  return trimmed.length >= 20 && trimmed.length <= 400 ? trimmed : null;
+}
+
+export async function fetchPlaceBlurb(options: {
+  apiKey: string;
+  name: string;
+  typeLabel: string;
+  address: string;
+}): Promise<string | null> {
+  const text = await researchWithWebSearch({
+    apiKey: options.apiKey,
+    prompt: blurbPrompt(options.name, options.typeLabel, options.address),
+    maxTokens: 600,
+    maxSearches: 3,
+  });
+  return parseBlurb(text);
+}
+
 export async function fetchBusynessPattern(options: {
   apiKey: string;
   name: string;
