@@ -89,6 +89,8 @@ const CategoryExcludedPrimaryTypes: Partial<Record<PlaceCategory, string[]>> = {
     'sports_coaching',
     'sports_club',
     'sporting_goods_store',
+    // Google maps some literal roads as off-roading "venues"
+    'off_roading_area',
   ],
 };
 
@@ -158,10 +160,15 @@ const CategoryRadiusMeters: Partial<Record<PlaceCategory, number>> = {
 
 /**
  * Quality gate for list results: places flagged as (possibly) closed,
- * places nobody has ever rated, and places without a single real photo
- * are overwhelmingly ghosts, duplicates, or gone — worse than showing
- * fewer results.
+ * places nobody has ever rated, and places with fewer than two real
+ * photos are overwhelmingly ghosts, duplicates, or gone — worse than
+ * showing fewer results. (Two photos, not one: a single photo is
+ * usually a drive-by snap on a junk listing — a mapped road, a
+ * one-rating pop-up. Measured near Deptford, every real food/drink
+ * venue clears it.)
  */
+const MinListPhotos = 2;
+
 export function passesQualityGate(googlePlace: GooglePlace): boolean {
   if (googlePlace.businessStatus && googlePlace.businessStatus !== 'OPERATIONAL') {
     return false;
@@ -169,7 +176,7 @@ export function passesQualityGate(googlePlace: GooglePlace): boolean {
   if ((googlePlace.userRatingCount ?? 0) === 0) {
     return false;
   }
-  return (googlePlace.photos?.length ?? 0) > 0;
+  return (googlePlace.photos?.length ?? 0) >= MinListPhotos;
 }
 const MaxDetailPhotos = 6;
 

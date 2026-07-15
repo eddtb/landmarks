@@ -248,7 +248,11 @@ describe('sortByWalkTime', () => {
 });
 
 describe('passesQualityGate', () => {
-  const base = { id: 'x', userRatingCount: 10, photos: [{ name: 'places/x/photos/p' }] };
+  const base = {
+    id: 'x',
+    userRatingCount: 10,
+    photos: [{ name: 'places/x/photos/p' }, { name: 'places/x/photos/q' }],
+  };
 
   test('operational, rated places pass', () => {
     expect(passesQualityGate(base)).toBe(true);
@@ -265,8 +269,10 @@ describe('passesQualityGate', () => {
     expect(passesQualityGate({ id: 'x', userRatingCount: 0, photos: base.photos })).toBe(false);
   });
 
-  test('places without a real photo are dropped', () => {
+  test('places with fewer than two real photos are dropped', () => {
     expect(passesQualityGate({ ...base, photos: undefined })).toBe(false);
     expect(passesQualityGate({ ...base, photos: [] })).toBe(false);
+    // One photo is usually a drive-by snap on a junk listing
+    expect(passesQualityGate({ ...base, photos: [{ name: 'places/x/photos/p' }] })).toBe(false);
   });
 });
