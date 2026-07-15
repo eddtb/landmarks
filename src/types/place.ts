@@ -18,6 +18,8 @@ export type Place = {
   hours?: string;
   /** From the live opening hours — undefined when Google doesn't know. */
   openNow?: boolean;
+  /** RFC3339 next closing moment, when open — powers "Closes in 40 min". */
+  nextCloseTime?: string;
   /** "£" | "££" | "£££" | "££££" */
   priceLevel?: string;
   website?: `https://${string}`;
@@ -57,6 +59,11 @@ export type PlaceDetails = Place & {
   kitchenWeekdayHours?: string[];
   phone?: string;
   mapsUri?: string;
+  /**
+   * Google-verified venue facts, display-ready ("Outdoor seating",
+   * "Dogs welcome"). Only TRUE facts appear — absence is not a claim.
+   */
+  amenities?: string[];
   /** All photos, proxied — photoUrl remains the first one. */
   photoUrls: string[];
 };

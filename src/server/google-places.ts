@@ -109,6 +109,7 @@ const ListFieldMask = [
   'places.businessStatus',
   'places.primaryTypeDisplayName',
   'places.currentOpeningHours.openNow',
+  'places.currentOpeningHours.nextCloseTime',
   'places.priceLevel',
   'routingSummaries',
 ].join(',');
@@ -134,6 +135,12 @@ const DetailsFieldMask = [
   'nationalPhoneNumber',
   'googleMapsUri',
   'priceLevel',
+  'outdoorSeating',
+  'allowsDogs',
+  'liveMusic',
+  'goodForChildren',
+  'reservable',
+  'accessibilityOptions',
   'reviewSummary.text',
   'reviews.rating',
   'reviews.text.text',
@@ -203,7 +210,13 @@ type GooglePlace = {
   rating?: number;
   formattedAddress?: string;
   websiteUri?: string;
-  currentOpeningHours?: { openNow?: boolean };
+  currentOpeningHours?: { openNow?: boolean; nextCloseTime?: string };
+  outdoorSeating?: boolean;
+  allowsDogs?: boolean;
+  liveMusic?: boolean;
+  goodForChildren?: boolean;
+  reservable?: boolean;
+  accessibilityOptions?: { wheelchairAccessibleEntrance?: boolean };
   regularOpeningHours?: { weekdayDescriptions?: string[] };
   currentSecondaryOpeningHours?: {
     secondaryHoursType?: string;
@@ -264,6 +277,23 @@ export function applyRoutingSummaries(
       walkingDirectionsUri: summaries[index]?.directionsUri,
     };
   });
+}
+
+/**
+ * Google-verified facts, mapped to display labels. Only TRUE values
+ * become chips: `reservable: false` is Google saying "no bookings",
+ * and advertising a negative reads as an error.
+ */
+export function mapAmenities(googlePlace: GooglePlace): string[] | undefined {
+  const amenities = [
+    googlePlace.outdoorSeating && 'Outdoor seating',
+    googlePlace.allowsDogs && 'Dogs welcome',
+    googlePlace.liveMusic && 'Live music',
+    googlePlace.goodForChildren && 'Family friendly',
+    googlePlace.reservable && 'Takes bookings',
+    googlePlace.accessibilityOptions?.wheelchairAccessibleEntrance && 'Step-free entrance',
+  ].filter((amenity): amenity is string => typeof amenity === 'string');
+  return amenities.length > 0 ? amenities : undefined;
 }
 
 function mapReviews(googleReviews: GooglePlace['reviews']): PlaceReview[] | undefined {
@@ -331,6 +361,7 @@ export function mapGooglePlace(
     address: googlePlace.formattedAddress ?? '',
     ratingCount: googlePlace.userRatingCount,
     openNow: googlePlace.currentOpeningHours?.openNow,
+    nextCloseTime: googlePlace.currentOpeningHours?.nextCloseTime,
     priceLevel: googlePlace.priceLevel ? PriceLevelSymbols[googlePlace.priceLevel] : undefined,
   };
 
@@ -384,6 +415,7 @@ export function mapGooglePlaceDetails(
       : undefined,
     reviewSummary: googlePlace.reviewSummary?.text?.text,
     reviews: mapReviews(googlePlace.reviews),
+    amenities: mapAmenities(googlePlace),
   };
 }
 

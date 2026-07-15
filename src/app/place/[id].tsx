@@ -2,7 +2,15 @@ import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { NavigationSection } from '@/components/navigation-section';
 import { ExternalLink } from '@/components/external-link';
@@ -143,6 +151,19 @@ export default function PlaceDetailScreen() {
                 )}
               </Pressable>
             )}
+            {details?.amenities && details.amenities.length > 0 && (
+              <View style={styles.chips}>
+                {details.amenities.map((amenity) => (
+                  <View
+                    key={amenity}
+                    style={[styles.chip, { backgroundColor: theme.backgroundElement }]}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {amenity}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+            )}
             {busyness.status === 'ready' && (
               <ThemedText type="small" themeColor="textSecondary">
                 {describeBusyness(busyness.pattern, new Date())}
@@ -183,6 +204,20 @@ export default function PlaceDetailScreen() {
                 <ThemedText type="smallBold">Call</ThemedText>
               </Pressable>
             )}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                Share.share({
+                  message: `${place.name} — ${details?.mapsUri ?? place.website ?? directionsUrl(place)}`,
+                })
+              }
+              style={({ pressed }) => [
+                styles.action,
+                { backgroundColor: theme.backgroundElement },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold">Share</ThemedText>
+            </Pressable>
           </View>
 
           {storyState.status === 'ready' ? (
@@ -278,5 +313,16 @@ const styles = StyleSheet.create({
   },
   event: {
     gap: Spacing.half,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.one,
+    paddingTop: Spacing.one,
+  },
+  chip: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
+    borderRadius: Spacing.two,
   },
 });

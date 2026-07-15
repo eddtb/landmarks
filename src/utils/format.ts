@@ -17,6 +17,26 @@ export function formatWalkTime(seconds: number): string {
   return `${minutes} min walk`;
 }
 
+/** How close to closing counts as "soon" — one drink's worth of warning. */
+const ClosesSoonWindowMinutes = 60;
+
+/**
+ * "Closes in 40 min" when the moment is within the warning window,
+ * null otherwise — arriving 15 minutes before close is the classic
+ * city failure this exists to prevent.
+ */
+export function closesSoonLabel(nextCloseTime: string, now: Date): string | null {
+  const closesAt = Date.parse(nextCloseTime);
+  if (!Number.isFinite(closesAt)) {
+    return null;
+  }
+  const minutes = Math.round((closesAt - now.getTime()) / 60000);
+  if (minutes <= 0 || minutes > ClosesSoonWindowMinutes) {
+    return null;
+  }
+  return `Closes in ${minutes} min`;
+}
+
 /** 847 -> "847", 2310 -> "2.3k" — evidence for the rating, card-sized */
 export function formatRatingCount(count: number): string {
   if (count < 1000) {
