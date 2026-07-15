@@ -3,7 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { CardShadow, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { CategoryLabels, PlaceWithDistance } from '@/types/place';
 import {
@@ -71,12 +71,16 @@ export function PlaceCard({ place }: Props) {
     <Link href={{ pathname: '/place/[id]', params: { id: place.id } }} asChild>
       <Pressable
         accessibilityRole="button"
+        // Shadow on the outer layer, clipping on the inner — iOS drops
+        // shadows on views that clip their own overflow
         style={({ pressed }) => [
           styles.card,
+          CardShadow,
           { backgroundColor: theme.backgroundElement },
           closed && styles.closedCard,
           pressed && { opacity: 0.85 },
         ]}>
+        <View style={styles.cardClip}>
         <View>
           <Image
             source={{ uri: place.photoUrl }}
@@ -106,6 +110,7 @@ export function PlaceCard({ place }: Props) {
             ) : null}
           </ThemedText>
         </View>
+        </View>
       </Pressable>
     </Link>
   );
@@ -113,6 +118,9 @@ export function PlaceCard({ place }: Props) {
 
 const styles = StyleSheet.create({
   card: {
+    borderRadius: Spacing.three,
+  },
+  cardClip: {
     borderRadius: Spacing.three,
     overflow: 'hidden',
   },

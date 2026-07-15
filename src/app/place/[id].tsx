@@ -18,7 +18,7 @@ import { PhotoGallery } from '@/components/photo-gallery';
 import { ReviewList } from '@/components/review-list';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { CardShadow, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useBusyness } from '@/hooks/use-busyness';
 import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
@@ -335,6 +335,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.two,
+    ...CardShadow,
   },
   actions: {
     flexDirection: 'row',
