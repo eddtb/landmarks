@@ -17,12 +17,14 @@ export function ReviewList({ reviews, summary }: Props) {
 
   return (
     <View style={styles.container}>
-      <ThemedText type="smallBold">What people say</ThemedText>
+      <ThemedText type="eyebrow" themeColor="textSecondary">
+        What people say
+      </ThemedText>
       {summary && (
         <View style={styles.summary}>
           <ThemedText type="small">{summary}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            Summarized with Gemini
+            Summarised with Gemini
           </ThemedText>
         </View>
       )}

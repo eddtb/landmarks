@@ -10,7 +10,6 @@ export type ThemedTextProps = TextProps & {
     | 'largeTitle'
     | 'headline'
     | 'eyebrow'
-    | 'storySerif'
     | 'small'
     | 'smallBold'
     | 'subtitle'
@@ -32,7 +31,6 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'largeTitle' && styles.largeTitle,
         type === 'headline' && styles.headline,
         type === 'eyebrow' && styles.eyebrow,
-        type === 'storySerif' && styles.storySerif,
         type === 'small' && styles.small,
         type === 'smallBold' && styles.smallBold,
         type === 'subtitle' && styles.subtitle,
@@ -68,13 +66,6 @@ const styles = StyleSheet.create({
     fontWeight: 800,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
-  },
-  /** Stories read like a guidebook — system serif, generous leading. */
-  storySerif: {
-    fontFamily: Fonts.serif,
-    fontSize: 15,
-    lineHeight: 24,
-    fontWeight: 400,
   },
   small: {
     fontSize: 14,

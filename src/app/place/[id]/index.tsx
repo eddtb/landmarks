@@ -163,7 +163,7 @@ export default function PlaceScreen() {
               <ThemedText type="eyebrow" themeColor="textSecondary">
                 Story
               </ThemedText>
-              <ThemedText type="storySerif">{storyState.story.story}</ThemedText>
+              <ThemedText type="small">{storyState.story.story}</ThemedText>
               {!!storyState.story.url && (
                 <ExternalLink href={storyState.story.url as `https://${string}`}>
                   <ThemedText type="small" themeColor="accent">
@@ -177,14 +177,14 @@ export default function PlaceScreen() {
               <ThemedText type="eyebrow" themeColor="textSecondary">
                 About
               </ThemedText>
-              <ThemedText type="storySerif">{place.description}</ThemedText>
+              <ThemedText type="small">{place.description}</ThemedText>
             </View>
           ) : blurb.status === 'ready' ? (
             <View style={styles.section}>
               <ThemedText type="eyebrow" themeColor="textSecondary">
                 About
               </ThemedText>
-              <ThemedText type="storySerif">{blurb.blurb}</ThemedText>
+              <ThemedText type="small">{blurb.blurb}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
                 Researched by AI from public sources
               </ThemedText>
@@ -197,6 +197,7 @@ export default function PlaceScreen() {
                 Reviews
               </ThemedText>
               {details.reviewSummary && (
+                // Prose is serif, data is sans — same voice as Story/About
                 <ThemedText type="small">{details.reviewSummary}</ThemedText>
               )}
               <ThemedText type="small" themeColor="textSecondary">
