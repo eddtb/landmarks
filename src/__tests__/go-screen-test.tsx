@@ -108,16 +108,6 @@ describe('<GoScreen />', () => {
     expect(await screen.findByText(/2\. Turn right onto Bedale St/)).toBeOnTheScreen();
   });
 
-  test('switching to Compass shows the dial', async () => {
-    mockFetchWalkingRoute.mockResolvedValue(null);
-    mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
-    await render(<GoScreen />);
-
-    await fireEvent.press(screen.getByText('Compass'));
-
-    expect(await screen.findByText('away')).toBeOnTheScreen();
-  });
-
   test('no route falls back to the compass with a note', async () => {
     mockFetchWalkingRoute.mockResolvedValue(null);
     mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });

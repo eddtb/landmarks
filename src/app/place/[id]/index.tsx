@@ -11,7 +11,6 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExternalLink } from '@/components/external-link';
 import { PhotoGallery } from '@/components/photo-gallery';
@@ -74,7 +73,7 @@ export default function PlaceScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ title: place.name }} />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scroll}
@@ -120,18 +119,6 @@ export default function PlaceScreen() {
                 {walkSeconds !== undefined ? `Go · ${formatWalkTime(walkSeconds)}` : 'Go'}
               </ThemedText>
             </Pressable>
-            {details?.phone && (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => Linking.openURL(`tel:${details.phone}`)}
-                style={({ pressed }) => [
-                  styles.mini,
-                  { backgroundColor: theme.backgroundElement },
-                  pressed && { opacity: 0.85 },
-                ]}>
-                <ThemedText type="smallBold">Call</ThemedText>
-              </Pressable>
-            )}
             <Pressable
               accessibilityRole="button"
               onPress={() =>
@@ -263,7 +250,7 @@ export default function PlaceScreen() {
             <View
               style={[
                 styles.detailRow,
-                !place.website && styles.lastRow,
+                !place.website && !details?.phone && styles.lastRow,
                 { borderBottomColor: theme.backgroundElement },
               ]}>
               <ThemedText type="small" themeColor="textSecondary">
@@ -274,7 +261,12 @@ export default function PlaceScreen() {
               </ThemedText>
             </View>
             {place.website && (
-              <View style={[styles.detailRow, styles.lastRow]}>
+              <View
+                style={[
+                  styles.detailRow,
+                  !details?.phone && styles.lastRow,
+                  { borderBottomColor: theme.backgroundElement },
+                ]}>
                 <ThemedText type="small" themeColor="textSecondary">
                   Website
                 </ThemedText>
@@ -285,19 +277,22 @@ export default function PlaceScreen() {
                 </ExternalLink>
               </View>
             )}
+            {details?.phone && (
+              <View style={[styles.detailRow, styles.lastRow]}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Phone
+                </ThemedText>
+                <ThemedText
+                  type="small"
+                  themeColor="accent"
+                  onPress={() => Linking.openURL(`tel:${details.phone}`)}>
+                  {details.phone}
+                </ThemedText>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
-      {/* Floating back button — the hero runs full-bleed to the top */}
-      <SafeAreaView style={styles.backOverlay} edges={['top']} pointerEvents="box-none">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => router.back()}
-          style={[styles.backButton, { backgroundColor: theme.background }]}>
-          <ThemedText type="headline">‹</ThemedText>
-        </Pressable>
-      </SafeAreaView>
     </ThemedView>
   );
 }
@@ -394,20 +389,5 @@ const styles = StyleSheet.create({
   hoursBlock: {
     gap: Spacing.half,
     paddingLeft: Spacing.three,
-  },
-  backOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  backButton: {
-    marginLeft: Spacing.three,
-    marginTop: Spacing.two,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    opacity: 0.94,
   },
 });

@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Compass } from '@/components/compass';
+import { PointerDial } from '@/components/pointer-dial';
 import { RouteMap } from '@/components/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,13 +17,11 @@ import { WalkingRoute } from '@/types/route';
 import { formatDistance, formatWalkTime } from '@/utils/format';
 import { guidanceFor } from '@/utils/guidance';
 
-type Mode = 'route' | 'compass';
-
 /**
- * Go mode: the whole screen is the journey. Route view is the map
- * with the live step in a floating sheet; Compass view is the dial
- * for the point-and-wander mood. Everything else stays behind on the
- * venue screen — this screen answers exactly one question.
+ * Go mode: the whole screen is the journey. The map fills it; the
+ * directions sheet carries the compass dial beside the live step —
+ * one block, per the design. No walking route degrades to the big
+ * compass alone.
  */
 export default function GoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,7 +29,6 @@ export default function GoScreen() {
   const place = state.status === 'ready' ? state.details : summary;
   const { coordinates } = useLocation();
   const theme = useTheme();
-  const [mode, setMode] = useState<Mode>('route');
   const [stepsOpen, setStepsOpen] = useState(false);
   const [routeState, setRouteState] = useState<
     { status: 'loading' } | { status: 'none' } | { status: 'ready'; route: WalkingRoute }
@@ -74,26 +72,23 @@ export default function GoScreen() {
 
   const route = routeState.status === 'ready' ? routeState.route : null;
   const guidance = route ? guidanceFor(route, coordinates) : null;
-  const showMap = mode === 'route' && route;
 
   return (
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {showMap ? (
+      {route ? (
         <RouteMap route={route} destination={place.coordinates} fullscreen />
       ) : (
         <View style={styles.centered}>
-          {mode === 'route' && routeState.status === 'loading' ? (
+          {routeState.status === 'loading' ? (
             <ActivityIndicator />
           ) : (
             <>
               <Compass target={place.coordinates} />
-              {mode === 'route' && routeState.status === 'none' && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  No walking route available — compass it is.
-                </ThemedText>
-              )}
+              <ThemedText type="small" themeColor="textSecondary">
+                No walking route available — compass it is.
+              </ThemedText>
             </>
           )}
         </View>
@@ -121,33 +116,22 @@ export default function GoScreen() {
             )}
           </View>
         </View>
-
-        <View style={[styles.modeToggle, { backgroundColor: theme.background }]}>
-          {(['route', 'compass'] as const).map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="button"
-              accessibilityState={{ selected: mode === value }}
-              onPress={() => setMode(value)}
-              style={[styles.modeOption, mode === value && { backgroundColor: theme.accent }]}>
-              <ThemedText
-                type={mode === value ? 'smallBold' : 'small'}
-                style={mode === value ? styles.modeSelected : undefined}
-                themeColor={mode === value ? undefined : 'textSecondary'}>
-                {value === 'route' ? 'Route' : 'Compass'}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </View>
       </SafeAreaView>
 
-      {mode === 'route' && guidance && (
+      {guidance && (
         <SafeAreaView style={styles.sheetArea} edges={['bottom']} pointerEvents="box-none">
           <Pressable
             accessibilityRole="button"
             onPress={() => setStepsOpen((open) => !open)}
             style={[styles.sheet, { backgroundColor: theme.background }]}>
             <View style={styles.sheetHeader}>
+              <PointerDial
+                compact
+                size={56}
+                user={coordinates}
+                target={guidance.target}
+                primary={guidance.arrived ? 'Here' : formatDistance(guidance.metersToManeuver)}
+              />
               <View style={styles.sheetText}>
                 <ThemedText type="headline">
                   {guidance.arrived ? 'You have arrived' : guidance.step.instruction}
@@ -208,23 +192,6 @@ const styles = StyleSheet.create({
   topText: {
     flex: 1,
     gap: 1,
-  },
-  modeToggle: {
-    flexDirection: 'row',
-    alignSelf: 'flex-end',
-    marginRight: Spacing.three,
-    marginTop: Spacing.two,
-    borderRadius: 999,
-    padding: Spacing.half,
-    gap: Spacing.half,
-  },
-  modeOption: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-    borderRadius: 999,
-  },
-  modeSelected: {
-    color: '#FFFFFF',
   },
   sheetArea: {
     position: 'absolute',
