@@ -148,10 +148,15 @@ export function placesByCategory(
   userLocation: Coordinates
 ): PlaceWithDistance[] {
   return MockPlaces.filter((place) => place.category === category)
-    .map((place) => ({
-      ...place,
-      distanceMeters: distanceMeters(userLocation, place.coordinates),
-    }))
+    .map((place) => {
+      const distance = distanceMeters(userLocation, place.coordinates);
+      return {
+        ...place,
+        distanceMeters: distance,
+        // Demo-mode walking estimate: ~1.33 m/s along imaginary streets
+        walkSeconds: Math.round(distance / 1.33),
+      };
+    })
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 

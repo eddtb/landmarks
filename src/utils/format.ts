@@ -10,3 +10,9 @@ export function formatDistance(meters: number): string {
 export function formatRating(rating: number): string {
   return `★ ${rating.toFixed(1)}`;
 }
+
+/** 73 -> "1 min walk", 260 -> "4 min walk" */
+export function formatWalkTime(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  return `${minutes} min walk`;
+}

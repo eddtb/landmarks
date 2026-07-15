@@ -41,6 +41,11 @@ export default function PlaceDetailScreen() {
   const { summary, state } = usePlaceDetails(id);
   // Rich details when loaded; the list's cached summary until then
   const place = state.status === 'ready' ? state.details : summary;
+  // The list search carries a walking-mode Maps link for this place
+  const walkingUri =
+    summary && 'walkingDirectionsUri' in summary
+      ? (summary as { walkingDirectionsUri?: string }).walkingDirectionsUri
+      : undefined;
   // phone/mapsUri only exist once details load — undefined while showing the summary
   const details = state.status === 'ready' ? state.details : undefined;
   const storyState = useStory(place);
@@ -120,7 +125,9 @@ export default function PlaceDetailScreen() {
           <View style={styles.actions}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => Linking.openURL(details?.mapsUri ?? directionsUrl(place))}
+              onPress={() =>
+                Linking.openURL(walkingUri ?? details?.mapsUri ?? directionsUrl(place))
+              }
               style={({ pressed }) => [
                 styles.action,
                 { backgroundColor: theme.backgroundElement },

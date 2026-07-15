@@ -1,4 +1,4 @@
-import { formatDistance, formatRating } from '@/utils/format';
+import { formatDistance, formatRating, formatWalkTime } from '@/utils/format';
 
 describe('formatDistance', () => {
   test('shows meters below 1 km', () => {
@@ -16,5 +16,14 @@ describe('formatRating', () => {
   test('always shows one decimal', () => {
     expect(formatRating(4.5)).toBe('★ 4.5');
     expect(formatRating(4)).toBe('★ 4.0');
+  });
+});
+
+describe('formatWalkTime', () => {
+  test('rounds to minutes with a 1-minute floor', () => {
+    expect(formatWalkTime(20)).toBe('1 min walk');
+    expect(formatWalkTime(73)).toBe('1 min walk');
+    expect(formatWalkTime(260)).toBe('4 min walk');
+    expect(formatWalkTime(900)).toBe('15 min walk');
   });
 });

@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { CategoryLabels, PlaceWithDistance } from '@/types/place';
-import { formatDistance, formatRating } from '@/utils/format';
+import { formatDistance, formatRating, formatWalkTime } from '@/utils/format';
 
 type Props = {
   place: PlaceWithDistance;
@@ -35,8 +35,11 @@ export function PlaceCard({ place }: Props) {
             {place.name}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {CategoryLabels[place.category]} · {formatDistance(place.distanceMeters)} ·{' '}
-            {formatRating(place.rating)}
+            {CategoryLabels[place.category]} ·{' '}
+            {place.walkSeconds !== undefined
+              ? formatWalkTime(place.walkSeconds)
+              : formatDistance(place.distanceMeters)}{' '}
+            · {formatRating(place.rating)}
           </ThemedText>
         </View>
       </Pressable>
