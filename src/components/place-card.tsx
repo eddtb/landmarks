@@ -6,7 +6,13 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { CategoryLabels, PlaceWithDistance } from '@/types/place';
-import { formatDistance, formatRating, formatRatingCount, formatWalkTime } from '@/utils/format';
+import {
+  closesSoonLabel,
+  formatDistance,
+  formatRating,
+  formatRatingCount,
+  formatWalkTime,
+} from '@/utils/format';
 
 type Props = {
   place: PlaceWithDistance;
@@ -35,6 +41,8 @@ export function PlaceCard({ place }: Props) {
   // dimmed card is information, not an error — a closed landmark is
   // still worth knowing about.
   const closed = place.openNow === false;
+  const closingWarning =
+    !closed && place.nextCloseTime ? closesSoonLabel(place.nextCloseTime, new Date()) : null;
 
   return (
     <Link href={{ pathname: '/place/[id]', params: { id: place.id } }} asChild>
@@ -58,7 +66,7 @@ export function PlaceCard({ place }: Props) {
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {metaLine(place)}
-            {closed ? ' · Closed' : ''}
+            {closed ? ' · Closed' : closingWarning ? ` · ${closingWarning}` : ''}
           </ThemedText>
         </View>
       </Pressable>

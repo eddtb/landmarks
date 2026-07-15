@@ -1,4 +1,10 @@
-import { formatDistance, formatRating, formatRatingCount, formatWalkTime } from '@/utils/format';
+import {
+  closesSoonLabel,
+  formatDistance,
+  formatRating,
+  formatRatingCount,
+  formatWalkTime,
+} from '@/utils/format';
 
 describe('formatDistance', () => {
   test('shows meters below 1 km', () => {
@@ -16,6 +22,24 @@ describe('formatRating', () => {
   test('always shows one decimal', () => {
     expect(formatRating(4.5)).toBe('★ 4.5');
     expect(formatRating(4)).toBe('★ 4.0');
+  });
+});
+
+describe('closesSoonLabel', () => {
+  const now = new Date('2026-07-15T21:00:00Z');
+
+  test('warns inside the one-hour window', () => {
+    expect(closesSoonLabel('2026-07-15T21:40:00Z', now)).toBe('Closes in 40 min');
+    expect(closesSoonLabel('2026-07-15T22:00:00Z', now)).toBe('Closes in 60 min');
+  });
+
+  test('quiet outside the window or after closing', () => {
+    expect(closesSoonLabel('2026-07-15T23:00:00Z', now)).toBeNull();
+    expect(closesSoonLabel('2026-07-15T20:30:00Z', now)).toBeNull();
+  });
+
+  test('quiet on malformed timestamps', () => {
+    expect(closesSoonLabel('not-a-date', now)).toBeNull();
   });
 });
 

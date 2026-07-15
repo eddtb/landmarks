@@ -69,6 +69,7 @@ function PlacesList({
   onManualCenter: (center: Coordinates) => void;
 }) {
   const [section, setSection] = useState<Section>('landmark');
+  const [openNowOnly, setOpenNowOnly] = useState(false);
   const [searchText, setSearchText] = useState('');
   const theme = useTheme();
 
@@ -117,20 +118,49 @@ function PlacesList({
             </>
           )}
           <SectionPicker selected={section} onSelect={setSection} />
+          {section !== 'history' && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: openNowOnly }}
+              onPress={() => setOpenNowOnly((value) => !value)}
+              style={[
+                styles.filterChip,
+                { backgroundColor: openNowOnly ? theme.backgroundSelected : theme.backgroundElement },
+              ]}>
+              <ThemedText
+                type={openNowOnly ? 'smallBold' : 'small'}
+                themeColor={openNowOnly ? 'text' : 'textSecondary'}>
+                Open now
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
         {/* key remounts the body per section: fresh scroll position, no
             cross-section state; the session caches make revisits instant */}
         {section === 'history' ? (
           <HistoryBody key="history" center={center} />
         ) : (
-          <PlacesBody key={section} category={section} center={center} />
+          <PlacesBody
+            key={section}
+            category={section}
+            center={center}
+            openNowOnly={openNowOnly}
+          />
         )}
       </SafeAreaView>
     </ThemedView>
   );
 }
 
-function PlacesBody({ category, center }: { category: PlaceCategory; center: Coordinates }) {
+function PlacesBody({
+  category,
+  center,
+  openNowOnly,
+}: {
+  category: PlaceCategory;
+  center: Coordinates;
+  openNowOnly: boolean;
+}) {
   const [refreshing, setRefreshing] = useState(false);
   // Fetch from a stable anchor (moves after ~250m walked); distances and
   // ordering below track the live position on every GPS update.
@@ -142,12 +172,15 @@ function PlacesBody({ category, center }: { category: PlaceCategory; center: Coo
       return [];
     }
     return state.places
+      // "Open now" keeps unknowns: many landmarks report no hours at
+      // all, and hiding them would empty the section, not filter it
+      .filter((place) => !openNowOnly || place.openNow !== false)
       .map((place) => ({
         ...place,
         distanceMeters: distanceMeters(center, place.coordinates),
       }))
       .sort((a, b) => a.distanceMeters - b.distanceMeters);
-  }, [state, center]);
+  }, [state, center, openNowOnly]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -293,5 +326,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 14,
+  },
+  filterChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    borderRadius: Spacing.three,
   },
 });

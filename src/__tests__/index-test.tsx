@@ -89,6 +89,25 @@ describe('<BrowseScreen />', () => {
     expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
   });
 
+  test('the Open now filter hides closed places, keeping unknowns', async () => {
+    locationState('ready', NearTowerBridge);
+    await render(<BrowseScreen />);
+    await screen.findByText('Tower Bridge');
+
+    fireEvent.press(screen.getByText('Drinks'));
+    await screen.findByText('The George Inn');
+    // The Anchor is closed in mock data; the Market Porter has no hours data
+    expect(screen.getByText('The Anchor Bankside')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByText('Open now'));
+
+    expect(screen.queryByText('The Anchor Bankside')).not.toBeOnTheScreen();
+    expect(screen.getByText('The Market Porter')).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByText('Open now'));
+    expect(await screen.findByText('The Anchor Bankside')).toBeOnTheScreen();
+  });
+
   test('the History section shows nearby Wikipedia articles', async () => {
     locationState('ready', NearTowerBridge);
     await render(<BrowseScreen />);

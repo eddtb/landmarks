@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
+import { Share } from 'react-native';
 
 import PlaceDetailScreen from '@/app/place/[id]';
 import { MockPlaces } from '@/data/mock-places';
@@ -139,6 +140,33 @@ describe('<PlaceDetailScreen />', () => {
     // Every AI-researched claim carries its source and a disclosure
     expect(screen.getByText('Source')).toBeOnTheScreen();
     expect(screen.getByText(/check the source before you go/)).toBeOnTheScreen();
+  });
+
+  test('shows Google-verified amenity chips when details carry them', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces.find((place) => place.id === 'the-george-inn'),
+      photoUrls: [],
+      amenities: ['Outdoor seating', 'Dogs welcome', 'Step-free entrance'],
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText('Outdoor seating')).toBeOnTheScreen();
+    expect(screen.getByText('Dogs welcome')).toBeOnTheScreen();
+    expect(screen.getByText('Step-free entrance')).toBeOnTheScreen();
+  });
+
+  test('Share opens the share sheet with the place name and link', async () => {
+    const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
+    await render(<PlaceDetailScreen />);
+
+    await fireEvent.press(screen.getByText('Share'));
+
+    expect(shareSpy).toHaveBeenCalledWith({
+      message: expect.stringContaining('The George Inn'),
+    });
+    shareSpy.mockRestore();
   });
 
   test('shows the busyness forecast as a labelled estimate', async () => {
