@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
 import { Share } from 'react-native';
 
-import PlaceDetailScreen from '@/app/place/[id]';
+import PlaceDetailScreen from '@/app/place/[id]/index';
+import ReviewsScreen from '@/app/place/[id]/reviews';
 import { MockPlaces } from '@/data/mock-places';
 import { cachePlaces } from '@/data/places-client';
 
@@ -136,24 +137,9 @@ describe('<PlaceDetailScreen />', () => {
     await render(<PlaceDetailScreen />);
 
     expect(await screen.findByText("What's on")).toBeOnTheScreen();
-    expect(screen.getByText('Quiz night · Sundays 8pm · £2 entry')).toBeOnTheScreen();
-    // Every AI-researched claim carries its source and a disclosure
+    // Every AI-researched claim carries its source
+    expect(screen.getByText(/Quiz night · Sundays 8pm · £2 entry/)).toBeOnTheScreen();
     expect(screen.getByText('Source')).toBeOnTheScreen();
-    expect(screen.getByText(/check the source before you go/)).toBeOnTheScreen();
-  });
-
-  test('shows Google-verified amenity chips when details carry them', async () => {
-    mockFetchPlaceDetails.mockResolvedValue({
-      ...MockPlaces.find((place) => place.id === 'the-george-inn'),
-      photoUrls: [],
-      amenities: ['Outdoor seating', 'Dogs welcome', 'Step-free entrance'],
-    });
-    mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
-    await render(<PlaceDetailScreen />);
-
-    expect(await screen.findByText('Outdoor seating')).toBeOnTheScreen();
-    expect(screen.getByText('Dogs welcome')).toBeOnTheScreen();
-    expect(screen.getByText('Step-free entrance')).toBeOnTheScreen();
   });
 
   test('Share opens the share sheet with the place name and link', async () => {
@@ -186,9 +172,9 @@ describe('<PlaceDetailScreen />', () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
     await render(<PlaceDetailScreen />);
 
-    expect(
-      await screen.findByText(/Usually quiet around this time — Fills up on match nights · AI estimate/)
-    ).toBeOnTheScreen();
+    // Forecast lives in the DETAILS rows, plain grey, labelled estimate
+    expect(await screen.findByText('Usually')).toBeOnTheScreen();
+    expect(screen.getByText(/quiet around this time · estimate/)).toBeOnTheScreen();
   });
 
   test('landmarks get no busyness forecast', async () => {
@@ -214,37 +200,42 @@ describe('<PlaceDetailScreen />', () => {
     expect(await screen.findByText('This place could not be found.')).toBeOnTheScreen();
   });
 
-  test('renders reviews when details include them', async () => {
+  test('reviews on the venue screen are a summary plus one link deeper', async () => {
     mockFetchPlaceDetails.mockResolvedValue({
       ...MockPlaces[0],
       id: 'tower-bridge',
       photoUrls: [MockPlaces[0].photoUrl],
+      reviewSummary: 'People say this board game cafe has a huge games library.',
+      reviews: [{ author: 'Ada L.', rating: 5, text: 'Splendid views.', when: '2 months ago' }],
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText('Reviews')).toBeOnTheScreen();
+    expect(screen.getByText(/board game cafe has a huge games library/)).toBeOnTheScreen();
+    expect(screen.getByText(/Summarised with Gemini/)).toBeOnTheScreen();
+    expect(screen.getByText('All reviews ›')).toBeOnTheScreen();
+    // The comments themselves live one screen deeper
+    expect(screen.queryByText('Splendid views.')).not.toBeOnTheScreen();
+  });
+
+  test('the reviews screen shows the full comments', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      reviewSummary: 'People say this board game cafe has a huge games library.',
       reviews: [
         { author: 'Ada L.', rating: 5, text: 'Splendid views.', when: '2 months ago' },
         { author: 'Brunel Jr.', rating: 4, text: 'Solid Victorian engineering.' },
       ],
     });
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
-    await render(<PlaceDetailScreen />);
+    await render(<ReviewsScreen />);
 
-    expect(await screen.findByText('What people say')).toBeOnTheScreen();
-    expect(screen.getByText('Splendid views.')).toBeOnTheScreen();
+    expect(await screen.findByText('Splendid views.')).toBeOnTheScreen();
     expect(screen.getByText(/Ada L\. · 2 months ago/)).toBeOnTheScreen();
     expect(screen.getByText('Solid Victorian engineering.')).toBeOnTheScreen();
-  });
-
-  test('shows the Gemini review summary with disclosure when present', async () => {
-    mockFetchPlaceDetails.mockResolvedValue({
-      ...MockPlaces[0],
-      id: 'tower-bridge',
-      photoUrls: [MockPlaces[0].photoUrl],
-      reviewSummary: 'People say this board game cafe has a huge games library.',
-    });
-    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
-    await render(<PlaceDetailScreen />);
-
-    expect(await screen.findByText(/board game cafe has a huge games library/)).toBeOnTheScreen();
-    expect(screen.getByText('Summarized with Gemini')).toBeOnTheScreen();
   });
 
   test('shows kitchen hours with open state when a venue reports them', async () => {
@@ -252,6 +243,15 @@ describe('<PlaceDetailScreen />', () => {
       ...MockPlaces[0],
       id: 'tower-bridge',
       photoUrls: [MockPlaces[0].photoUrl],
+      weekdayHours: [
+        'Monday: 11:00 AM – 11:00 PM',
+        'Tuesday: 11:00 AM – 11:00 PM',
+        'Wednesday: 11:00 AM – 11:00 PM',
+        'Thursday: 11:00 AM – 11:00 PM',
+        'Friday: 11:00 AM – 11:00 PM',
+        'Saturday: 11:00 AM – 11:00 PM',
+        'Sunday: 11:00 AM – 10:30 PM',
+      ],
       kitchenOpenNow: true,
       kitchenWeekdayHours: [
         'Monday: 12:00 – 9:00 PM',
@@ -266,12 +266,9 @@ describe('<PlaceDetailScreen />', () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
-    expect(await screen.findByText(/Kitchen · open now/)).toBeOnTheScreen();
-    // Collapsed: exactly one kitchen weekday line visible
-    expect(screen.getAllByText(/12:00 – 9:00 PM|12:00 – 8:00 PM/)).toHaveLength(1);
-
-    await fireEvent.press(screen.getByText(/Kitchen · open now/));
-    expect(await screen.findAllByText(/12:00 – 9:00 PM|12:00 – 8:00 PM/)).toHaveLength(7);
+    // Kitchen hours live inside the expanded All hours block
+    await fireEvent.press(await screen.findByText('All hours'));
+    expect(await screen.findByText(/Kitchen today:/)).toBeOnTheScreen();
   });
 
   test('omits the reviews section when details have none', async () => {
@@ -279,7 +276,7 @@ describe('<PlaceDetailScreen />', () => {
     await render(<PlaceDetailScreen />);
 
     await screen.findByText('Tower Bridge');
-    expect(screen.queryByText('What people say')).not.toBeOnTheScreen();
+    expect(screen.queryByText('All reviews ›')).not.toBeOnTheScreen();
   });
 
   test('cold deep link renders from fetched details without a cached summary', async () => {
@@ -303,19 +300,17 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('117 Rotherhithe St, London SE16 4NF')).toBeOnTheScreen();
   });
 
-  test('opens the maps app with the place coordinates when Directions is pressed', async () => {
+  test('the Go button leads the actions', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
-    fireEvent.press(screen.getByText('Directions'));
-
-    expect(Linking.openURL).toHaveBeenCalledTimes(1);
-    const url = jest.mocked(Linking.openURL).mock.calls[0][0];
-    expect(url).toContain('51.5055');
-    expect(url).toContain('-0.0754');
+    // The journey is a mode, not a section — one violet button opens it
+    expect(screen.getByText(/^Go/)).toBeOnTheScreen();
+    expect(screen.queryByText('Directions')).not.toBeOnTheScreen();
   });
 
-  test("prefers Google's mapsUri for Directions once details load", async () => {
+  test("Share prefers Google's mapsUri once details load", async () => {
+    const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
     mockFetchPlaceDetails.mockResolvedValue({
       ...MockPlaces[0],
       id: 'tower-bridge',
@@ -326,9 +321,12 @@ describe('<PlaceDetailScreen />', () => {
     await render(<PlaceDetailScreen />);
 
     await screen.findByText('Tower Bridge');
-    fireEvent.press(screen.getByText('Directions'));
+    await fireEvent.press(screen.getByText('Share'));
 
-    expect(Linking.openURL).toHaveBeenCalledWith('https://maps.google.com/?cid=123');
+    expect(shareSpy).toHaveBeenCalledWith({
+      message: expect.stringContaining('https://maps.google.com/?cid=123'),
+    });
+    shareSpy.mockRestore();
   });
 
   test('hides Call when the place has no phone number', async () => {
@@ -384,7 +382,7 @@ describe('<PlaceDetailScreen />', () => {
     'Sunday: Closed',
   ];
 
-  test("shows only today's hours until expanded, then all seven days", async () => {
+  test('weekday hours stay behind the All hours toggle', async () => {
     mockFetchPlaceDetails.mockResolvedValue({
       ...MockPlaces[0],
       id: 'tower-bridge',
@@ -395,20 +393,18 @@ describe('<PlaceDetailScreen />', () => {
     await render(<PlaceDetailScreen />);
 
     await screen.findByText('Tower Bridge');
-    // Plain hours line stays visible alongside the collapsed weekday row
-    expect(screen.getByText('Open 09:30 – 18:00')).toBeOnTheScreen();
+    // Collapsed: the DETAILS row shows no weekday lines at all
+    expect(weekdayHours.filter((line) => screen.queryByText(line))).toHaveLength(0);
 
-    // Collapsed: exactly one weekday line is shown (today's, whichever day that is)
-    const collapsedLine = weekdayHours.find((line) => screen.queryByText(line));
-    expect(collapsedLine).toBeDefined();
-    expect(weekdayHours.filter((line) => screen.queryByText(line))).toHaveLength(1);
-
-    await fireEvent.press(screen.getByText(collapsedLine as string));
+    await fireEvent.press(await screen.findByText('All hours'));
 
     // Expanded: all seven days are shown
     weekdayHours.forEach((line) => {
       expect(screen.getByText(line)).toBeOnTheScreen();
     });
+
+    await fireEvent.press(screen.getByText('Hide'));
+    expect(weekdayHours.filter((line) => screen.queryByText(line))).toHaveLength(0);
   });
 
   test('shows no weekday hours row when details lack it', async () => {

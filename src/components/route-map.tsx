@@ -26,6 +26,8 @@ export function routePolylinePoints(route: WalkingRoute): Coordinates[] {
 type Props = {
   route: WalkingRoute;
   destination: Coordinates;
+  /** Go mode: fill the screen instead of the 220px card. */
+  fullscreen?: boolean;
 };
 
 /**
@@ -33,7 +35,7 @@ type Props = {
  * Maps on Android, both free at any usage. Renders nothing for routes
  * without step geometry (the step list still works without us).
  */
-export function RouteMap({ route, destination }: Props) {
+export function RouteMap({ route, destination, fullscreen }: Props) {
   const theme = useTheme();
   const points = routePolylinePoints(route);
   if (points.length < 2) {
@@ -45,7 +47,7 @@ export function RouteMap({ route, destination }: Props) {
   const polyline = { coordinates: points, color: theme.accent, width: RouteWidth };
 
   return (
-    <View style={styles.frame} testID="route-map">
+    <View style={fullscreen ? styles.full : styles.frame} testID="route-map">
       {Platform.OS === 'ios' ? (
         <AppleMaps.View
           style={styles.map}
@@ -72,6 +74,9 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: Spacing.three,
     overflow: 'hidden',
+  },
+  full: {
+    flex: 1,
   },
   map: {
     flex: 1,
