@@ -53,11 +53,14 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
     'water_park',
     'skateboard_park',
     'adventure_sports_center',
-    // Shows — things you go out to watch are still things you do
+    // Walk-up shows only — cinema and comedy take turn-up-tonight
+    // audiences. Theatres were tried and removed: they're advance
+    // bookings (the classes rule again), and the type is polluted with
+    // conservatoire venues, university theatres, and even band listings
+    // that Google tags identically to real venues.
     'movie_theater',
     'comedy_club',
     'concert_hall',
-    'performing_arts_theater',
   ],
 };
 

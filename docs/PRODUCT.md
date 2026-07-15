@@ -11,8 +11,9 @@
    - **Landmarks** — sights, monuments, museums, historic sites, parks, gardens
    - **Food** — anywhere you go to eat: restaurants, cafes, bakeries, dessert spots
    - **Drinks** — anywhere you go for the drink: pubs, bars, wine bars, coffee shops
-   - **Activities** — things you do or watch: bowling, snooker, cinema, comedy,
-     theatre (not gyms, spas, or stadiums — outings, not memberships or fixtures)
+   - **Activities** — things you do or watch on a whim: bowling, snooker, cinema,
+     comedy (not gyms, spas, theatres, or stadiums — walk-up outings, not
+     memberships, advance bookings, or fixtures)
    - **History** — nearby Wikipedia articles for the incurably curious
 
    Each section is a scrollable list of nearby places sorted by proximity:
