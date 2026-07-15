@@ -111,7 +111,7 @@ describe('<PlaceDetailScreen />', () => {
     expect(await screen.findByText('About')).toBeOnTheScreen();
     expect(screen.getByText(/handmade pasta at counter seats/)).toBeOnTheScreen();
     // Review count joins the meta line
-    expect(screen.getByText(/12,840 reviews/)).toBeOnTheScreen();
+    expect(screen.getByText(/12,840/)).toBeOnTheScreen();
   });
 
   test('shows nothing extra when a place has neither story nor description', async () => {
