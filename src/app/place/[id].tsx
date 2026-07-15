@@ -4,7 +4,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Compass } from '@/components/compass';
+import { NavigationSection } from '@/components/navigation-section';
 import { ExternalLink } from '@/components/external-link';
 import { PhotoGallery } from '@/components/photo-gallery';
 import { ReviewList } from '@/components/review-list';
@@ -120,7 +120,7 @@ export default function PlaceDetailScreen() {
             )}
           </View>
 
-          <Compass target={place.coordinates} />
+          <NavigationSection target={place.coordinates} />
 
           <View style={styles.actions}>
             <Pressable
