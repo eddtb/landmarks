@@ -35,6 +35,7 @@ const ListFieldMask = [
   'places.rating',
   'places.userRatingCount',
   'places.photos.name',
+  'places.businessStatus',
   'routingSummaries',
 ].join(',');
 
@@ -62,6 +63,18 @@ const DetailsFieldMask = [
 ].join(',');
 
 export const DefaultRadiusMeters = 1500;
+
+/**
+ * Quality gate for list results: places flagged as (possibly) closed and
+ * places nobody has ever rated are overwhelmingly ghosts, duplicates, or
+ * gone — worse than showing fewer results.
+ */
+export function passesQualityGate(googlePlace: GooglePlace): boolean {
+  if (googlePlace.businessStatus && googlePlace.businessStatus !== 'OPERATIONAL') {
+    return false;
+  }
+  return (googlePlace.userRatingCount ?? 0) > 0;
+}
 const MaxDetailPhotos = 6;
 
 const PriceLevelSymbols: Record<string, string> = {
@@ -73,6 +86,7 @@ const PriceLevelSymbols: Record<string, string> = {
 
 type GooglePlace = {
   id: string;
+  businessStatus?: string;
   displayName?: { text?: string };
   location?: { latitude?: number; longitude?: number };
   types?: string[];
@@ -282,7 +296,7 @@ export async function searchNearby(options: {
     routingSummaries?: RoutingSummary[];
   };
   const mapped = (body.places ?? []).map((googlePlace) =>
-    mapGooglePlace(googlePlace, category, origin, center)
+    passesQualityGate(googlePlace) ? mapGooglePlace(googlePlace, category, origin, center) : null
   );
   return applyRoutingSummaries(mapped, body.routingSummaries)
     .filter((place): place is PlaceWithDistance => place !== null)
