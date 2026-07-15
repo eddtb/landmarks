@@ -1,3 +1,4 @@
+import { TodayEvent } from '@/types/today';
 import { WhatsOnEvent } from '@/types/whats-on';
 
 /**
@@ -31,12 +32,11 @@ function whatsOnPrompt(name: string, address: string): string {
 }
 
 /**
- * Pure parsing step, unit-testable without network. Despite the
- * JSON-only instruction, the model often narrates before the array
- * ("Based on the search results…"), so parse the bracketed slice of
- * the text rather than the whole thing.
+ * Despite the JSON-only instruction, the model often narrates before
+ * the array ("Based on the search results…"), so parse the bracketed
+ * slice of the text rather than the whole thing.
  */
-export function parseWhatsOnEvents(text: string): WhatsOnEvent[] {
+function parseJsonArraySlice(text: string): Record<string, unknown>[] {
   const start = text.indexOf('[');
   const end = text.lastIndexOf(']');
   if (start === -1 || end <= start) {
@@ -52,6 +52,12 @@ export function parseWhatsOnEvents(text: string): WhatsOnEvent[] {
   if (!Array.isArray(parsed)) {
     return [];
   }
+  return parsed.filter((entry) => typeof entry === 'object' && entry !== null);
+}
+
+/** Pure parsing step, unit-testable without network. */
+export function parseWhatsOnEvents(text: string): WhatsOnEvent[] {
+  const parsed = parseJsonArraySlice(text);
 
   return parsed
     .filter(
@@ -74,25 +80,24 @@ type MessagesResponse = {
   content?: { type: string; text?: string }[];
 };
 
-export async function fetchWhatsOn(options: {
+async function researchWithWebSearch(options: {
   apiKey: string;
-  name: string;
-  address: string;
-}): Promise<WhatsOnEvent[]> {
-  const { apiKey, name, address } = options;
-
+  prompt: string;
+  maxTokens: number;
+  maxSearches: number;
+}): Promise<string> {
   const response = await fetch(MessagesEndpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
+      'x-api-key': options.apiKey,
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
       model: Model,
-      max_tokens: 900,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: MaxSearches }],
-      messages: [{ role: 'user', content: whatsOnPrompt(name, address) }],
+      max_tokens: options.maxTokens,
+      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: options.maxSearches }],
+      messages: [{ role: 'user', content: options.prompt }],
     }),
   });
 
@@ -102,9 +107,74 @@ export async function fetchWhatsOn(options: {
   }
 
   const body = (await response.json()) as MessagesResponse;
-  const text = (body.content ?? [])
+  return (body.content ?? [])
     .filter((block) => block.type === 'text' && block.text)
     .map((block) => block.text)
     .join('\n');
+}
+
+export async function fetchWhatsOn(options: {
+  apiKey: string;
+  name: string;
+  address: string;
+}): Promise<WhatsOnEvent[]> {
+  const text = await researchWithWebSearch({
+    apiKey: options.apiKey,
+    prompt: whatsOnPrompt(options.name, options.address),
+    maxTokens: 900,
+    maxSearches: MaxSearches,
+  });
   return parseWhatsOnEvents(text);
+}
+
+const MaxTodayEvents = 12;
+const MaxTodaySearches = 6;
+
+function todayPrompt(dateLabel: string, areaLabel: string): string {
+  return [
+    `What is on TODAY, ${dateLabel}, in or very near ${areaLabel}?`,
+    'Cover the layers separately: street markets open today; cinema programmes (ONE entry per cinema, e.g. "Films showing today", not per showtime); live music and comedy; theatre and shows; exhibitions; festivals and one-offs; big-match sports screenings.',
+    '',
+    'Rules:',
+    '- Only include things confirmed by a specific web page as happening today (or every week on this weekday); include that page URL as sourceUrl.',
+    '- Skip anything that clearly ended earlier today.',
+    '- If little is on, a short list (or []) is the correct answer; never guess or pad.',
+    '- Respond with ONLY a JSON array, no other text:',
+    '  [{"title": string, "venue": string, "time": string, "detail": string (optional), "sourceUrl": string}]',
+  ].join('\n');
+}
+
+/** Pure parsing step, unit-testable without network. */
+export function parseTodayEvents(text: string): TodayEvent[] {
+  return parseJsonArraySlice(text)
+    .filter(
+      (event): event is Record<string, string> =>
+        typeof event.title === 'string' &&
+        typeof event.venue === 'string' &&
+        typeof event.time === 'string' &&
+        typeof event.sourceUrl === 'string' &&
+        event.sourceUrl.startsWith('https://')
+    )
+    .slice(0, MaxTodayEvents)
+    .map((event) => ({
+      title: event.title,
+      venue: event.venue,
+      time: event.time,
+      ...(typeof event.detail === 'string' && event.detail ? { detail: event.detail } : {}),
+      sourceUrl: event.sourceUrl,
+    }));
+}
+
+export async function fetchTodayEvents(options: {
+  apiKey: string;
+  dateLabel: string;
+  areaLabel: string;
+}): Promise<TodayEvent[]> {
+  const text = await researchWithWebSearch({
+    apiKey: options.apiKey,
+    prompt: todayPrompt(options.dateLabel, options.areaLabel),
+    maxTokens: 1500,
+    maxSearches: MaxTodaySearches,
+  });
+  return parseTodayEvents(text);
 }

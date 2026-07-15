@@ -14,6 +14,8 @@
    - **Activities** — things you do or watch on a whim: bowling, snooker, cinema,
      comedy (not gyms, spas, theatres, or stadiums — walk-up outings, not
      memberships, advance bookings, or fixtures)
+   - **Today** — what's on nearby today: markets, gigs, comedy, screenings,
+     one-offs — AI-researched with a source per event, grounded to real places
    - **History** — nearby Wikipedia articles for the incurably curious
 
    Each section is a scrollable list of nearby places sorted by proximity:
