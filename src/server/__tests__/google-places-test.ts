@@ -4,6 +4,7 @@ import {
   passesQualityGate,
   mapGooglePlace,
   mapGooglePlaceDetails,
+  sortByWalkTime,
 } from '@/server/google-places';
 import { PlaceWithDistance } from '@/types/place';
 
@@ -218,6 +219,31 @@ describe('applyRoutingSummaries', () => {
   test('preserves nulls from failed mappings', () => {
     const result = applyRoutingSummaries([null], [{ legs: [{ duration: '10s' }] }]);
     expect(result[0]).toBeNull();
+  });
+});
+
+describe('sortByWalkTime', () => {
+  const place = (id: string, distanceMeters: number, walkSeconds?: number) =>
+    ({ id, name: id, distanceMeters, walkSeconds }) as PlaceWithDistance;
+
+  test('orders by walking time, not straight-line distance', () => {
+    // Across the creek: nearer as the crow flies, longer on foot
+    const acrossCreek = place('across-creek', 400, 900);
+    const roundTheCorner = place('round-the-corner', 600, 450);
+
+    const sorted = sortByWalkTime([acrossCreek, roundTheCorner]);
+
+    expect(sorted.map((p) => p.id)).toEqual(['round-the-corner', 'across-creek']);
+  });
+
+  test('unroutable places slot in via a walking-pace estimate', () => {
+    const near = place('near', 900, 300);
+    const unroutable = place('unroutable', 665); // 665m / 1.33 m/s ≈ 500s
+    const far = place('far', 900, 800);
+
+    const sorted = sortByWalkTime([far, unroutable, near]);
+
+    expect(sorted.map((p) => p.id)).toEqual(['near', 'unroutable', 'far']);
   });
 });
 
