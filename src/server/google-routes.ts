@@ -11,7 +11,11 @@ const RouteFieldMask = [
   'routes.distanceMeters',
   'routes.legs.steps.navigationInstruction.instructions',
   'routes.legs.steps.distanceMeters',
+  'routes.legs.steps.startLocation.latLng',
+  'routes.legs.steps.endLocation.latLng',
 ].join(',');
+
+type LatLng = { latitude?: number; longitude?: number };
 
 type RoutesResponse = {
   routes?: {
@@ -21,10 +25,19 @@ type RoutesResponse = {
       steps?: {
         distanceMeters?: number;
         navigationInstruction?: { instructions?: string };
+        startLocation?: { latLng?: LatLng };
+        endLocation?: { latLng?: LatLng };
       }[];
     }[];
   }[];
 };
+
+function asCoordinates(latLng: LatLng | undefined): Coordinates | undefined {
+  if (latLng?.latitude === undefined || latLng.longitude === undefined) {
+    return undefined;
+  }
+  return { latitude: latLng.latitude, longitude: latLng.longitude };
+}
 
 /** Pure mapping step, unit-testable without network. */
 export function mapWalkingRoute(body: RoutesResponse): WalkingRoute | null {
@@ -39,6 +52,8 @@ export function mapWalkingRoute(body: RoutesResponse): WalkingRoute | null {
     .map((step) => ({
       instruction: step.navigationInstruction!.instructions!,
       meters: step.distanceMeters ?? 0,
+      start: asCoordinates(step.startLocation?.latLng),
+      end: asCoordinates(step.endLocation?.latLng),
     }));
 
   const seconds = Number((route.duration ?? '').replace(/s$/, ''));

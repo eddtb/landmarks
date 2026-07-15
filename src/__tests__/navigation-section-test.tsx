@@ -52,6 +52,36 @@ describe('<NavigationSection />', () => {
     expect(mockFetchWalkingRoute).toHaveBeenCalledWith(User, Target);
   });
 
+  test('route with geometry shows the satnav dial and current instruction', async () => {
+    mockFetchWalkingRoute.mockResolvedValue({
+      seconds: 302,
+      meters: 344,
+      steps: [
+        {
+          instruction: 'Head east on Middle Rd',
+          meters: 22,
+          start: User,
+          end: { latitude: 51.5055, longitude: -0.0903 },
+        },
+        {
+          instruction: 'Turn right onto Bedale St',
+          meters: 79,
+          start: { latitude: 51.5055, longitude: -0.0903 },
+          end: Target,
+        },
+      ],
+    });
+    await render(<NavigationSection target={Target} />);
+
+    fireEvent.press(screen.getByText('Route'));
+
+    // The satnav dial guides to the first maneuver point (~21m east)
+    expect(await screen.findByText('to next turn')).toBeOnTheScreen();
+    expect(screen.getByText('21 m')).toBeOnTheScreen();
+    // Current instruction appears twice: under the dial and in the list
+    expect(screen.getAllByText('Head east on Middle Rd')).toHaveLength(2);
+  });
+
   test('route unavailable shows a friendly message', async () => {
     mockFetchWalkingRoute.mockResolvedValue(null);
     await render(<NavigationSection target={Target} />);

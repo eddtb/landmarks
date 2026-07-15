@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { Compass } from '@/components/compass';
+import { PointerDial } from '@/components/pointer-dial';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { fetchWalkingRoute } from '@/data/route-client';
 import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { WalkingRoute } from '@/types/route';
+import { guidanceFor } from '@/utils/guidance';
 import { Coordinates } from '@/utils/geo';
 import { formatDistance, formatWalkTime } from '@/utils/format';
 
@@ -100,28 +102,50 @@ function RouteSteps({ from, to }: { from: Coordinates; to: Coordinates }) {
   }
 
   const { route } = state;
+  const guidance = guidanceFor(route, from);
+
   return (
     <View style={styles.steps}>
+      {guidance && (
+        <View style={styles.guidance}>
+          <PointerDial
+            user={from}
+            target={guidance.target}
+            primary={guidance.arrived ? 'Here!' : formatDistance(guidance.metersToManeuver)}
+            secondary={guidance.arrived ? 'you have arrived' : 'to next turn'}
+          />
+          <ThemedText type="smallBold" style={styles.instruction}>
+            {guidance.arrived ? 'You have arrived' : guidance.step.instruction}
+          </ThemedText>
+        </View>
+      )}
       <ThemedText type="smallBold">
         {formatWalkTime(route.seconds)} · {formatDistance(route.meters)}
       </ThemedText>
-      {route.steps.map((step, index) => (
-        <View
-          key={`${index}-${step.instruction}`}
-          style={[styles.step, { backgroundColor: theme.backgroundElement }]}>
-          <ThemedText type="smallBold" themeColor="textSecondary" style={styles.stepNumber}>
-            {index + 1}
-          </ThemedText>
-          <View style={styles.stepBody}>
-            <ThemedText type="small">{step.instruction}</ThemedText>
-            {step.meters > 0 && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {formatDistance(step.meters)}
-              </ThemedText>
-            )}
+      {route.steps.map((step, index) => {
+        const isCurrent = guidance !== null && index === guidance.stepIndex && !guidance.arrived;
+        return (
+          <View
+            key={`${index}-${step.instruction}`}
+            style={[
+              styles.step,
+              { backgroundColor: theme.backgroundElement },
+              isCurrent && styles.currentStep,
+            ]}>
+            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.stepNumber}>
+              {index + 1}
+            </ThemedText>
+            <View style={styles.stepBody}>
+              <ThemedText type={isCurrent ? 'smallBold' : 'small'}>{step.instruction}</ThemedText>
+              {step.meters > 0 && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {formatDistance(step.meters)}
+                </ThemedText>
+              )}
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -162,5 +186,16 @@ const styles = StyleSheet.create({
   stepBody: {
     flex: 1,
     gap: Spacing.half,
+  },
+  guidance: {
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  instruction: {
+    textAlign: 'center',
+  },
+  currentStep: {
+    borderWidth: 1,
+    borderColor: '#3c87f7',
   },
 });
