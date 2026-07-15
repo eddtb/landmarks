@@ -5,6 +5,8 @@ const expoConfig = require("eslint-config-expo/flat");
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ["dist/*"],
+    // Generated output only — dist is the export bundle, .expo holds
+    // regenerated router types that carry their own lint directives
+    ignores: ["dist/*", ".expo/*"],
   }
 ]);

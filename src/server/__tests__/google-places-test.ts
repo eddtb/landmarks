@@ -13,6 +13,7 @@ const User = { latitude: 51.5055, longitude: -0.0906 };
 const googlePlace = {
   id: 'ChIJtest123',
   displayName: { text: 'Borough Market' },
+  primaryTypeDisplayName: { text: 'Market' },
   location: { latitude: 51.5055, longitude: -0.0917 },
   types: ['tourist_attraction', 'market'],
   rating: 4.6,
@@ -61,12 +62,13 @@ const googlePlace = {
 
 describe('mapGooglePlace (lean list mapping)', () => {
   test('maps the card fields and computes distance', () => {
-    const place = mapGooglePlace(googlePlace, 'restaurant', Origin, User);
+    const place = mapGooglePlace(googlePlace, 'food', Origin, User);
 
     expect(place).toMatchObject({
       id: 'ChIJtest123',
       name: 'Borough Market',
-      category: 'restaurant',
+      category: 'food',
+      primaryLabel: 'Market',
       rating: 4.6,
       ratingCount: 68411,
     });
@@ -75,7 +77,7 @@ describe('mapGooglePlace (lean list mapping)', () => {
   });
 
   test('routes photos through our proxy, never Google directly', () => {
-    const place = mapGooglePlace(googlePlace, 'restaurant', Origin, User);
+    const place = mapGooglePlace(googlePlace, 'food', Origin, User);
 
     expect(place?.photoUrl).toBe(
       `${Origin}/api/photo?name=${encodeURIComponent('places/ChIJtest123/photos/one')}`
@@ -84,14 +86,14 @@ describe('mapGooglePlace (lean list mapping)', () => {
   });
 
   test('falls back to street-view imagery when there is no photo', () => {
-    const place = mapGooglePlace({ ...googlePlace, photos: undefined }, 'restaurant', Origin, User);
+    const place = mapGooglePlace({ ...googlePlace, photos: undefined }, 'food', Origin, User);
     expect(place?.photoUrl).toBe(`${Origin}/api/streetview?lat=51.5055&lng=-0.0917`);
   });
 
   test('returns null for places missing name or location', () => {
-    expect(mapGooglePlace({ id: 'x' }, 'pub', Origin, User)).toBeNull();
+    expect(mapGooglePlace({ id: 'x' }, 'drink', Origin, User)).toBeNull();
     expect(
-      mapGooglePlace({ id: 'x', displayName: { text: 'No location' } }, 'pub', Origin, User)
+      mapGooglePlace({ id: 'x', displayName: { text: 'No location' } }, 'drink', Origin, User)
     ).toBeNull();
   });
 });
@@ -170,10 +172,16 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
 
 describe('categoryFromTypes', () => {
   test('classifies by our section priorities', () => {
-    // A snooker hall with a bar is an activity, not a pub
+    // A snooker hall with a bar is an activity, not a drink venue
     expect(categoryFromTypes(['sports_complex', 'bar'])).toBe('activity');
-    expect(categoryFromTypes(['pub', 'restaurant'])).toBe('pub');
-    expect(categoryFromTypes(['restaurant', 'point_of_interest'])).toBe('restaurant');
+    // A cinema serving food is still an activity
+    expect(categoryFromTypes(['movie_theater', 'restaurant'])).toBe('activity');
+    // Gastropub: the pint outranks the kitchen
+    expect(categoryFromTypes(['pub', 'restaurant'])).toBe('drink');
+    expect(categoryFromTypes(['wine_bar'])).toBe('drink');
+    expect(categoryFromTypes(['restaurant', 'point_of_interest'])).toBe('food');
+    expect(categoryFromTypes(['bakery'])).toBe('food');
+    expect(categoryFromTypes(['spa'])).toBe('activity');
     expect(categoryFromTypes(['tourist_attraction'])).toBe('landmark');
     expect(categoryFromTypes(undefined)).toBe('landmark');
   });

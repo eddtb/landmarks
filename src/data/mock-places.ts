@@ -75,7 +75,8 @@ export const MockPlaces: Place[] = [
   {
     id: 'padella',
     name: 'Padella',
-    category: 'restaurant',
+    category: 'food',
+    primaryLabel: 'Italian Restaurant',
     coordinates: { latitude: 51.5053, longitude: -0.0906 },
     description: 'Compact, buzzy spot serving handmade pasta at counter seats.',
     ratingCount: 12840,
@@ -88,7 +89,8 @@ export const MockPlaces: Place[] = [
   {
     id: 'monmouth-coffee',
     name: 'Monmouth Coffee Company',
-    category: 'restaurant',
+    category: 'drink',
+    primaryLabel: 'Coffee Shop',
     coordinates: { latitude: 51.5055, longitude: -0.091 },
     rating: 4.7,
     photoUrl: 'https://picsum.photos/seed/monmouth/800/500',
@@ -99,7 +101,8 @@ export const MockPlaces: Place[] = [
   {
     id: 'borough-market-kitchen',
     name: 'Borough Market Kitchen',
-    category: 'restaurant',
+    category: 'food',
+    primaryLabel: 'Food Court',
     coordinates: { latitude: 51.5056, longitude: -0.0917 },
     rating: 4.5,
     photoUrl: 'https://picsum.photos/seed/borough-market/800/500',
@@ -110,7 +113,8 @@ export const MockPlaces: Place[] = [
   {
     id: 'the-george-inn',
     name: 'The George Inn',
-    category: 'pub',
+    category: 'drink',
+    primaryLabel: 'Pub',
     coordinates: { latitude: 51.5041, longitude: -0.09 },
     rating: 4.5,
     photoUrl: 'https://picsum.photos/seed/george-inn/800/500',
@@ -123,7 +127,8 @@ export const MockPlaces: Place[] = [
   {
     id: 'the-anchor-bankside',
     name: 'The Anchor Bankside',
-    category: 'pub',
+    category: 'drink',
+    primaryLabel: 'Pub',
     coordinates: { latitude: 51.5069, longitude: -0.0922 },
     rating: 4.3,
     photoUrl: 'https://picsum.photos/seed/anchor-bankside/800/500',
@@ -134,6 +139,7 @@ export const MockPlaces: Place[] = [
     id: 'southbank-snooker',
     name: 'Southbank Snooker & Pool Club',
     category: 'activity',
+    primaryLabel: 'Pool Hall',
     coordinates: { latitude: 51.5049, longitude: -0.0921 },
     rating: 4.4,
     ratingCount: 320,
@@ -144,7 +150,8 @@ export const MockPlaces: Place[] = [
   {
     id: 'the-market-porter',
     name: 'The Market Porter',
-    category: 'pub',
+    category: 'drink',
+    primaryLabel: 'Pub',
     coordinates: { latitude: 51.5052, longitude: -0.0912 },
     rating: 4.4,
     photoUrl: 'https://picsum.photos/seed/market-porter/800/500',

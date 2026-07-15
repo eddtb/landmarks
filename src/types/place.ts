@@ -1,11 +1,16 @@
 import { Coordinates } from '@/utils/geo';
 
-export type PlaceCategory = 'landmark' | 'restaurant' | 'pub' | 'activity';
+export type PlaceCategory = 'landmark' | 'food' | 'drink' | 'activity';
 
 export type Place = {
   id: string;
   name: string;
   category: PlaceCategory;
+  /**
+   * Google's human-readable primary type ("Wine Bar", "Bakery", "Comedy
+   * Club") — shown on cards so broad sections stay specific per place.
+   */
+  primaryLabel?: string;
   coordinates: Coordinates;
   rating: number;
   photoUrl: string;
@@ -54,9 +59,10 @@ export type PlaceDetails = Place & {
   photoUrls: string[];
 };
 
+/** Fallback card labels when Google doesn't provide a primary type. */
 export const CategoryLabels: Record<PlaceCategory, string> = {
   landmark: 'Landmark',
-  restaurant: 'Restaurant',
-  pub: 'Pub',
+  food: 'Food',
+  drink: 'Drinks',
   activity: 'Activity',
 };

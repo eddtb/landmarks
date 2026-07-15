@@ -22,9 +22,21 @@ const PlaceDetailsEndpoint = 'https://places.googleapis.com/v1/places';
 
 /** Place types per section — Places API (New) "Table A" types. */
 const CategoryTypes: Record<PlaceCategory, string[]> = {
-  landmark: ['tourist_attraction', 'museum', 'historical_landmark', 'art_gallery', 'park'],
-  restaurant: ['restaurant', 'cafe'],
-  pub: ['pub', 'bar'],
+  landmark: [
+    'tourist_attraction',
+    'museum',
+    'historical_landmark',
+    'art_gallery',
+    'park',
+    'garden',
+    'botanical_garden',
+  ],
+  // "Food": anywhere you go to eat, sit-down or counter
+  food: ['restaurant', 'cafe', 'bakery', 'dessert_shop', 'ice_cream_shop', 'sandwich_shop'],
+  // "Drinks": anywhere you go for the drink itself — pint, cocktail, or
+  // flat white. cafe (sit-in, food-led) is Food; coffee_shop (counter,
+  // drink-led) is Drinks — venues tagged both appear in both, correctly.
+  drink: ['pub', 'bar', 'wine_bar', 'coffee_shop'],
   // Leisure venues only — deliberately NOT sports_activity_location or
   // sports_club: Google tags every gym, dojo, and yoga studio with those,
   // and under nearest-first they flood out the actual activities.
@@ -40,23 +52,44 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
     'water_park',
     'skateboard_park',
     'adventure_sports_center',
+    // Wellness outings — treatments you book for an afternoon
+    'spa',
+    'sauna',
+    'massage',
+    // Shows — things you go out to watch are still things you do
+    'movie_theater',
+    'comedy_club',
+    'concert_hall',
+    'performing_arts_theater',
   ],
 };
 
-/** Keeps sports venues out of Pubs — they have their own section. */
+/** Keeps sports venues out of Drinks — they have their own section. */
 const CategoryExcludedTypes: Partial<Record<PlaceCategory, string[]>> = {
-  pub: ['sports_bar', 'sports_complex', 'sports_activity_location', 'bowling_alley'],
+  drink: ['sports_bar', 'sports_complex', 'sports_activity_location', 'bowling_alley'],
 };
 
 /**
  * sports_complex is an umbrella primary type — Google's hierarchy matches
  * its children too (gyms, yoga studios, stadiums). We need the umbrella
  * for venues like snooker halls, so we prune its children explicitly:
- * fitness places (memberships, not outings) and spectator venues
- * (Activities means places you DO, not places you WATCH).
+ * fitness places (memberships, not outings) and spectator sports venues
+ * (a stadium is a fixture calendar, not a walk-in). Salon types are
+ * pruned for the same reason spa is included: a spa is an outing, a
+ * haircut is an errand.
  */
 const CategoryExcludedPrimaryTypes: Partial<Record<PlaceCategory, string[]>> = {
-  activity: ['gym', 'fitness_center', 'yoga_studio', 'stadium', 'arena', 'athletic_field'],
+  activity: [
+    'gym',
+    'fitness_center',
+    'yoga_studio',
+    'stadium',
+    'arena',
+    'athletic_field',
+    'beauty_salon',
+    'hair_salon',
+    'nail_salon',
+  ],
 };
 
 /** Lean mask for the list — what a card shows, nothing more. */
@@ -68,6 +101,7 @@ const ListFieldMask = [
   'places.userRatingCount',
   'places.photos.name',
   'places.businessStatus',
+  'places.primaryTypeDisplayName',
   'routingSummaries',
 ].join(',');
 
@@ -77,6 +111,7 @@ const DetailsFieldMask = [
   'displayName',
   'location',
   'types',
+  'primaryTypeDisplayName',
   'rating',
   'userRatingCount',
   'formattedAddress',
@@ -133,6 +168,7 @@ type GooglePlace = {
   id: string;
   businessStatus?: string;
   displayName?: { text?: string };
+  primaryTypeDisplayName?: { text?: string };
   location?: { latitude?: number; longitude?: number };
   types?: string[];
   rating?: number;
@@ -226,15 +262,15 @@ function streetViewUrl(origin: string, coordinates: Coordinates): string {
 /** Details responses carry Google types, not our section — infer ours. */
 export function categoryFromTypes(types: string[] | undefined): PlaceCategory {
   const typeSet = new Set(types ?? []);
-  // Activity outranks pub: a snooker hall with a bar is an activity
+  // Activity outranks drink: a snooker hall with a bar is an activity
   if (CategoryTypes.activity.some((type) => typeSet.has(type))) {
     return 'activity';
   }
-  if (CategoryTypes.pub.some((type) => typeSet.has(type))) {
-    return 'pub';
+  if (CategoryTypes.drink.some((type) => typeSet.has(type))) {
+    return 'drink';
   }
-  if (CategoryTypes.restaurant.some((type) => typeSet.has(type))) {
-    return 'restaurant';
+  if (CategoryTypes.food.some((type) => typeSet.has(type))) {
+    return 'food';
   }
   return 'landmark';
 }
@@ -257,6 +293,7 @@ export function mapGooglePlace(
     id: googlePlace.id,
     name,
     category,
+    primaryLabel: googlePlace.primaryTypeDisplayName?.text,
     coordinates: { latitude, longitude },
     rating: googlePlace.rating ?? 0,
     photoUrl: photoName
@@ -289,6 +326,7 @@ export function mapGooglePlaceDetails(
     id: googlePlace.id,
     name,
     category: categoryFromTypes(googlePlace.types),
+    primaryLabel: googlePlace.primaryTypeDisplayName?.text,
     coordinates: { latitude, longitude },
     rating: googlePlace.rating ?? 0,
     ratingCount: googlePlace.userRatingCount,

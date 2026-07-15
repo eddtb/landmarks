@@ -35,7 +35,7 @@ export function PlaceCard({ place }: Props) {
             {place.name}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {CategoryLabels[place.category]} ·{' '}
+            {place.primaryLabel ?? CategoryLabels[place.category]} ·{' '}
             {place.walkSeconds !== undefined
               ? formatWalkTime(place.walkSeconds)
               : formatDistance(place.distanceMeters)}{' '}
