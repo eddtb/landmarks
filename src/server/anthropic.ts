@@ -30,12 +30,22 @@ function whatsOnPrompt(name: string, address: string): string {
   ].join('\n');
 }
 
-/** Pure parsing step, unit-testable without network. */
+/**
+ * Pure parsing step, unit-testable without network. Despite the
+ * JSON-only instruction, the model often narrates before the array
+ * ("Based on the search results…"), so parse the bracketed slice of
+ * the text rather than the whole thing.
+ */
 export function parseWhatsOnEvents(text: string): WhatsOnEvent[] {
-  const stripped = text.replace(/```(?:json)?/g, '').trim();
+  const start = text.indexOf('[');
+  const end = text.lastIndexOf(']');
+  if (start === -1 || end <= start) {
+    return [];
+  }
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stripped);
+    parsed = JSON.parse(text.slice(start, end + 1));
   } catch {
     return [];
   }
