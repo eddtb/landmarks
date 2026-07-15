@@ -44,6 +44,15 @@ and no Google editorial summary (e.g. Bridget Jones's Flat). Server-side
 route, per-place cache, must-decline-when-unsure prompt, labeled AI-generated.
 Trust chain: Wikipedia → Google editorial → AI → nothing.
 
+## Parked idea — concept queries for Activities
+
+Google's type taxonomy can't express some activity venues (e.g. Badger
+Badger: a board-game cafe typed only as a pub). When the Search milestone
+lands, consider enriching Activities with a few Text Search concept
+queries ("board game cafe", "escape room", "mini golf") merged into the
+type-based results — Text Search matches meaning, not just types.
+Deliberately not hacked in via name matching or manual lists.
+
 ## Parallel track — Deployment (CD)
 
 When the Apple Developer membership activates: EAS dev/preview builds,
