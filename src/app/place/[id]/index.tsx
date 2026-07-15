@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
-import { Link, Stack, useLocalSearchParams } from 'expo-router';
+import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,6 +11,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ExternalLink } from '@/components/external-link';
 import { PhotoGallery } from '@/components/photo-gallery';
@@ -73,7 +74,7 @@ export default function PlaceScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: place.name }} />
+      <Stack.Screen options={{ headerShown: false }} />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scroll}
@@ -101,21 +102,24 @@ export default function PlaceScreen() {
             </ThemedText>
           </View>
 
-          {/* One violet button: the journey is a mode, not a section */}
+          {/* One violet button: the journey is a mode, not a section.
+              (router.push, not Link asChild — asChild dropped this
+              Pressable's function-style entirely, leaving white-on-white) */}
           <View style={styles.actions}>
-            <Link href={{ pathname: '/place/[id]/go', params: { id: place.id } }} asChild>
-              <Pressable
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.go,
-                  { backgroundColor: theme.accent },
-                  pressed && { opacity: 0.85 },
-                ]}>
-                <ThemedText type="smallBold" style={styles.goText}>
-                  {walkSeconds !== undefined ? `Go · ${formatWalkTime(walkSeconds)}` : 'Go'}
-                </ThemedText>
-              </Pressable>
-            </Link>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                router.push({ pathname: '/place/[id]/go', params: { id: place.id } })
+              }
+              style={({ pressed }) => [
+                styles.go,
+                { backgroundColor: theme.accent },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold" style={styles.goText}>
+                {walkSeconds !== undefined ? `Go · ${formatWalkTime(walkSeconds)}` : 'Go'}
+              </ThemedText>
+            </Pressable>
             {details?.phone && (
               <Pressable
                 accessibilityRole="button"
@@ -284,6 +288,16 @@ export default function PlaceScreen() {
           </View>
         </View>
       </ScrollView>
+      {/* Floating back button — the hero runs full-bleed to the top */}
+      <SafeAreaView style={styles.backOverlay} edges={['top']} pointerEvents="box-none">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          onPress={() => router.back()}
+          style={[styles.backButton, { backgroundColor: theme.background }]}>
+          <ThemedText type="headline">‹</ThemedText>
+        </Pressable>
+      </SafeAreaView>
     </ThemedView>
   );
 }
@@ -380,5 +394,20 @@ const styles = StyleSheet.create({
   hoursBlock: {
     gap: Spacing.half,
     paddingLeft: Spacing.three,
+  },
+  backOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  backButton: {
+    marginLeft: Spacing.three,
+    marginTop: Spacing.two,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.94,
   },
 });

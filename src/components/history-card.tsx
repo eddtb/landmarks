@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -16,14 +16,17 @@ export function HistoryCard({ item }: Props) {
   const theme = useTheme();
 
   return (
-    <Link href={{ pathname: '/history/[pageId]', params: { pageId: String(item.pageId) } }} asChild>
-      <Pressable
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.card,
-          { backgroundColor: theme.backgroundElement },
-          pressed && { opacity: 0.85 },
-        ]}>
+    // router.push, not Link asChild — asChild drops function-styles
+    <Pressable
+      accessibilityRole="button"
+      onPress={() =>
+        router.push({ pathname: '/history/[pageId]', params: { pageId: String(item.pageId) } })
+      }
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: theme.backgroundElement },
+        pressed && { opacity: 0.85 },
+      ]}>
         {item.thumbnailUrl && (
           <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
         )}
@@ -36,7 +39,6 @@ export function HistoryCard({ item }: Props) {
           </ThemedText>
         </View>
       </Pressable>
-    </Link>
   );
 }
 
