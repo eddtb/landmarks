@@ -26,7 +26,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useWhatsOn } from '@/hooks/use-whats-on';
 import { describeBusyness } from '@/utils/busyness';
 import { CategoryLabels, Place } from '@/types/place';
-import { formatRating } from '@/utils/format';
+import { formatRating, formatWalkTime } from '@/utils/format';
 
 /** Google's weekdayHours is Monday-first; JS's getDay() is Sunday-first (0-6). */
 function todayIndex(): number {
@@ -56,6 +56,11 @@ export default function PlaceDetailScreen() {
   const walkingUri =
     summary && 'walkingDirectionsUri' in summary
       ? (summary as { walkingDirectionsUri?: string }).walkingDirectionsUri
+      : undefined;
+  // Real walking time rides in from the list search, like the Maps link
+  const walkSeconds =
+    summary && 'walkSeconds' in summary
+      ? (summary as { walkSeconds?: number }).walkSeconds
       : undefined;
   // phone/mapsUri only exist once details load — undefined while showing the summary
   const details = state.status === 'ready' ? state.details : undefined;
@@ -96,18 +101,87 @@ export default function PlaceDetailScreen() {
           <Image source={{ uri: place.photoUrl }} style={styles.photo} contentFit="cover" />
         )}
         <View style={styles.body}>
-          <ThemedText type="subtitle">{place.name}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {place.primaryLabel ?? CategoryLabels[place.category]} · {formatRating(place.rating)}
-            {place.ratingCount ? ` (${place.ratingCount.toLocaleString()} reviews)` : ''}
-            {details?.priceLevel ? ` · ${details.priceLevel}` : ''}
-          </ThemedText>
+          <View>
+            <ThemedText type="largeTitle">{place.name}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {place.primaryLabel ?? CategoryLabels[place.category]} · {formatRating(place.rating)}
+              {place.ratingCount ? ` (${place.ratingCount.toLocaleString()})` : ''}
+              {details?.priceLevel ? ` · ${details.priceLevel}` : ''}
+              {walkSeconds !== undefined ? (
+                <>
+                  {' · '}
+                  <ThemedText type="smallBold" themeColor="accent">
+                    {formatWalkTime(walkSeconds)}
+                  </ThemedText>
+                </>
+              ) : null}
+            </ThemedText>
+          </View>
 
-          <View style={styles.facts}>
-            <ThemedText type="small">{place.address}</ThemedText>
+          {/* Go-there first: the app's whole purpose, no longer mid-scroll */}
+          <View style={styles.actions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                Linking.openURL(walkingUri ?? details?.mapsUri ?? directionsUrl(place))
+              }
+              style={({ pressed }) => [
+                styles.action,
+                { backgroundColor: theme.accent },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold" style={styles.primaryActionText}>
+                Directions
+              </ThemedText>
+            </Pressable>
+            {details?.phone && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => Linking.openURL(`tel:${details.phone}`)}
+                style={({ pressed }) => [
+                  styles.action,
+                  { backgroundColor: theme.backgroundElement },
+                  pressed && { opacity: 0.85 },
+                ]}>
+                <ThemedText type="smallBold">Call</ThemedText>
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                Share.share({
+                  message: `${place.name} — ${details?.mapsUri ?? place.website ?? directionsUrl(place)}`,
+                })
+              }
+              style={({ pressed }) => [
+                styles.action,
+                { backgroundColor: theme.backgroundElement },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold">Share</ThemedText>
+            </Pressable>
+          </View>
+
+          {/* At a glance: hours, forecast, and verified facts — one card,
+              because they are all the same question: should I go? */}
+          <View style={[styles.facts, styles.glance, { backgroundColor: theme.backgroundElement }]}>
             {place.hours && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText
+                type="smallBold"
+                themeColor={place.hours === 'Open now' ? 'open' : 'closed'}>
                 {place.hours}
+              </ThemedText>
+            )}
+            {busyness.status === 'ready' && (
+              <ThemedText
+                type="small"
+                themeColor={
+                  /busy|packed/.test(describeBusyness(busyness.pattern, new Date()))
+                    ? 'signal'
+                    : 'textSecondary'
+                }>
+                {describeBusyness(busyness.pattern, new Date())}
+                {busyness.pattern.note ? ` — ${busyness.pattern.note}` : ''} · AI estimate
               </ThemedText>
             )}
             {details?.weekdayHours && details.weekdayHours.length > 0 && (
@@ -156,7 +230,7 @@ export default function PlaceDetailScreen() {
                 {details.amenities.map((amenity) => (
                   <View
                     key={amenity}
-                    style={[styles.chip, { backgroundColor: theme.backgroundElement }]}>
+                    style={[styles.chip, { backgroundColor: theme.backgroundSelected }]}>
                     <ThemedText type="small" themeColor="textSecondary">
                       {amenity}
                     </ThemedText>
@@ -164,12 +238,9 @@ export default function PlaceDetailScreen() {
                 ))}
               </View>
             )}
-            {busyness.status === 'ready' && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {describeBusyness(busyness.pattern, new Date())}
-                {busyness.pattern.note ? ` — ${busyness.pattern.note}` : ''} · AI estimate
-              </ThemedText>
-            )}
+            <ThemedText type="small" themeColor="textSecondary">
+              {place.address}
+            </ThemedText>
             {place.website && (
               <ExternalLink href={place.website}>
                 <ThemedText type="linkPrimary">Visit website</ThemedText>
@@ -179,72 +250,11 @@ export default function PlaceDetailScreen() {
 
           <NavigationSection target={place.coordinates} />
 
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                Linking.openURL(walkingUri ?? details?.mapsUri ?? directionsUrl(place))
-              }
-              style={({ pressed }) => [
-                styles.action,
-                { backgroundColor: theme.backgroundElement },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold">Directions</ThemedText>
-            </Pressable>
-            {details?.phone && (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => Linking.openURL(`tel:${details.phone}`)}
-                style={({ pressed }) => [
-                  styles.action,
-                  { backgroundColor: theme.backgroundElement },
-                  pressed && { opacity: 0.85 },
-                ]}>
-                <ThemedText type="smallBold">Call</ThemedText>
-              </Pressable>
-            )}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                Share.share({
-                  message: `${place.name} — ${details?.mapsUri ?? place.website ?? directionsUrl(place)}`,
-                })
-              }
-              style={({ pressed }) => [
-                styles.action,
-                { backgroundColor: theme.backgroundElement },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold">Share</ThemedText>
-            </Pressable>
-          </View>
-
-          {storyState.status === 'ready' ? (
-            <View style={styles.story}>
-              <ThemedText type="smallBold">Story</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {storyState.story.story}
-              </ThemedText>
-              {!!storyState.story.url && (
-                <ExternalLink href={storyState.story.url as `https://${string}`}>
-                  <ThemedText type="linkPrimary">From Wikipedia</ThemedText>
-                </ExternalLink>
-              )}
-            </View>
-          ) : place.description ? (
-            // Fallback chain: no Wikipedia article -> Google's editorial summary
-            <View style={styles.story}>
-              <ThemedText type="smallBold">About</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {place.description}
-              </ThemedText>
-            </View>
-          ) : null}
-
           {whatsOn.status === 'ready' && (
             <View style={styles.story}>
-              <ThemedText type="smallBold">What&apos;s on</ThemedText>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                What&apos;s on
+              </ThemedText>
               {whatsOn.events.map((event) => (
                 <View key={`${event.title}-${event.schedule}`} style={styles.event}>
                   <ThemedText type="small">
@@ -261,6 +271,28 @@ export default function PlaceDetailScreen() {
               </ThemedText>
             </View>
           )}
+
+          {storyState.status === 'ready' ? (
+            <View style={styles.story}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                Story
+              </ThemedText>
+              <ThemedText type="storySerif">{storyState.story.story}</ThemedText>
+              {!!storyState.story.url && (
+                <ExternalLink href={storyState.story.url as `https://${string}`}>
+                  <ThemedText type="linkPrimary">From Wikipedia</ThemedText>
+                </ExternalLink>
+              )}
+            </View>
+          ) : place.description ? (
+            // Fallback chain: no Wikipedia article -> Google's editorial summary
+            <View style={styles.story}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                About
+              </ThemedText>
+              <ThemedText type="storySerif">{place.description}</ThemedText>
+            </View>
+          ) : null}
 
           {((details?.reviews && details.reviews.length > 0) || details?.reviewSummary) && (
             <ReviewList reviews={details?.reviews ?? []} summary={details?.reviewSummary} />
@@ -299,9 +331,18 @@ const styles = StyleSheet.create({
   facts: {
     gap: Spacing.one,
   },
+  glance: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
   actions: {
     flexDirection: 'row',
     gap: Spacing.two,
+  },
+  primaryActionText: {
+    // White holds on the accent in both light and dark mode
+    color: '#FFFFFF',
   },
   action: {
     paddingVertical: Spacing.two,
