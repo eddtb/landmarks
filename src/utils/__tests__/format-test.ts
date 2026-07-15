@@ -4,6 +4,7 @@ import {
   formatRating,
   formatRatingCount,
   formatWalkTime,
+  openUntilLabel,
 } from '@/utils/format';
 
 describe('formatDistance', () => {
@@ -40,6 +41,18 @@ describe('closesSoonLabel', () => {
 
   test('quiet on malformed timestamps', () => {
     expect(closesSoonLabel('not-a-date', now)).toBeNull();
+  });
+});
+
+describe('openUntilLabel', () => {
+  test('formats device-local closing time, minutes only when odd', () => {
+    // Assert structure, not a specific hour — CI and laptops disagree on timezone
+    expect(openUntilLabel('2026-07-15T23:00:00Z')).toMatch(/^Open until \d{1,2}(am|pm)$/);
+    expect(openUntilLabel('2026-07-15T22:30:00Z')).toMatch(/^Open until \d{1,2}:30(am|pm)$/);
+  });
+
+  test('quiet on malformed timestamps', () => {
+    expect(openUntilLabel('not-a-date')).toBeNull();
   });
 });
 

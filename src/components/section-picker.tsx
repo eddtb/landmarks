@@ -38,10 +38,10 @@ export function SectionPicker({ selected, onSelect }: Props) {
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(section.value)}
-            style={[styles.segment, isSelected && { backgroundColor: theme.backgroundSelected }]}>
+            style={[styles.segment, isSelected && { backgroundColor: theme.text }]}>
             <ThemedText
               type={isSelected ? 'smallBold' : 'small'}
-              themeColor={isSelected ? 'text' : 'textSecondary'}>
+              themeColor={isSelected ? 'background' : 'textSecondary'}>
               {section.label}
             </ThemedText>
           </Pressable>
@@ -64,6 +64,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three - Spacing.one,
+    borderRadius: 999,
   },
 });

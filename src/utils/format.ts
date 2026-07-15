@@ -37,6 +37,18 @@ export function closesSoonLabel(nextCloseTime: string, now: Date): string | null
   return `Closes in ${minutes} min`;
 }
 
+/** "2026-07-15T23:00:00Z" -> "Open until 11pm" (device-local, minutes only when odd). */
+export function openUntilLabel(nextCloseTime: string): string | null {
+  const closesAt = new Date(nextCloseTime);
+  if (!Number.isFinite(closesAt.getTime())) {
+    return null;
+  }
+  const hour12 = closesAt.getHours() % 12 || 12;
+  const suffix = closesAt.getHours() < 12 ? 'am' : 'pm';
+  const minutes = closesAt.getMinutes();
+  return `Open until ${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''}${suffix}`;
+}
+
 /** 847 -> "847", 2310 -> "2.3k" — evidence for the rating, card-sized */
 export function formatRatingCount(count: number): string {
   if (count < 1000) {
