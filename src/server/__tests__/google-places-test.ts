@@ -31,6 +31,7 @@ const googlePlace = {
   nationalPhoneNumber: '020 7407 1002',
   googleMapsUri: 'https://maps.google.com/?cid=123',
   priceLevel: 'PRICE_LEVEL_MODERATE',
+  reviewSummary: { text: { text: 'People say this market has excellent cheese.' } },
   reviews: [
     {
       rating: 5,
@@ -99,6 +100,7 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
       phone: '020 7407 1002',
       mapsUri: 'https://maps.google.com/?cid=123',
       priceLevel: '££',
+      reviewSummary: 'People say this market has excellent cheese.',
     });
     expect(details?.photoUrls).toHaveLength(2);
     expect(details?.photoUrl).toBe(details?.photoUrls[0]);

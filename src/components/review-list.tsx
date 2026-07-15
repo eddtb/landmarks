@@ -8,14 +8,24 @@ import { formatRating } from '@/utils/format';
 
 type Props = {
   reviews: PlaceReview[];
+  /** Gemini-condensed review summary; attribution is required when shown. */
+  summary?: string;
 };
 
-export function ReviewList({ reviews }: Props) {
+export function ReviewList({ reviews, summary }: Props) {
   const theme = useTheme();
 
   return (
     <View style={styles.container}>
       <ThemedText type="smallBold">What people say</ThemedText>
+      {summary && (
+        <View style={[styles.review, { backgroundColor: theme.backgroundElement }]}>
+          <ThemedText type="small">{summary}</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Summarized with Gemini
+          </ThemedText>
+        </View>
+      )}
       {reviews.map((review) => (
         <View
           key={`${review.author}-${review.when ?? ''}`}

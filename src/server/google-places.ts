@@ -86,6 +86,7 @@ const DetailsFieldMask = [
   'nationalPhoneNumber',
   'googleMapsUri',
   'priceLevel',
+  'reviewSummary.text',
   'reviews.rating',
   'reviews.text.text',
   'reviews.authorAttribution.displayName',
@@ -140,6 +141,7 @@ type GooglePlace = {
   nationalPhoneNumber?: string;
   googleMapsUri?: string;
   priceLevel?: string;
+  reviewSummary?: { text?: { text?: string } };
   reviews?: {
     rating?: number;
     text?: { text?: string };
@@ -293,6 +295,7 @@ export function mapGooglePlaceDetails(
     priceLevel: googlePlace.priceLevel
       ? PriceLevelSymbols[googlePlace.priceLevel]
       : undefined,
+    reviewSummary: googlePlace.reviewSummary?.text?.text,
     reviews: mapReviews(googlePlace.reviews),
   };
 }

@@ -38,6 +38,8 @@ export type PlaceReview = {
 
 /** Rich fields fetched one place at a time from /api/place/[id] (M1: two-tier fetching). */
 export type PlaceDetails = Place & {
+  /** Gemini-written condensation of what reviewers say (shown with disclosure). */
+  reviewSummary?: string;
   reviews?: PlaceReview[];
   /** e.g. ["Monday: 9:00 AM – 5:00 PM", ...] */
   weekdayHours?: string[];
