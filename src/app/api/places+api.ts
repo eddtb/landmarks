@@ -2,7 +2,7 @@ import { placesByCategory } from '@/data/mock-places';
 import { searchNearby } from '@/server/google-places';
 import { PlaceCategory } from '@/types/place';
 
-const Categories: PlaceCategory[] = ['landmark', 'restaurant', 'pub'];
+const Categories: PlaceCategory[] = ['landmark', 'restaurant', 'pub', 'activity'];
 
 /**
  * GET /api/places?lat=51.5&lng=-0.09&category=landmark

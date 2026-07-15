@@ -25,6 +25,21 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
   landmark: ['tourist_attraction', 'museum', 'historical_landmark', 'art_gallery', 'park'],
   restaurant: ['restaurant', 'cafe'],
   pub: ['pub', 'bar'],
+  activity: [
+    'sports_activity_location',
+    'sports_complex',
+    'sports_club',
+    'bowling_alley',
+    'amusement_center',
+    'ice_skating_rink',
+    'swimming_pool',
+    'golf_course',
+  ],
+};
+
+/** Keeps sports venues out of Pubs — they have their own section. */
+const CategoryExcludedTypes: Partial<Record<PlaceCategory, string[]>> = {
+  pub: ['sports_bar', 'sports_complex', 'sports_activity_location', 'bowling_alley'],
 };
 
 /** Lean mask for the list — what a card shows, nothing more. */
@@ -179,6 +194,10 @@ function streetViewUrl(origin: string, coordinates: Coordinates): string {
 /** Details responses carry Google types, not our section — infer ours. */
 export function categoryFromTypes(types: string[] | undefined): PlaceCategory {
   const typeSet = new Set(types ?? []);
+  // Activity outranks pub: a snooker hall with a bar is an activity
+  if (CategoryTypes.activity.some((type) => typeSet.has(type))) {
+    return 'activity';
+  }
   if (CategoryTypes.pub.some((type) => typeSet.has(type))) {
     return 'pub';
   }
@@ -277,6 +296,9 @@ export async function searchNearby(options: {
     },
     body: JSON.stringify({
       includedTypes: CategoryTypes[category],
+      ...(CategoryExcludedTypes[category]
+        ? { excludedTypes: CategoryExcludedTypes[category] }
+        : {}),
       maxResultCount: 20,
       // Nearest matches, not most prominent — the product is "what's closest
       // to me", so an unremarkable café 50m away beats a landmark 1.4km away.

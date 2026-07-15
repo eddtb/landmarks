@@ -154,6 +154,8 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
 
 describe('categoryFromTypes', () => {
   test('classifies by our section priorities', () => {
+    // A snooker hall with a bar is an activity, not a pub
+    expect(categoryFromTypes(['sports_complex', 'bar'])).toBe('activity');
     expect(categoryFromTypes(['pub', 'restaurant'])).toBe('pub');
     expect(categoryFromTypes(['restaurant', 'point_of_interest'])).toBe('restaurant');
     expect(categoryFromTypes(['tourist_attraction'])).toBe('landmark');

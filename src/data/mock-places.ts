@@ -131,6 +131,17 @@ export const MockPlaces: Place[] = [
     hours: 'Open 11:00 – 23:00',
   },
   {
+    id: 'southbank-snooker',
+    name: 'Southbank Snooker & Pool Club',
+    category: 'activity',
+    coordinates: { latitude: 51.5049, longitude: -0.0921 },
+    rating: 4.4,
+    ratingCount: 320,
+    photoUrl: 'https://picsum.photos/seed/southbank-snooker/800/500',
+    address: '12 Park St, London SE1 9AB',
+    hours: 'Open 12:00 – 23:00',
+  },
+  {
     id: 'the-market-porter',
     name: 'The Market Porter',
     category: 'pub',

@@ -76,6 +76,17 @@ describe('<BrowseScreen />', () => {
     expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
   });
 
+  test('the Activities section shows activity venues', async () => {
+    locationState('ready', NearTowerBridge);
+    await render(<BrowseScreen />);
+    await screen.findByText('Tower Bridge');
+
+    fireEvent.press(screen.getByText('Activities'));
+
+    expect(await screen.findByText('Southbank Snooker & Pool Club')).toBeOnTheScreen();
+    expect(screen.queryByText('Tower Bridge')).not.toBeOnTheScreen();
+  });
+
   test('the History section shows nearby Wikipedia articles', async () => {
     locationState('ready', NearTowerBridge);
     await render(<BrowseScreen />);
