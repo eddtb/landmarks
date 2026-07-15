@@ -43,6 +43,7 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
   activity: [
     'bowling_alley',
     'sports_complex',
+    'sports_activity_location',
     'amusement_center',
     'video_arcade',
     'karaoke',
@@ -63,17 +64,29 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
 /**
  * Primary-type exclusions. Landmarks match on full tag lists (a famous
  * ship is tagged many ways), so food/drink-primary venues must be pruned
- * or every historic pub becomes a "landmark". sports_complex is an
- * umbrella primary type — Google's hierarchy matches its children too
- * (gyms, yoga studios, stadiums); we need the umbrella for venues like
- * snooker halls, so we prune fitness places (memberships, not outings)
- * and spectator sports venues (a stadium is a fixture calendar, not a
- * walk-in).
+ * or every historic pub becomes a "landmark". sports_complex and
+ * sports_activity_location are umbrella primary types — Google's
+ * hierarchy matches their children too (gyms, karate schools, stadiums);
+ * we need the umbrellas for venues like snooker halls and golf driving
+ * ranges, so we prune fitness and coaching places (memberships and
+ * classes, not outings), spectator sports venues (a stadium is a fixture
+ * calendar, not a walk-in), and shops.
  */
 const CategoryExcludedPrimaryTypes: Partial<Record<PlaceCategory, string[]>> = {
   landmark: ['pub', 'bar', 'restaurant', 'cafe', 'hotel'],
   drink: ['sports_bar'],
-  activity: ['gym', 'fitness_center', 'yoga_studio', 'stadium', 'arena', 'athletic_field'],
+  activity: [
+    'gym',
+    'fitness_center',
+    'yoga_studio',
+    'stadium',
+    'arena',
+    'athletic_field',
+    'sports_school',
+    'sports_coaching',
+    'sports_club',
+    'sporting_goods_store',
+  ],
 };
 
 /** Lean mask for the list — what a card shows, nothing more. */
