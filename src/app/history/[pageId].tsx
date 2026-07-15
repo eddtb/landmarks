@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { Compass } from '@/components/compass';
 import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -37,6 +38,7 @@ export default function HistoryDetailScreen() {
           <ThemedText type="small" themeColor="textSecondary">
             History · {formatDistance(item.distanceMeters)} from you
           </ThemedText>
+          <Compass target={item.coordinates} />
           {item.extract && (
             <ThemedText type="small" themeColor="textSecondary">
               {item.extract}
