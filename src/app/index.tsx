@@ -19,6 +19,7 @@ import { Section, SectionPicker } from '@/components/section-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAreaName } from '@/hooks/use-area-name';
 import { useFetchAnchor } from '@/hooks/use-fetch-anchor';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
@@ -71,6 +72,7 @@ function PlacesList({
   const [section, setSection] = useState<Section>('landmark');
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const areaName = useAreaName(center);
   const theme = useTheme();
 
   const onSearchSubmit = useCallback(async () => {
@@ -94,7 +96,12 @@ function PlacesList({
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
-          <ThemedText type="subtitle">Nearby</ThemedText>
+          <View>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
+              Nearby
+            </ThemedText>
+            <ThemedText type="largeTitle">{areaName ?? 'Near you'}</ThemedText>
+          </View>
           {locationDenied && (
             <>
               <ThemedText
@@ -118,22 +125,6 @@ function PlacesList({
             </>
           )}
           <SectionPicker selected={section} onSelect={setSection} />
-          {section !== 'history' && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: openNowOnly }}
-              onPress={() => setOpenNowOnly((value) => !value)}
-              style={[
-                styles.filterChip,
-                { backgroundColor: openNowOnly ? theme.backgroundSelected : theme.backgroundElement },
-              ]}>
-              <ThemedText
-                type={openNowOnly ? 'smallBold' : 'small'}
-                themeColor={openNowOnly ? 'text' : 'textSecondary'}>
-                Open now
-              </ThemedText>
-            </Pressable>
-          )}
         </View>
         {/* key remounts the body per section: fresh scroll position, no
             cross-section state; the session caches make revisits instant */}
@@ -145,6 +136,7 @@ function PlacesList({
             category={section}
             center={center}
             openNowOnly={openNowOnly}
+            onToggleOpenNow={() => setOpenNowOnly((value) => !value)}
           />
         )}
       </SafeAreaView>
@@ -156,11 +148,14 @@ function PlacesBody({
   category,
   center,
   openNowOnly,
+  onToggleOpenNow,
 }: {
   category: PlaceCategory;
   center: Coordinates;
   openNowOnly: boolean;
+  onToggleOpenNow: () => void;
 }) {
+  const theme = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   // Fetch from a stable anchor (moves after ~250m walked); distances and
   // ordering below track the live position on every GPS update.
@@ -189,9 +184,26 @@ function PlacesBody({
   }, [refresh]);
 
   if (state.status === 'loading') {
+    // Skeleton cards hold the layout instead of a lone spinner
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
+      <View style={styles.list}>
+        {[0, 1, 2].map((index) => (
+          <View
+            key={index}
+            style={[styles.skeletonCard, { backgroundColor: theme.backgroundElement }]}>
+            <View style={[styles.skeletonPhoto, { backgroundColor: theme.backgroundSelected }]} />
+            <View style={styles.skeletonBody}>
+              <View style={[styles.skeletonLine, { backgroundColor: theme.backgroundSelected }]} />
+              <View
+                style={[
+                  styles.skeletonLine,
+                  styles.skeletonLineShort,
+                  { backgroundColor: theme.backgroundSelected },
+                ]}
+              />
+            </View>
+          </View>
+        ))}
       </View>
     );
   }
@@ -217,17 +229,34 @@ function PlacesBody({
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
+      ListHeaderComponent={
+        <View style={styles.listMeta}>
+          <ThemedText type="small" themeColor="textSecondary">
+            {livePlaces.length} places · nearest first by walk time
+          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ selected: openNowOnly }}
+            onPress={onToggleOpenNow}
+            style={[
+              styles.filterChip,
+              {
+                borderColor: openNowOnly ? theme.accent : theme.backgroundSelected,
+                backgroundColor: openNowOnly ? theme.backgroundElement : 'transparent',
+              },
+            ]}>
+            <ThemedText
+              type={openNowOnly ? 'smallBold' : 'small'}
+              themeColor={openNowOnly ? 'accent' : 'textSecondary'}>
+              Open now
+            </ThemedText>
+          </Pressable>
+        </View>
+      }
       ListEmptyComponent={
         <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
           Nothing here yet — try another section.
         </ThemedText>
-      }
-      ListFooterComponent={
-        state.places.length > 0 ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
-            The {state.places.length} closest places
-          </ThemedText>
-        ) : null
       }
     />
   );
@@ -328,9 +357,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   filterChip: {
-    alignSelf: 'flex-start',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
+    borderRadius: 999,
+    borderWidth: 1.2,
+  },
+  listMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: Spacing.one,
+  },
+  skeletonCard: {
     borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  skeletonPhoto: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+  },
+  skeletonBody: {
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  skeletonLine: {
+    height: 14,
+    borderRadius: 7,
+    width: '55%',
+  },
+  skeletonLineShort: {
+    width: '75%',
+    height: 10,
   },
 });
