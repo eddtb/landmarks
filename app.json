@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "landmarks",
+    "name": "Landmarks",
     "slug": "landmarks",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -42,7 +42,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#1F5FD6",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
