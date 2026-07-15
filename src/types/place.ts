@@ -43,6 +43,9 @@ export type PlaceDetails = Place & {
   reviews?: PlaceReview[];
   /** e.g. ["Monday: 9:00 AM – 5:00 PM", ...] */
   weekdayHours?: string[];
+  /** Kitchen (food service) hours where a venue reports them separately. */
+  kitchenOpenNow?: boolean;
+  kitchenWeekdayHours?: string[];
   phone?: string;
   mapsUri?: string;
   /** "£" | "££" | "£££" | "££££" */

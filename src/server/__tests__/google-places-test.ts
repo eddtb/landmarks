@@ -32,6 +32,18 @@ const googlePlace = {
   googleMapsUri: 'https://maps.google.com/?cid=123',
   priceLevel: 'PRICE_LEVEL_MODERATE',
   reviewSummary: { text: { text: 'People say this market has excellent cheese.' } },
+  currentSecondaryOpeningHours: [
+    {
+      secondaryHoursType: 'DELIVERY',
+      openNow: false,
+      weekdayDescriptions: ['Monday: Closed'],
+    },
+    {
+      secondaryHoursType: 'KITCHEN',
+      openNow: true,
+      weekdayDescriptions: ['Monday: 12:00 – 9:00 PM'],
+    },
+  ],
   reviews: [
     {
       rating: 5,
@@ -101,6 +113,8 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
       mapsUri: 'https://maps.google.com/?cid=123',
       priceLevel: '££',
       reviewSummary: 'People say this market has excellent cheese.',
+      kitchenOpenNow: true,
+      kitchenWeekdayHours: ['Monday: 12:00 – 9:00 PM'],
     });
     expect(details?.photoUrls).toHaveLength(2);
     expect(details?.photoUrl).toBe(details?.photoUrls[0]);

@@ -81,6 +81,9 @@ const DetailsFieldMask = [
   'websiteUri',
   'currentOpeningHours.openNow',
   'regularOpeningHours.weekdayDescriptions',
+  'currentSecondaryOpeningHours.secondaryHoursType',
+  'currentSecondaryOpeningHours.openNow',
+  'currentSecondaryOpeningHours.weekdayDescriptions',
   'photos.name',
   'editorialSummary',
   'nationalPhoneNumber',
@@ -135,6 +138,11 @@ type GooglePlace = {
   websiteUri?: string;
   currentOpeningHours?: { openNow?: boolean };
   regularOpeningHours?: { weekdayDescriptions?: string[] };
+  currentSecondaryOpeningHours?: {
+    secondaryHoursType?: string;
+    openNow?: boolean;
+    weekdayDescriptions?: string[];
+  }[];
   photos?: { name: string }[];
   editorialSummary?: { text?: string };
   userRatingCount?: number;
@@ -288,6 +296,14 @@ export function mapGooglePlaceDetails(
     address: googlePlace.formattedAddress ?? '',
     hours: openNow === undefined ? undefined : openNow ? 'Open now' : 'Closed now',
     weekdayHours: googlePlace.regularOpeningHours?.weekdayDescriptions,
+    ...(() => {
+      const kitchen = (googlePlace.currentSecondaryOpeningHours ?? []).find(
+        (hours) => hours.secondaryHoursType === 'KITCHEN'
+      );
+      return kitchen
+        ? { kitchenOpenNow: kitchen.openNow, kitchenWeekdayHours: kitchen.weekdayDescriptions }
+        : {};
+    })(),
     website: website?.startsWith('https://') ? (website as `https://${string}`) : undefined,
     description: googlePlace.editorialSummary?.text,
     phone: googlePlace.nationalPhoneNumber,
