@@ -385,16 +385,13 @@ export async function searchNearby(options: {
     );
   }
 
-  // Landmarks are the one category where significance matters: dense
-  // micro-venues (pocket galleries, pocket parks) can eat all nearest-20
-  // slots while the World Heritage site 800m away never makes the
-  // response. Merge nearest with most-prominent; display stays
-  // distance-sorted. Other categories: nearest-first alone is correct —
-  // any pub is a pub.
-  const queries =
-    category === 'landmark'
-      ? await Promise.all([runQuery('DISTANCE'), runQuery('POPULARITY')])
-      : [await runQuery('DISTANCE')];
+  // Every category merges nearest-20 with most-prominent-20: Nearby
+  // Search caps at 20 per request with no pagination, and the two
+  // rankings surface different places (dense micro-venues can eat all
+  // nearest slots). Display stays strictly distance-sorted — merging
+  // widens the net without changing the order. Everything is fetched
+  // up front: no mid-scroll appending, no list jumping.
+  const queries = await Promise.all([runQuery('DISTANCE'), runQuery('POPULARITY')]);
 
   const seen = new Set<string>();
   const merged: PlaceWithDistance[] = [];
