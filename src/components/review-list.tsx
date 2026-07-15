@@ -19,7 +19,7 @@ export function ReviewList({ reviews, summary }: Props) {
     <View style={styles.container}>
       <ThemedText type="smallBold">What people say</ThemedText>
       {summary && (
-        <View style={[styles.review, { backgroundColor: theme.backgroundElement }]}>
+        <View style={styles.summary}>
           <ThemedText type="small">{summary}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             Summarized with Gemini
@@ -52,5 +52,10 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Spacing.three,
     gap: Spacing.two,
+  },
+  // Deliberately not a card: the summary is the consensus, the cards are voices
+  summary: {
+    gap: Spacing.one,
+    paddingBottom: Spacing.two,
   },
 });

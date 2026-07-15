@@ -54,19 +54,25 @@ export function pickBestArticle(placeName: string, candidateTitles: string[]): s
     const titleNormalized = normalize(title);
     let score: number;
 
+    const titleTokenCount = tokens(title).size;
     if (titleNormalized === placeNormalized) {
       score = 1;
-    } else if (
-      titleNormalized.includes(placeNormalized) ||
-      placeNormalized.includes(titleNormalized)
-    ) {
+    } else if (titleNormalized.includes(placeNormalized)) {
+      // Title extends the place name: "George Inn, Southwark" — safe
+      score = 0.85;
+    } else if (placeNormalized.includes(titleNormalized) && titleTokenCount >= 2) {
+      // Place name extends the title — safe only for multi-word titles;
+      // a single-word title is usually the neighborhood, not the place
+      // ("Badger Badger Deptford" contains "Deptford")
       score = 0.85;
     } else {
-      // Token overlap (Jaccard index)
+      // Token overlap (Jaccard index) — but a single shared word is
+      // coincidence, not identity ("Badger Badger Deptford" must not
+      // match the article "Deptford")
       const titleTokens = tokens(title);
       const intersection = [...placeTokens].filter((token) => titleTokens.has(token)).length;
       const union = new Set([...placeTokens, ...titleTokens]).size;
-      score = union === 0 ? 0 : intersection / union;
+      score = intersection < 2 || union === 0 ? 0 : intersection / union;
     }
 
     if (!best || score > best.score) {
