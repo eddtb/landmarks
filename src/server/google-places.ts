@@ -35,6 +35,7 @@ const ListFieldMask = [
   'places.rating',
   'places.userRatingCount',
   'places.photos.name',
+  'routingSummaries',
 ].join(',');
 
 /** Rich mask for one tapped place — Place Details uses top-level field names. */
@@ -95,6 +96,45 @@ type GooglePlace = {
 };
 
 const MaxReviews = 4;
+
+type RoutingSummary = {
+  legs?: { duration?: string; distanceMeters?: number }[];
+  directionsUri?: string;
+};
+
+/** "73s" -> 73 */
+function parseDurationSeconds(duration: string | undefined): number | undefined {
+  if (!duration) {
+    return undefined;
+  }
+  const seconds = Number(duration.replace(/s$/, ''));
+  return Number.isFinite(seconds) ? seconds : undefined;
+}
+
+/**
+ * routingSummaries is a parallel array to places — zip by index. Entries
+ * can be missing or empty when Google has no walking route.
+ */
+export function applyRoutingSummaries(
+  places: (PlaceWithDistance | null)[],
+  summaries: RoutingSummary[] | undefined
+): (PlaceWithDistance | null)[] {
+  if (!summaries) {
+    return places;
+  }
+  return places.map((place, index) => {
+    const leg = summaries[index]?.legs?.[0];
+    if (!place || !leg) {
+      return place;
+    }
+    return {
+      ...place,
+      walkSeconds: parseDurationSeconds(leg.duration),
+      walkMeters: leg.distanceMeters,
+      walkingDirectionsUri: summaries[index]?.directionsUri,
+    };
+  });
+}
 
 function mapReviews(googleReviews: GooglePlace['reviews']): PlaceReview[] | undefined {
   const reviews = (googleReviews ?? [])
@@ -224,6 +264,11 @@ export async function searchNearby(options: {
       locationRestriction: {
         circle: { center, radius },
       },
+      // Real walking times along streets, computed relative to the searcher
+      routingParameters: {
+        origin: center,
+        travelMode: 'WALK',
+      },
     }),
   });
 
@@ -232,9 +277,14 @@ export async function searchNearby(options: {
     throw new Error(`Places API ${response.status}: ${detail.slice(0, 500)}`);
   }
 
-  const body = (await response.json()) as { places?: GooglePlace[] };
-  return (body.places ?? [])
-    .map((googlePlace) => mapGooglePlace(googlePlace, category, origin, center))
+  const body = (await response.json()) as {
+    places?: GooglePlace[];
+    routingSummaries?: RoutingSummary[];
+  };
+  const mapped = (body.places ?? []).map((googlePlace) =>
+    mapGooglePlace(googlePlace, category, origin, center)
+  );
+  return applyRoutingSummaries(mapped, body.routingSummaries)
     .filter((place): place is PlaceWithDistance => place !== null)
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }

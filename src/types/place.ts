@@ -19,7 +19,14 @@ export type Place = {
   story?: string;
 };
 
-export type PlaceWithDistance = Place & { distanceMeters: number };
+export type PlaceWithDistance = Place & {
+  distanceMeters: number;
+  /** Real walking time/distance along streets, relative to the search origin. */
+  walkSeconds?: number;
+  walkMeters?: number;
+  /** Google Maps deep link with walking mode preselected. */
+  walkingDirectionsUri?: string;
+};
 
 export type PlaceReview = {
   author: string;

@@ -1,8 +1,10 @@
 import {
+  applyRoutingSummaries,
   categoryFromTypes,
   mapGooglePlace,
   mapGooglePlaceDetails,
 } from '@/server/google-places';
+import { PlaceWithDistance } from '@/types/place';
 
 const Origin = 'http://localhost:8081';
 const User = { latitude: 51.5055, longitude: -0.0906 };
@@ -155,5 +157,40 @@ describe('categoryFromTypes', () => {
     expect(categoryFromTypes(['restaurant', 'point_of_interest'])).toBe('restaurant');
     expect(categoryFromTypes(['tourist_attraction'])).toBe('landmark');
     expect(categoryFromTypes(undefined)).toBe('landmark');
+  });
+});
+
+describe('applyRoutingSummaries', () => {
+  const place = (id: string) =>
+    ({ id, name: id, distanceMeters: 100 }) as unknown as PlaceWithDistance;
+
+  test('zips walking data onto places by index', () => {
+    const result = applyRoutingSummaries(
+      [place('a'), place('b')],
+      [
+        { legs: [{ duration: '73s', distanceMeters: 91 }], directionsUri: 'https://maps/a' },
+        { legs: [{ duration: '260s', distanceMeters: 300 }], directionsUri: 'https://maps/b' },
+      ]
+    );
+
+    expect(result[0]).toMatchObject({ walkSeconds: 73, walkMeters: 91 });
+    expect(result[1]).toMatchObject({
+      walkSeconds: 260,
+      walkMeters: 300,
+      walkingDirectionsUri: 'https://maps/b',
+    });
+  });
+
+  test('leaves places untouched when summaries are missing or empty', () => {
+    const result = applyRoutingSummaries([place('a'), place('b')], [{}, undefined as never]);
+    expect(result[0]?.walkSeconds).toBeUndefined();
+    expect(result[1]?.walkSeconds).toBeUndefined();
+
+    expect(applyRoutingSummaries([place('a')], undefined)[0]?.walkSeconds).toBeUndefined();
+  });
+
+  test('preserves nulls from failed mappings', () => {
+    const result = applyRoutingSummaries([null], [{ legs: [{ duration: '10s' }] }]);
+    expect(result[0]).toBeNull();
   });
 });
