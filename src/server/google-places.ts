@@ -50,11 +50,13 @@ const CategoryExcludedTypes: Partial<Record<PlaceCategory, string[]>> = {
 
 /**
  * sports_complex is an umbrella primary type — Google's hierarchy matches
- * its children too (gyms, yoga studios). We need the umbrella for venues
- * like snooker halls, so we prune the fitness children explicitly.
+ * its children too (gyms, yoga studios, stadiums). We need the umbrella
+ * for venues like snooker halls, so we prune its children explicitly:
+ * fitness places (memberships, not outings) and spectator venues
+ * (Activities means places you DO, not places you WATCH).
  */
 const CategoryExcludedPrimaryTypes: Partial<Record<PlaceCategory, string[]>> = {
-  activity: ['gym', 'fitness_center', 'yoga_studio'],
+  activity: ['gym', 'fitness_center', 'yoga_studio', 'stadium', 'arena', 'athletic_field'],
 };
 
 /** Lean mask for the list — what a card shows, nothing more. */
