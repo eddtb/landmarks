@@ -171,7 +171,7 @@ describe('<PlaceDetailScreen />', () => {
     // Collapsed: exactly one kitchen weekday line visible
     expect(screen.getAllByText(/12:00 – 9:00 PM|12:00 – 8:00 PM/)).toHaveLength(1);
 
-    fireEvent.press(screen.getByText(/Kitchen · open now/));
+    await fireEvent.press(screen.getByText(/Kitchen · open now/));
     expect(await screen.findAllByText(/12:00 – 9:00 PM|12:00 – 8:00 PM/)).toHaveLength(7);
   });
 
