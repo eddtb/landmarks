@@ -1,4 +1,4 @@
-# Landmarks — Product Spec (v1)
+# Venture (né Landmarks) — Product Spec
 
 > Open the app, see what's interesting around you, tap anything to learn its story.
 
