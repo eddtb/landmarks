@@ -3,7 +3,7 @@ import { Link } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { CardShadow, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { formatDistance } from '@/utils/format';
@@ -21,22 +21,19 @@ export function HistoryCard({ item }: Props) {
         accessibilityRole="button"
         style={({ pressed }) => [
           styles.card,
-          CardShadow,
           { backgroundColor: theme.backgroundElement },
           pressed && { opacity: 0.85 },
         ]}>
-        <View style={styles.cardClip}>
-          {item.thumbnailUrl && (
-            <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
-          )}
-          <View style={styles.body}>
-            <ThemedText type="smallBold" numberOfLines={2}>
-              {item.title}
-            </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              History · {formatDistance(item.distanceMeters)}
-            </ThemedText>
-          </View>
+        {item.thumbnailUrl && (
+          <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
+        )}
+        <View style={styles.body}>
+          <ThemedText type="smallBold" numberOfLines={2}>
+            {item.title}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            History · {formatDistance(item.distanceMeters)}
+          </ThemedText>
         </View>
       </Pressable>
     </Link>
@@ -45,10 +42,7 @@ export function HistoryCard({ item }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: Spacing.three,
-  },
-  cardClip: {
-    borderRadius: Spacing.three,
+    borderRadius: Spacing.three - 2,
     overflow: 'hidden',
   },
   photo: {

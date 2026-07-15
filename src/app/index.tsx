@@ -232,19 +232,13 @@ function PlacesBody({
       ListHeaderComponent={
         <View style={styles.listMeta}>
           <ThemedText type="small" themeColor="textSecondary">
-            {livePlaces.length} places · nearest first by walk time
+            {livePlaces.length} places · nearest first
           </ThemedText>
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ selected: openNowOnly }}
             onPress={onToggleOpenNow}
-            style={[
-              styles.filterChip,
-              {
-                borderColor: openNowOnly ? theme.accent : theme.backgroundSelected,
-                backgroundColor: openNowOnly ? theme.backgroundElement : 'transparent',
-              },
-            ]}>
+            hitSlop={Spacing.two}>
             <ThemedText
               type={openNowOnly ? 'smallBold' : 'small'}
               themeColor={openNowOnly ? 'accent' : 'textSecondary'}>
@@ -355,12 +349,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 14,
-  },
-  filterChip: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-    borderRadius: 999,
-    borderWidth: 1.2,
   },
   listMeta: {
     flexDirection: 'row',

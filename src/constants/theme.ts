@@ -8,22 +8,19 @@ import '@/global.css';
 import { Platform } from 'react-native';
 
 export const Colors = {
+  // The whole palette, by rule: if it isn't interactive and isn't a
+  // name it's grey; if it's interactive it's violet. No third case —
+  // state is words and dimming, never colour.
   light: {
     text: '#17181A',
-    /** Warm paper, not device white — cards read as white ON it. */
-    background: '#FBFAF8',
-    /** Card surfaces: true white, lifted off the paper by CardShadow. */
-    backgroundElement: '#FFFFFF',
-    backgroundSelected: '#ECEAE4',
-    textSecondary: '#60646C',
-    /** The one interactive colour — links, toggles, walk times, the route line. */
+    background: '#FFFFFF',
+    backgroundElement: '#F2F2F4',
+    backgroundSelected: '#E6E6EA',
+    textSecondary: '#7B7E85',
+    /** The one interactive colour — buttons, links, selection, the route. */
     accent: '#6A4BDB',
-    /** Semantic only, never decoration: a venue confirmed open. */
-    open: '#1E8A4C',
-    /** Semantic only: time-sensitive warnings — closes soon, usually busy. */
-    signal: '#B45D09',
-    /** Semantic only: a venue confirmed closed. */
-    closed: '#A63D3D',
+    /** Violet's quiet surface tint (dial rings, soft highlights). */
+    accentSoft: '#E4DDF8',
   },
   dark: {
     text: '#ffffff',
@@ -32,9 +29,7 @@ export const Colors = {
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
     accent: '#A18BF5',
-    open: '#4CC38A',
-    signal: '#F0A24A',
-    closed: '#E5716F',
+    accentSoft: '#3A3357',
   },
 } as const;
 
@@ -77,16 +72,3 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
-
-/**
- * The soft lift that separates white cards from the paper background.
- * Invisible in dark mode by design (shadows on black do nothing) —
- * there the element colour does the separating.
- */
-export const CardShadow = {
-  shadowColor: '#17181A',
-  shadowOpacity: 0.07,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 3 },
-  elevation: 3,
-} as const;

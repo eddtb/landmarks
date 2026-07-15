@@ -38,10 +38,11 @@ export function SectionPicker({ selected, onSelect }: Props) {
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
             onPress={() => onSelect(section.value)}
-            style={[styles.segment, isSelected && { backgroundColor: theme.text }]}>
+            style={[styles.segment, isSelected && { backgroundColor: theme.accent }]}>
             <ThemedText
               type={isSelected ? 'smallBold' : 'small'}
-              themeColor={isSelected ? 'background' : 'textSecondary'}>
+              style={isSelected ? styles.selectedLabel : undefined}
+              themeColor={isSelected ? undefined : 'textSecondary'}>
               {section.label}
             </ThemedText>
           </Pressable>
@@ -65,5 +66,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: 999,
+  },
+  selectedLabel: {
+    // White holds on the accent in both modes
+    color: '#FFFFFF',
   },
 });
