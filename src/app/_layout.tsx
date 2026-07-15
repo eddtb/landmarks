@@ -13,7 +13,13 @@ export default function RootLayout() {
       <AnimatedSplashOverlay />
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="place/[id]" options={{ title: '', headerBackTitle: 'Nearby' }} />
+        {/* Venue + Go draw full-bleed and bring their own back controls */}
+        <Stack.Screen name="place/[id]/index" options={{ headerShown: false }} />
+        <Stack.Screen name="place/[id]/go" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="place/[id]/reviews"
+          options={{ title: 'Reviews', headerBackTitle: 'Back' }}
+        />
         <Stack.Screen name="history/[pageId]" options={{ title: '', headerBackTitle: 'Nearby' }} />
       </Stack>
     </ThemeProvider>

@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { Link } from 'expo-router';
+import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -59,15 +59,18 @@ export function PlaceCard({ place }: Props) {
   const closed = place.openNow === false;
 
   return (
-    <Link href={{ pathname: '/place/[id]', params: { id: place.id } }} asChild>
-      <Pressable
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.card,
-          { backgroundColor: theme.backgroundElement },
-          closed && styles.closedCard,
-          pressed && { opacity: 0.85 },
-        ]}>
+    // router.push, not Link asChild: asChild silently drops the
+    // Pressable's function-style (verified by probe — cards rendered
+    // with no background at all)
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: theme.backgroundElement },
+        closed && styles.closedCard,
+        pressed && { opacity: 0.85 },
+      ]}>
         <Image
           source={{ uri: place.photoUrl }}
           style={styles.photo}
@@ -83,7 +86,6 @@ export function PlaceCard({ place }: Props) {
           </ThemedText>
         </View>
       </Pressable>
-    </Link>
   );
 }
 
