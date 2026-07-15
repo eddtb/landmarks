@@ -1,4 +1,4 @@
-import { parseBusynessPattern, parseWhatsOnEvents } from '@/server/anthropic';
+import { parseBlurb, parseBusynessPattern, parseWhatsOnEvents } from '@/server/anthropic';
 
 describe('parseWhatsOnEvents', () => {
   test('parses a fenced JSON array of events', () => {
@@ -65,6 +65,31 @@ describe('parseWhatsOnEvents', () => {
     expect(parseWhatsOnEvents('[{"title": "Broken"')).toEqual([]);
     expect(parseWhatsOnEvents('{"title": "Object"}')).toEqual([]);
     expect(parseWhatsOnEvents('')).toEqual([]);
+  });
+});
+
+describe('parseBlurb', () => {
+  test('parses a blurb behind narration', () => {
+    expect(
+      parseBlurb(
+        'Here is what I found: {"blurb": "An artist-run project space in the Fuel Tank studios on Creekside."}'
+      )
+    ).toBe('An artist-run project space in the Fuel Tank studios on Creekside.');
+  });
+
+  test('strips the citation tags the search tooling embeds', () => {
+    expect(
+      parseBlurb(
+        '{"blurb": "<cite index=\\"2-1\\">A golf facility with 60 bays</cite> and <cite index=\\"2-13\\">views of the Thames</cite>."}'
+      )
+    ).toBe('A golf facility with 60 bays and views of the Thames.');
+  });
+
+  test('a decline is null, and so is anything unusable', () => {
+    expect(parseBlurb('{"blurb": null}')).toBeNull();
+    expect(parseBlurb('{"blurb": "Too short."}')).toBeNull();
+    expect(parseBlurb(`{"blurb": "${'x'.repeat(500)}"}`)).toBeNull();
+    expect(parseBlurb('I could not find anything reliable.')).toBeNull();
   });
 });
 
