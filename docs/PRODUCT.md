@@ -12,7 +12,7 @@
    - **Food** — anywhere you go to eat: restaurants, cafes, bakeries, dessert spots
    - **Drinks** — anywhere you go for the drink: pubs, bars, wine bars, coffee shops
    - **Activities** — things you do or watch: bowling, snooker, cinema, comedy,
-     theatre, spas (not gyms or stadiums — outings, not memberships or fixtures)
+     theatre (not gyms, spas, or stadiums — outings, not memberships or fixtures)
    - **History** — nearby Wikipedia articles for the incurably curious
 
    Each section is a scrollable list of nearby places sorted by proximity:

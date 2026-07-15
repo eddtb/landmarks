@@ -52,10 +52,6 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
     'water_park',
     'skateboard_park',
     'adventure_sports_center',
-    // Wellness outings — treatments you book for an afternoon
-    'spa',
-    'sauna',
-    'massage',
     // Shows — things you go out to watch are still things you do
     'movie_theater',
     'comedy_club',
@@ -64,32 +60,20 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
   ],
 };
 
-/** Keeps sports venues out of Drinks — they have their own section. */
-const CategoryExcludedTypes: Partial<Record<PlaceCategory, string[]>> = {
-  drink: ['sports_bar', 'sports_complex', 'sports_activity_location', 'bowling_alley'],
-};
-
 /**
- * sports_complex is an umbrella primary type — Google's hierarchy matches
- * its children too (gyms, yoga studios, stadiums). We need the umbrella
- * for venues like snooker halls, so we prune its children explicitly:
- * fitness places (memberships, not outings) and spectator sports venues
- * (a stadium is a fixture calendar, not a walk-in). Salon types are
- * pruned for the same reason spa is included: a spa is an outing, a
- * haircut is an errand.
+ * Primary-type exclusions. Landmarks match on full tag lists (a famous
+ * ship is tagged many ways), so food/drink-primary venues must be pruned
+ * or every historic pub becomes a "landmark". sports_complex is an
+ * umbrella primary type — Google's hierarchy matches its children too
+ * (gyms, yoga studios, stadiums); we need the umbrella for venues like
+ * snooker halls, so we prune fitness places (memberships, not outings)
+ * and spectator sports venues (a stadium is a fixture calendar, not a
+ * walk-in).
  */
 const CategoryExcludedPrimaryTypes: Partial<Record<PlaceCategory, string[]>> = {
-  activity: [
-    'gym',
-    'fitness_center',
-    'yoga_studio',
-    'stadium',
-    'arena',
-    'athletic_field',
-    'beauty_salon',
-    'hair_salon',
-    'nail_salon',
-  ],
+  landmark: ['pub', 'bar', 'restaurant', 'cafe', 'hotel'],
+  drink: ['sports_bar'],
+  activity: ['gym', 'fitness_center', 'yoga_studio', 'stadium', 'arena', 'athletic_field'],
 };
 
 /** Lean mask for the list — what a card shows, nothing more. */
@@ -381,15 +365,16 @@ export async function searchNearby(options: {
         'X-Goog-FieldMask': ListFieldMask,
       },
       body: JSON.stringify({
-        // Activities filter on PRIMARY type: matching full tag lists lets
-        // every yoga studio (tagged with broad sports types) consume the
-        // nearest-20 slots before real venues make the response.
-        ...(category === 'activity'
-          ? { includedPrimaryTypes: CategoryTypes[category] }
-          : { includedTypes: CategoryTypes[category] }),
-        ...(CategoryExcludedTypes[category]
-          ? { excludedTypes: CategoryExcludedTypes[category] }
-          : {}),
+        // Food, Drinks, and Activities filter on PRIMARY type — what a
+        // place IS, not everything it's tagged with. Full-tag matching
+        // put hotels in Food (tagged restaurant for their breakfasts)
+        // and comedy clubs in Drinks (tagged bar for having one).
+        // Landmarks are the exception: attractions carry varied primary
+        // types, so full tags cast the wider net and the excluded
+        // primaries above prune the pubs-that-are-also-attractions.
+        ...(category === 'landmark'
+          ? { includedTypes: CategoryTypes[category] }
+          : { includedPrimaryTypes: CategoryTypes[category] }),
         ...(CategoryExcludedPrimaryTypes[category]
           ? { excludedPrimaryTypes: CategoryExcludedPrimaryTypes[category] }
           : {}),

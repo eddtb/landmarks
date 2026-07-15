@@ -181,7 +181,6 @@ describe('categoryFromTypes', () => {
     expect(categoryFromTypes(['wine_bar'])).toBe('drink');
     expect(categoryFromTypes(['restaurant', 'point_of_interest'])).toBe('food');
     expect(categoryFromTypes(['bakery'])).toBe('food');
-    expect(categoryFromTypes(['spa'])).toBe('activity');
     expect(categoryFromTypes(['tourist_attraction'])).toBe('landmark');
     expect(categoryFromTypes(undefined)).toBe('landmark');
   });
