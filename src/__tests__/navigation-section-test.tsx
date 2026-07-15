@@ -50,6 +50,8 @@ describe('<NavigationSection />', () => {
     expect(screen.getByText('Head east on Middle Rd')).toBeOnTheScreen();
     expect(screen.getByText('Turn right onto St Thomas St')).toBeOnTheScreen();
     expect(mockFetchWalkingRoute).toHaveBeenCalledWith(User, Target);
+    // No step geometry — the steps stand alone, no map
+    expect(screen.queryByTestId('route-map')).not.toBeOnTheScreen();
   });
 
   test('route with geometry shows the satnav dial and current instruction', async () => {
@@ -80,6 +82,8 @@ describe('<NavigationSection />', () => {
     expect(screen.getByText('21 m')).toBeOnTheScreen();
     // Current instruction appears twice: under the dial and in the list
     expect(screen.getAllByText('Head east on Middle Rd')).toHaveLength(2);
+    // Step geometry also draws the route on a map above the steps
+    expect(screen.getByTestId('route-map')).toBeOnTheScreen();
   });
 
   test('route unavailable shows a friendly message', async () => {
