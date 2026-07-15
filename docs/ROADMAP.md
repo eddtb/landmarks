@@ -44,6 +44,18 @@ and no Google editorial summary (e.g. Bridget Jones's Flat). Server-side
 route, per-place cache, must-decline-when-unsure prompt, labeled AI-generated.
 Trust chain: Wikipedia → Google editorial → AI → nothing.
 
+## Tried and removed — the Today section (#53 → #56)
+
+A sixth pill listing AI-researched events happening nearby today. The
+research worked (real market days, one-off shows, comedy nights, all
+sourced) but the section failed as a *destination*: coverage is
+inherently patchy day to day, first-load research took ~20s, and
+tapping an event led to venue info rather than event info. Lesson
+kept: AI-researched facts land when they decorate a place the user is
+already looking at (What's On, busyness notes), and disappoint when
+they must carry a surface alone. The good idea it leaves behind:
+day-aware What's On on venue screens ("Tonight · Quiz · 8pm").
+
 ## Parked idea — concept queries for Activities
 
 Google's type taxonomy can't express some activity venues (e.g. Badger

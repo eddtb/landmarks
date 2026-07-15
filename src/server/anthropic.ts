@@ -5,7 +5,6 @@ import {
   DayPattern,
   Weekdays,
 } from '@/types/busyness';
-import { TodayEvent } from '@/types/today';
 import { WhatsOnEvent } from '@/types/whats-on';
 
 /**
@@ -139,58 +138,6 @@ export async function fetchWhatsOn(options: {
     maxSearches: MaxSearches,
   });
   return parseWhatsOnEvents(text);
-}
-
-const MaxTodayEvents = 12;
-const MaxTodaySearches = 6;
-
-function todayPrompt(dateLabel: string, areaLabel: string): string {
-  return [
-    `What is on TODAY, ${dateLabel}, in or very near ${areaLabel}?`,
-    'Cover the layers separately: street markets open today; cinema programmes (ONE entry per cinema, e.g. "Films showing today", not per showtime); live music and comedy; theatre and shows; exhibitions; festivals and one-offs; big-match sports screenings.',
-    '',
-    'Rules:',
-    '- Only include things confirmed by a specific web page as happening today (or every week on this weekday); include that page URL as sourceUrl.',
-    '- Skip anything that clearly ended earlier today.',
-    '- If little is on, a short list (or []) is the correct answer; never guess or pad.',
-    '- Respond with ONLY a JSON array, no other text:',
-    '  [{"title": string, "venue": string, "time": string, "detail": string (optional), "sourceUrl": string}]',
-  ].join('\n');
-}
-
-/** Pure parsing step, unit-testable without network. */
-export function parseTodayEvents(text: string): TodayEvent[] {
-  return parseJsonArraySlice(text)
-    .filter(
-      (event): event is Record<string, string> =>
-        typeof event.title === 'string' &&
-        typeof event.venue === 'string' &&
-        typeof event.time === 'string' &&
-        typeof event.sourceUrl === 'string' &&
-        event.sourceUrl.startsWith('https://')
-    )
-    .slice(0, MaxTodayEvents)
-    .map((event) => ({
-      title: event.title,
-      venue: event.venue,
-      time: event.time,
-      ...(typeof event.detail === 'string' && event.detail ? { detail: event.detail } : {}),
-      sourceUrl: event.sourceUrl,
-    }));
-}
-
-export async function fetchTodayEvents(options: {
-  apiKey: string;
-  dateLabel: string;
-  areaLabel: string;
-}): Promise<TodayEvent[]> {
-  const text = await researchWithWebSearch({
-    apiKey: options.apiKey,
-    prompt: todayPrompt(options.dateLabel, options.areaLabel),
-    maxTokens: 1500,
-    maxSearches: MaxTodaySearches,
-  });
-  return parseTodayEvents(text);
 }
 
 /**

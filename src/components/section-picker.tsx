@@ -5,15 +5,14 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { PlaceCategory } from '@/types/place';
 
-/** The browse sections: the four place categories, today's events, and history. */
-export type Section = PlaceCategory | 'today' | 'history';
+/** The browse sections: the four place categories plus history. */
+export type Section = PlaceCategory | 'history';
 
 const Sections: { value: Section; label: string }[] = [
   { value: 'landmark', label: 'Landmarks' },
   { value: 'food', label: 'Food' },
   { value: 'drink', label: 'Drinks' },
   { value: 'activity', label: 'Activities' },
-  { value: 'today', label: 'Today' },
   { value: 'history', label: 'History' },
 ];
 

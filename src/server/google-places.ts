@@ -18,7 +18,6 @@ import { Coordinates, distanceMeters } from '@/utils/geo';
  */
 
 const NearbySearchEndpoint = 'https://places.googleapis.com/v1/places:searchNearby';
-const TextSearchEndpoint = 'https://places.googleapis.com/v1/places:searchText';
 const PlaceDetailsEndpoint = 'https://places.googleapis.com/v1/places';
 
 /** Place types per section — Places API (New) "Table A" types. */
@@ -473,62 +472,6 @@ export async function searchNearby(options: {
     }
   }
   return sortByWalkTime(merged);
-}
-
-/** How far a "nearby" event venue can plausibly be. */
-const MaxEventVenueMeters = 4000;
-
-/**
- * Grounds an AI-found event venue to a real Google place: the anchor
- * for photos, walk-to-it navigation, and the tap-through to the place
- * screen — and a hallucination guard, since a venue that doesn't exist
- * near the user gets the event dropped.
- */
-export async function findVenueNearby(options: {
-  apiKey: string;
-  name: string;
-  center: Coordinates;
-  origin: string;
-}): Promise<{ placeId: string; photoUrl?: string; distanceMeters: number } | null> {
-  const { apiKey, name, center, origin } = options;
-
-  const response = await fetch(TextSearchEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'places.id,places.location,places.photos.name',
-    },
-    body: JSON.stringify({
-      textQuery: name,
-      maxResultCount: 1,
-      locationBias: { circle: { center, radius: MaxEventVenueMeters } },
-    }),
-  });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Text Search ${response.status}: ${detail.slice(0, 500)}`);
-  }
-
-  const body = (await response.json()) as { places?: GooglePlace[] };
-  const place = body.places?.[0];
-  const { latitude, longitude } = place?.location ?? {};
-  if (!place || latitude === undefined || longitude === undefined) {
-    return null;
-  }
-
-  const meters = distanceMeters(center, { latitude, longitude });
-  if (meters > MaxEventVenueMeters) {
-    return null;
-  }
-
-  const photoName = place.photos?.[0]?.name;
-  return {
-    placeId: place.id,
-    photoUrl: photoName ? photoProxyUrl(photoName, origin) : undefined,
-    distanceMeters: meters,
-  };
 }
 
 export async function getPlaceDetails(options: {
