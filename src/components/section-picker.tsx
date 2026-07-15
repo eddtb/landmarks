@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -12,6 +12,7 @@ const Sections: { value: Section; label: string }[] = [
   { value: 'landmark', label: 'Landmarks' },
   { value: 'restaurant', label: 'Restaurants' },
   { value: 'pub', label: 'Pubs' },
+  { value: 'activity', label: 'Activities' },
   { value: 'history', label: 'History' },
 ];
 
@@ -24,7 +25,11 @@ export function SectionPicker({ selected, onSelect }: Props) {
   const theme = useTheme();
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.backgroundElement }]}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={[styles.container, { backgroundColor: theme.backgroundElement }]}
+      contentContainerStyle={styles.content}>
       {Sections.map((section) => {
         const isSelected = section.value === selected;
         return (
@@ -42,21 +47,23 @@ export function SectionPicker({ selected, onSelect }: Props) {
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row',
     borderRadius: Spacing.three,
+    flexGrow: 0,
+  },
+  content: {
     padding: Spacing.one,
     gap: Spacing.one,
   },
   segment: {
-    flex: 1,
     alignItems: 'center',
     paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three - Spacing.one,
   },
 });

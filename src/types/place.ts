@@ -1,6 +1,6 @@
 import { Coordinates } from '@/utils/geo';
 
-export type PlaceCategory = 'landmark' | 'restaurant' | 'pub';
+export type PlaceCategory = 'landmark' | 'restaurant' | 'pub' | 'activity';
 
 export type Place = {
   id: string;
@@ -53,4 +53,5 @@ export const CategoryLabels: Record<PlaceCategory, string> = {
   landmark: 'Landmark',
   restaurant: 'Restaurant',
   pub: 'Pub',
+  activity: 'Activity',
 };
