@@ -1,3 +1,10 @@
+import {
+  BusynessLevels,
+  BusynessPattern,
+  DayBands,
+  DayPattern,
+  Weekdays,
+} from '@/types/busyness';
 import { TodayEvent } from '@/types/today';
 import { WhatsOnEvent } from '@/types/whats-on';
 
@@ -96,7 +103,14 @@ async function researchWithWebSearch(options: {
     body: JSON.stringify({
       model: Model,
       max_tokens: options.maxTokens,
-      tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: options.maxSearches }],
+      // maxSearches 0 = pure reasoning (busyness forecasts) — no tool at all
+      ...(options.maxSearches > 0
+        ? {
+            tools: [
+              { type: 'web_search_20250305', name: 'web_search', max_uses: options.maxSearches },
+            ],
+          }
+        : {}),
       messages: [{ role: 'user', content: options.prompt }],
     }),
   });
@@ -177,4 +191,94 @@ export async function fetchTodayEvents(options: {
     maxSearches: MaxTodaySearches,
   });
   return parseTodayEvents(text);
+}
+
+/**
+ * Busyness is a FORECAST, not a lookup: no web search, just the model
+ * reasoning over signals we already hold — the way a local would guess.
+ * The UI must always frame the result as "usually" + an estimate label.
+ */
+function busynessPrompt(options: {
+  name: string;
+  typeLabel: string;
+  ratingCount: number;
+  address: string;
+  events: string[];
+}): string {
+  const { name, typeLabel, ratingCount, address, events } = options;
+  return [
+    `Estimate how busy this venue TYPICALLY is through the week, like a knowledgeable local would: "${name}" (${typeLabel}), ${address}. It has ${ratingCount} Google reviews (popularity signal).`,
+    events.length > 0 ? `Known regular events: ${events.join('; ')}.` : '',
+    '',
+    'Bands: morning (8am-12), afternoon (12-5pm), evening (5-8pm), night (8pm-close).',
+    'Levels: "quiet" | "moderate" | "busy" | "packed".',
+    'Consider venue type rhythms (pubs peak Friday/Saturday nights, cafes peak weekend mornings), popularity, and the known events.',
+    'Respond with ONLY JSON, no other text:',
+    '  {"pattern": {"Monday": {"morning": level, "afternoon": level, "evening": level, "night": level}, ... all seven days ...}, "note": string (optional — ONE standout worth knowing, max 8 words, e.g. "packed on Sunday quiz nights")}',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * Pure parsing step. Strict by design: a pattern missing any day or
+ * band is rejected outright — a partial forecast would silently show
+ * wrong "around this time" answers for the missing slots.
+ */
+export function parseBusynessPattern(text: string): BusynessPattern | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  const root = parsed as { pattern?: Record<string, Record<string, string>>; note?: unknown };
+  if (typeof root?.pattern !== 'object' || root.pattern === null) {
+    return null;
+  }
+
+  const pattern = {} as Record<(typeof Weekdays)[number], DayPattern>;
+  for (const day of Weekdays) {
+    const dayEntry = root.pattern[day];
+    if (typeof dayEntry !== 'object' || dayEntry === null) {
+      return null;
+    }
+    const dayPattern = {} as DayPattern;
+    for (const band of DayBands) {
+      const level = dayEntry[band];
+      if (!BusynessLevels.includes(level as (typeof BusynessLevels)[number])) {
+        return null;
+      }
+      dayPattern[band] = level as (typeof BusynessLevels)[number];
+    }
+    pattern[day] = dayPattern;
+  }
+
+  return {
+    pattern,
+    ...(typeof root.note === 'string' && root.note ? { note: root.note } : {}),
+  };
+}
+
+export async function fetchBusynessPattern(options: {
+  apiKey: string;
+  name: string;
+  typeLabel: string;
+  ratingCount: number;
+  address: string;
+  events: string[];
+}): Promise<BusynessPattern | null> {
+  const text = await researchWithWebSearch({
+    apiKey: options.apiKey,
+    prompt: busynessPrompt(options),
+    maxTokens: 800,
+    maxSearches: 0,
+  });
+  return parseBusynessPattern(text);
 }

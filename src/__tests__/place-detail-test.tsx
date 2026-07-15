@@ -41,6 +41,11 @@ jest.mock('@/data/whats-on-client', () => ({
   fetchWhatsOn: (...args: unknown[]) => mockFetchWhatsOn(...args),
 }));
 
+const mockFetchBusyness = jest.fn();
+jest.mock('@/data/busyness-client', () => ({
+  fetchBusyness: (...args: unknown[]) => mockFetchBusyness(...args),
+}));
+
 // Two-tier fetch: keep the real summary cache, mock only the details call
 const mockFetchPlaceDetails = jest.fn();
 jest.mock('@/data/places-client', () => {
@@ -62,6 +67,8 @@ describe('<PlaceDetailScreen />', () => {
     mockFetchStory.mockResolvedValue(null);
     mockFetchWhatsOn.mockReset();
     mockFetchWhatsOn.mockResolvedValue([]);
+    mockFetchBusyness.mockReset();
+    mockFetchBusyness.mockResolvedValue(null);
     mockFetchPlaceDetails.mockReset();
     // Default: details lookup finds nothing extra; screens render from summary
     mockFetchPlaceDetails.mockResolvedValue(null);
@@ -132,6 +139,36 @@ describe('<PlaceDetailScreen />', () => {
     // Every AI-researched claim carries its source and a disclosure
     expect(screen.getByText('Source')).toBeOnTheScreen();
     expect(screen.getByText(/check the source before you go/)).toBeOnTheScreen();
+  });
+
+  test('shows the busyness forecast as a labelled estimate', async () => {
+    const allDay = { morning: 'quiet', afternoon: 'quiet', evening: 'quiet', night: 'quiet' };
+    mockFetchBusyness.mockResolvedValue({
+      pattern: {
+        Monday: allDay,
+        Tuesday: allDay,
+        Wednesday: allDay,
+        Thursday: allDay,
+        Friday: allDay,
+        Saturday: allDay,
+        Sunday: allDay,
+      },
+      note: 'Fills up on match nights',
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
+    await render(<PlaceDetailScreen />);
+
+    expect(
+      await screen.findByText(/Usually quiet around this time — Fills up on match nights · AI estimate/)
+    ).toBeOnTheScreen();
+  });
+
+  test('landmarks get no busyness forecast', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(screen.getByText('Tower Bridge')).toBeOnTheScreen();
+    expect(mockFetchBusyness).not.toHaveBeenCalled();
   });
 
   test('landmarks are not researched for events', async () => {
