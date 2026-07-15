@@ -30,6 +30,10 @@ describe('pickBestArticle', () => {
     );
   });
 
+  test('a place named after its neighborhood must not match the neighborhood article', () => {
+    expect(pickBestArticle('Badger Badger Deptford', ['Deptford', 'Deptford High Street'])).toBeNull();
+  });
+
   test('returns null when nothing plausibly matches', () => {
     expect(
       pickBestArticle('Bomba Paella Stall', ['Southwark Cathedral', 'Borough Market'])
