@@ -9,10 +9,12 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
+    text: '#17181A',
+    /** Warm paper, not device white — cards read as white ON it. */
+    background: '#FBFAF8',
+    /** Card surfaces: true white, lifted off the paper by CardShadow. */
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#ECEAE4',
     textSecondary: '#60646C',
     /** The one interactive colour — links, toggles, walk times, the route line. */
     accent: '#6A4BDB',
@@ -75,3 +77,16 @@ export const Spacing = {
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;
+
+/**
+ * The soft lift that separates white cards from the paper background.
+ * Invisible in dark mode by design (shadows on black do nothing) —
+ * there the element colour does the separating.
+ */
+export const CardShadow = {
+  shadowColor: '#17181A',
+  shadowOpacity: 0.07,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 3,
+} as const;

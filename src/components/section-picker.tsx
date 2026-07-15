@@ -28,7 +28,7 @@ export function SectionPicker({ selected, onSelect }: Props) {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      style={[styles.container, { backgroundColor: theme.backgroundElement }]}
+      style={styles.container}
       contentContainerStyle={styles.content}>
       {Sections.map((section) => {
         const isSelected = section.value === selected;
