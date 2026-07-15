@@ -51,6 +51,7 @@ export default function PlaceDetailScreen() {
   const storyState = useStory(place);
   const theme = useTheme();
   const [hoursExpanded, setHoursExpanded] = useState(false);
+  const [kitchenExpanded, setKitchenExpanded] = useState(false);
 
   if (!place) {
     if (state.status === 'loading') {
@@ -109,6 +110,30 @@ export default function PlaceDetailScreen() {
                 ) : (
                   <ThemedText type="small" themeColor="textSecondary">
                     {details.weekdayHours[todayIndex()]}
+                  </ThemedText>
+                )}
+              </Pressable>
+            )}
+            {details?.kitchenWeekdayHours && details.kitchenWeekdayHours.length > 0 && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setKitchenExpanded((expanded) => !expanded)}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Kitchen{details.kitchenOpenNow === undefined
+                    ? ''
+                    : details.kitchenOpenNow
+                      ? ' · open now'
+                      : ' · closed now'}
+                </ThemedText>
+                {kitchenExpanded ? (
+                  details.kitchenWeekdayHours.map((line) => (
+                    <ThemedText key={line} type="small" themeColor="textSecondary">
+                      {line}
+                    </ThemedText>
+                  ))
+                ) : (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {details.kitchenWeekdayHours[todayIndex()]}
                   </ThemedText>
                 )}
               </Pressable>

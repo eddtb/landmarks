@@ -148,6 +148,33 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('Summarized with Gemini')).toBeOnTheScreen();
   });
 
+  test('shows kitchen hours with open state when a venue reports them', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      kitchenOpenNow: true,
+      kitchenWeekdayHours: [
+        'Monday: 12:00 – 9:00 PM',
+        'Tuesday: 12:00 – 9:00 PM',
+        'Wednesday: 12:00 – 9:00 PM',
+        'Thursday: 12:00 – 9:00 PM',
+        'Friday: 12:00 – 9:00 PM',
+        'Saturday: 12:00 – 9:00 PM',
+        'Sunday: 12:00 – 8:00 PM',
+      ],
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText(/Kitchen · open now/)).toBeOnTheScreen();
+    // Collapsed: exactly one kitchen weekday line visible
+    expect(screen.getAllByText(/12:00 – 9:00 PM|12:00 – 8:00 PM/)).toHaveLength(1);
+
+    fireEvent.press(screen.getByText(/Kitchen · open now/));
+    expect(await screen.findAllByText(/12:00 – 9:00 PM|12:00 – 8:00 PM/)).toHaveLength(7);
+  });
+
   test('omits the reviews section when details have none', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
