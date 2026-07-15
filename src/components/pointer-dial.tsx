@@ -5,10 +5,10 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useHeading } from '@/hooks/use-heading';
+import { useTheme } from '@/hooks/use-theme';
 import { bearingDegrees, Coordinates } from '@/utils/geo';
 
 const DialSize = 200;
-const AccentColor = '#3c87f7';
 
 type Props = {
   user: Coordinates;
@@ -25,6 +25,7 @@ type Props = {
  */
 export function PointerDial({ user, target, primary, secondary }: Props) {
   const heading = useHeading(true);
+  const theme = useTheme();
   const rotation = useSharedValue(0);
 
   const pointable = heading !== null;
@@ -49,12 +50,12 @@ export function PointerDial({ user, target, primary, secondary }: Props) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.dial}>
+      <View style={[styles.dial, { borderColor: theme.accent + '40' }]}>
         {pointable && (
           <Animated.View
             style={[StyleSheet.absoluteFill, styles.needleLayer, needleStyle]}
             testID="compass-needle">
-            <View style={styles.needle} />
+            <View style={[styles.needle, { borderBottomColor: theme.accent }]} />
           </Animated.View>
         )}
         <ThemedText type="subtitle">{primary}</ThemedText>
@@ -82,7 +83,6 @@ const styles = StyleSheet.create({
     height: DialSize,
     borderRadius: DialSize / 2,
     borderWidth: 2,
-    borderColor: AccentColor + '40',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -98,6 +98,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: 30,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderBottomColor: AccentColor,
   },
 });

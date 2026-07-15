@@ -2,12 +2,11 @@ import { AppleMaps, GoogleMaps } from 'expo-maps';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { WalkingRoute } from '@/types/route';
 import { Coordinates } from '@/utils/geo';
 import { cameraForRoute } from '@/utils/route-camera';
 
-/** Matches the current-step highlight in the step list below the map. */
-const RouteColor = '#3c87f7';
 const RouteWidth = 4;
 
 /** The step geometry as one continuous line: first start, then each end. */
@@ -35,13 +34,15 @@ type Props = {
  * without step geometry (the step list still works without us).
  */
 export function RouteMap({ route, destination }: Props) {
+  const theme = useTheme();
   const points = routePolylinePoints(route);
   if (points.length < 2) {
     return null;
   }
 
   const camera = cameraForRoute([...points, destination]);
-  const polyline = { coordinates: points, color: RouteColor, width: RouteWidth };
+  // The accent IS the route colour — the map draws the brand
+  const polyline = { coordinates: points, color: theme.accent, width: RouteWidth };
 
   return (
     <View style={styles.frame} testID="route-map">
