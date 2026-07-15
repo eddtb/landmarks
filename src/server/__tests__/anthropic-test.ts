@@ -16,6 +16,17 @@ describe('parseWhatsOnEvents', () => {
     ]);
   });
 
+  test('finds the array behind narration the prompt asked the model not to write', () => {
+    const events = parseWhatsOnEvents(
+      'Based on the search results, I have found confirmed regular events. ```json\n' +
+        '[{"title": "Quiz night", "schedule": "Sundays", "sourceUrl": "https://example.com"}]\n' +
+        '``` Let me know if you need more.'
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0].title).toBe('Quiz night');
+  });
+
   test('omits detail when absent or empty', () => {
     const events = parseWhatsOnEvents(
       '[{"title": "Folk night", "schedule": "Wednesdays", "sourceUrl": "https://example.com"}]'
