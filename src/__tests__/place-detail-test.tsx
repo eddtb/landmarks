@@ -329,14 +329,15 @@ describe('<PlaceDetailScreen />', () => {
     shareSpy.mockRestore();
   });
 
-  test('hides Call when the place has no phone number', async () => {
+  test('there is no Call button — phone lives in Details', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
     expect(screen.queryByText('Call')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Phone')).not.toBeOnTheScreen();
   });
 
-  test('dials the place phone number once details with a phone load', async () => {
+  test('the Details phone number dials when tapped', async () => {
     mockFetchPlaceDetails.mockResolvedValue({
       ...MockPlaces[0],
       id: 'tower-bridge',
@@ -346,7 +347,8 @@ describe('<PlaceDetailScreen />', () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
-    fireEvent.press(await screen.findByText('Call'));
+    expect(await screen.findByText('Phone')).toBeOnTheScreen();
+    fireEvent.press(screen.getByText('020 7407 1002'));
 
     expect(Linking.openURL).toHaveBeenCalledWith('tel:020 7407 1002');
   });
