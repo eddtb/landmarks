@@ -1,4 +1,4 @@
-# Landmarks — v2 Roadmap
+# Venture — v2 Roadmap
 
 Goal: extract maximum value from the APIs we already pay for (Google Places,
 Wikipedia, device location) before adding new dependencies.
