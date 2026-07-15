@@ -25,21 +25,36 @@ const CategoryTypes: Record<PlaceCategory, string[]> = {
   landmark: ['tourist_attraction', 'museum', 'historical_landmark', 'art_gallery', 'park'],
   restaurant: ['restaurant', 'cafe'],
   pub: ['pub', 'bar'],
+  // Leisure venues only — deliberately NOT sports_activity_location or
+  // sports_club: Google tags every gym, dojo, and yoga studio with those,
+  // and under nearest-first they flood out the actual activities.
   activity: [
-    'sports_activity_location',
-    'sports_complex',
-    'sports_club',
     'bowling_alley',
+    'sports_complex',
     'amusement_center',
+    'video_arcade',
+    'karaoke',
     'ice_skating_rink',
     'swimming_pool',
     'golf_course',
+    'water_park',
+    'skateboard_park',
+    'adventure_sports_center',
   ],
 };
 
 /** Keeps sports venues out of Pubs — they have their own section. */
 const CategoryExcludedTypes: Partial<Record<PlaceCategory, string[]>> = {
   pub: ['sports_bar', 'sports_complex', 'sports_activity_location', 'bowling_alley'],
+};
+
+/**
+ * sports_complex is an umbrella primary type — Google's hierarchy matches
+ * its children too (gyms, yoga studios). We need the umbrella for venues
+ * like snooker halls, so we prune the fitness children explicitly.
+ */
+const CategoryExcludedPrimaryTypes: Partial<Record<PlaceCategory, string[]>> = {
+  activity: ['gym', 'fitness_center', 'yoga_studio'],
 };
 
 /** Lean mask for the list — what a card shows, nothing more. */
@@ -78,6 +93,11 @@ const DetailsFieldMask = [
 ].join(',');
 
 export const DefaultRadiusMeters = 1500;
+
+/** People walk 5 minutes for coffee but travel for bowling. */
+const CategoryRadiusMeters: Partial<Record<PlaceCategory, number>> = {
+  activity: 3000,
+};
 
 /**
  * Quality gate for list results: places flagged as (possibly) closed,
@@ -285,7 +305,13 @@ export async function searchNearby(options: {
   /** Origin of the incoming request, used to build photo-proxy URLs. */
   origin: string;
 }): Promise<PlaceWithDistance[]> {
-  const { apiKey, category, center, radius = DefaultRadiusMeters, origin } = options;
+  const {
+    apiKey,
+    category,
+    center,
+    radius = CategoryRadiusMeters[category] ?? DefaultRadiusMeters,
+    origin,
+  } = options;
 
   const response = await fetch(NearbySearchEndpoint, {
     method: 'POST',
@@ -295,9 +321,17 @@ export async function searchNearby(options: {
       'X-Goog-FieldMask': ListFieldMask,
     },
     body: JSON.stringify({
-      includedTypes: CategoryTypes[category],
+      // Activities filter on PRIMARY type: matching full tag lists lets
+      // every yoga studio (tagged with broad sports types) consume the
+      // nearest-20 slots before real venues make the response.
+      ...(category === 'activity'
+        ? { includedPrimaryTypes: CategoryTypes[category] }
+        : { includedTypes: CategoryTypes[category] }),
       ...(CategoryExcludedTypes[category]
         ? { excludedTypes: CategoryExcludedTypes[category] }
+        : {}),
+      ...(CategoryExcludedPrimaryTypes[category]
+        ? { excludedPrimaryTypes: CategoryExcludedPrimaryTypes[category] }
         : {}),
       maxResultCount: 20,
       // Nearest matches, not most prominent — the product is "what's closest
