@@ -70,9 +70,9 @@ describe('mapGooglePlace (lean list mapping)', () => {
     expect(place?.photoUrl).not.toContain('googleapis.com');
   });
 
-  test('falls back to a placeholder image when there is no photo', () => {
+  test('falls back to street-view imagery when there is no photo', () => {
     const place = mapGooglePlace({ ...googlePlace, photos: undefined }, 'restaurant', Origin, User);
-    expect(place?.photoUrl).toContain('picsum.photos');
+    expect(place?.photoUrl).toBe(`${Origin}/api/streetview?lat=51.5055&lng=-0.0917`);
   });
 
   test('returns null for places missing name or location', () => {
@@ -145,10 +145,10 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
     expect(details?.reviews).toBeUndefined();
   });
 
-  test('always provides at least a placeholder photo', () => {
+  test('always provides at least a street-view fallback photo', () => {
     const details = mapGooglePlaceDetails({ ...googlePlace, photos: [] }, Origin);
     expect(details?.photoUrls).toHaveLength(1);
-    expect(details?.photoUrls[0]).toContain('picsum.photos');
+    expect(details?.photoUrls[0]).toContain('/api/streetview?lat=');
   });
 });
 
@@ -197,7 +197,7 @@ describe('applyRoutingSummaries', () => {
 });
 
 describe('passesQualityGate', () => {
-  const base = { id: 'x', userRatingCount: 10 };
+  const base = { id: 'x', userRatingCount: 10, photos: [{ name: 'places/x/photos/p' }] };
 
   test('operational, rated places pass', () => {
     expect(passesQualityGate(base)).toBe(true);
@@ -210,7 +210,12 @@ describe('passesQualityGate', () => {
   });
 
   test('never-rated places are dropped', () => {
-    expect(passesQualityGate({ id: 'x' })).toBe(false);
-    expect(passesQualityGate({ id: 'x', userRatingCount: 0 })).toBe(false);
+    expect(passesQualityGate({ id: 'x', photos: base.photos })).toBe(false);
+    expect(passesQualityGate({ id: 'x', userRatingCount: 0, photos: base.photos })).toBe(false);
+  });
+
+  test('places without a real photo are dropped', () => {
+    expect(passesQualityGate({ ...base, photos: undefined })).toBe(false);
+    expect(passesQualityGate({ ...base, photos: [] })).toBe(false);
   });
 });

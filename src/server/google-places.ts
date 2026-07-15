@@ -65,15 +65,19 @@ const DetailsFieldMask = [
 export const DefaultRadiusMeters = 1500;
 
 /**
- * Quality gate for list results: places flagged as (possibly) closed and
- * places nobody has ever rated are overwhelmingly ghosts, duplicates, or
- * gone — worse than showing fewer results.
+ * Quality gate for list results: places flagged as (possibly) closed,
+ * places nobody has ever rated, and places without a single real photo
+ * are overwhelmingly ghosts, duplicates, or gone — worse than showing
+ * fewer results.
  */
 export function passesQualityGate(googlePlace: GooglePlace): boolean {
   if (googlePlace.businessStatus && googlePlace.businessStatus !== 'OPERATIONAL') {
     return false;
   }
-  return (googlePlace.userRatingCount ?? 0) > 0;
+  if ((googlePlace.userRatingCount ?? 0) === 0) {
+    return false;
+  }
+  return (googlePlace.photos?.length ?? 0) > 0;
 }
 const MaxDetailPhotos = 6;
 
@@ -167,8 +171,9 @@ function photoProxyUrl(photoName: string, origin: string): string {
   return `${origin}/api/photo?name=${encodeURIComponent(photoName)}`;
 }
 
-function placeholderPhotoUrl(id: string): string {
-  return `https://picsum.photos/seed/${encodeURIComponent(id)}/800/500`;
+/** Street-level imagery via our proxy — Google Maps' own no-photos fallback. */
+function streetViewUrl(origin: string, coordinates: Coordinates): string {
+  return `${origin}/api/streetview?lat=${coordinates.latitude}&lng=${coordinates.longitude}`;
 }
 
 /** Details responses carry Google types, not our section — infer ours. */
@@ -205,7 +210,7 @@ export function mapGooglePlace(
     rating: googlePlace.rating ?? 0,
     photoUrl: photoName
       ? photoProxyUrl(photoName, origin)
-      : placeholderPhotoUrl(googlePlace.id),
+      : streetViewUrl(origin, { latitude, longitude }),
     address: googlePlace.formattedAddress ?? '',
     ratingCount: googlePlace.userRatingCount,
   };
@@ -236,8 +241,9 @@ export function mapGooglePlaceDetails(
     coordinates: { latitude, longitude },
     rating: googlePlace.rating ?? 0,
     ratingCount: googlePlace.userRatingCount,
-    photoUrl: photoUrls[0] ?? placeholderPhotoUrl(googlePlace.id),
-    photoUrls: photoUrls.length > 0 ? photoUrls : [placeholderPhotoUrl(googlePlace.id)],
+    photoUrl: photoUrls[0] ?? streetViewUrl(origin, { latitude, longitude }),
+    photoUrls:
+      photoUrls.length > 0 ? photoUrls : [streetViewUrl(origin, { latitude, longitude })],
     address: googlePlace.formattedAddress ?? '',
     hours: openNow === undefined ? undefined : openNow ? 'Open now' : 'Closed now',
     weekdayHours: googlePlace.regularOpeningHours?.weekdayDescriptions,
