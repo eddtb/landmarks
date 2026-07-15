@@ -135,6 +135,22 @@ const DetailsFieldMask = [
 
 export const DefaultRadiusMeters = 1500;
 
+/** Typical walking pace (~4.8 km/h) — matches the demo-mode estimate. */
+const WalkingPaceMetersPerSecond = 1.33;
+
+/**
+ * Lists sort by the number the cards show: real walking time along
+ * streets. Straight-line meters lie near water — a place 400m away
+ * across Deptford Creek is a 15-minute walk round via the bridge.
+ * Places Google can't route fall back to a straight-line estimate at
+ * walking pace, slotting in roughly where they belong.
+ */
+export function sortByWalkTime(places: PlaceWithDistance[]): PlaceWithDistance[] {
+  const seconds = (place: PlaceWithDistance) =>
+    place.walkSeconds ?? place.distanceMeters / WalkingPaceMetersPerSecond;
+  return [...places].sort((a, b) => seconds(a) - seconds(b));
+}
+
 /** People walk 5 minutes for coffee but travel for bowling. */
 const CategoryRadiusMeters: Partial<Record<PlaceCategory, number>> = {
   activity: 3000,
@@ -427,9 +443,9 @@ export async function searchNearby(options: {
   // Every category merges nearest-20 with most-prominent-20: Nearby
   // Search caps at 20 per request with no pagination, and the two
   // rankings surface different places (dense micro-venues can eat all
-  // nearest slots). Display stays strictly distance-sorted — merging
-  // widens the net without changing the order. Everything is fetched
-  // up front: no mid-scroll appending, no list jumping.
+  // nearest slots). Display sorts by walking time — merging widens the
+  // net without changing the order. Everything is fetched up front:
+  // no mid-scroll appending, no list jumping.
   const queries = await Promise.all([runQuery('DISTANCE'), runQuery('POPULARITY')]);
 
   const seen = new Set<string>();
@@ -440,7 +456,7 @@ export async function searchNearby(options: {
       merged.push(place);
     }
   }
-  return merged.sort((a, b) => a.distanceMeters - b.distanceMeters);
+  return sortByWalkTime(merged);
 }
 
 export async function getPlaceDetails(options: {
