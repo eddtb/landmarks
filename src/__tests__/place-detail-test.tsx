@@ -36,6 +36,11 @@ jest.mock('@/data/story-client', () => ({
   fetchStory: (...args: unknown[]) => mockFetchStory(...args),
 }));
 
+const mockFetchWhatsOn = jest.fn();
+jest.mock('@/data/whats-on-client', () => ({
+  fetchWhatsOn: (...args: unknown[]) => mockFetchWhatsOn(...args),
+}));
+
 // Two-tier fetch: keep the real summary cache, mock only the details call
 const mockFetchPlaceDetails = jest.fn();
 jest.mock('@/data/places-client', () => {
@@ -55,6 +60,8 @@ describe('<PlaceDetailScreen />', () => {
   beforeEach(() => {
     mockFetchStory.mockReset();
     mockFetchStory.mockResolvedValue(null);
+    mockFetchWhatsOn.mockReset();
+    mockFetchWhatsOn.mockResolvedValue([]);
     mockFetchPlaceDetails.mockReset();
     // Default: details lookup finds nothing extra; screens render from summary
     mockFetchPlaceDetails.mockResolvedValue(null);
@@ -106,6 +113,33 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('The Anchor Bankside')).toBeOnTheScreen();
     expect(screen.queryByText('Story')).not.toBeOnTheScreen();
     expect(screen.queryByText('About')).not.toBeOnTheScreen();
+  });
+
+  test("shows What's on events for venues that have them", async () => {
+    mockFetchWhatsOn.mockResolvedValue([
+      {
+        title: 'Quiz night',
+        schedule: 'Sundays 8pm',
+        detail: '£2 entry',
+        sourceUrl: 'https://example.com/quiz',
+      },
+    ]);
+    mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
+    await render(<PlaceDetailScreen />);
+
+    expect(await screen.findByText("What's on")).toBeOnTheScreen();
+    expect(screen.getByText('Quiz night · Sundays 8pm · £2 entry')).toBeOnTheScreen();
+    // Every AI-researched claim carries its source and a disclosure
+    expect(screen.getByText('Source')).toBeOnTheScreen();
+    expect(screen.getByText(/check the source before you go/)).toBeOnTheScreen();
+  });
+
+  test('landmarks are not researched for events', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    expect(screen.getByText('Tower Bridge')).toBeOnTheScreen();
+    expect(mockFetchWhatsOn).not.toHaveBeenCalled();
   });
 
   test('handles unknown ids gracefully', async () => {

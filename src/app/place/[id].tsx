@@ -14,6 +14,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
 import { useTheme } from '@/hooks/use-theme';
+import { useWhatsOn } from '@/hooks/use-whats-on';
 import { CategoryLabels, Place } from '@/types/place';
 import { formatRating } from '@/utils/format';
 
@@ -49,6 +50,7 @@ export default function PlaceDetailScreen() {
   // phone/mapsUri only exist once details load — undefined while showing the summary
   const details = state.status === 'ready' ? state.details : undefined;
   const storyState = useStory(place);
+  const whatsOn = useWhatsOn(place);
   const theme = useTheme();
   const [hoursExpanded, setHoursExpanded] = useState(false);
   const [kitchenExpanded, setKitchenExpanded] = useState(false);
@@ -196,6 +198,26 @@ export default function PlaceDetailScreen() {
             </View>
           ) : null}
 
+          {whatsOn.status === 'ready' && (
+            <View style={styles.story}>
+              <ThemedText type="smallBold">What&apos;s on</ThemedText>
+              {whatsOn.events.map((event) => (
+                <View key={`${event.title}-${event.schedule}`} style={styles.event}>
+                  <ThemedText type="small">
+                    {event.title} · {event.schedule}
+                    {event.detail ? ` · ${event.detail}` : ''}
+                  </ThemedText>
+                  <ExternalLink href={event.sourceUrl as `https://${string}`}>
+                    <ThemedText type="linkPrimary">Source</ThemedText>
+                  </ExternalLink>
+                </View>
+              ))}
+              <ThemedText type="small" themeColor="textSecondary">
+                Researched by AI from venue listings — check the source before you go.
+              </ThemedText>
+            </View>
+          )}
+
           {((details?.reviews && details.reviews.length > 0) || details?.reviewSummary) && (
             <ReviewList reviews={details?.reviews ?? []} summary={details?.reviewSummary} />
           )}
@@ -244,5 +266,8 @@ const styles = StyleSheet.create({
   },
   story: {
     gap: Spacing.two,
+  },
+  event: {
+    gap: Spacing.half,
   },
 });
