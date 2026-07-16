@@ -39,6 +39,12 @@ export type PlaceWithDistance = Place & {
   walkMeters?: number;
   /** Google Maps deep link with walking mode preselected. */
   walkingDirectionsUri?: string;
+  /**
+   * Position in Google's prominence ranking — powers the Featured sort.
+   * Absent when only the nearest-20 query surfaced the place; those sort
+   * after every featured place (Google didn't feature them).
+   */
+  prominenceRank?: number;
 };
 
 export type PlaceReview = {

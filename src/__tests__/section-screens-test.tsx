@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
+import { ActionSheetIOS } from 'react-native';
 
 import ActivitiesTab from '@/app/(tabs)/activities';
 import DrinksTab from '@/app/(tabs)/drinks';
@@ -109,6 +110,35 @@ describe('section tab screens', () => {
 
     await fireEvent.press(screen.getByText('All'));
     expect(await screen.findByText('The Anchor Bankside')).toBeOnTheScreen();
+  });
+
+  test('the count-line sort menu reorders by prominence for Featured', async () => {
+    locationState('ready', NearTowerBridge);
+    // Google featured The Anchor despite it being the longest walk
+    mockFetchNearbyPlaces.mockImplementation(async (category: PlaceCategory, center) =>
+      placesByCategory(category, center).map((place) => ({
+        ...place,
+        prominenceRank: place.name === 'The Anchor Bankside' ? 0 : undefined,
+      }))
+    );
+    jest
+      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
+      .mockImplementation((_options, callback) => callback(1)); // "Featured"
+
+    await render(<DrinksTab />);
+    await screen.findByText('The George Inn');
+
+    const names = () =>
+      screen
+        .getAllByText(/The George Inn|The Anchor Bankside|The Market Porter/)
+        .map((node) => node.props.children);
+    expect(names()).toEqual(['The George Inn', 'The Market Porter', 'The Anchor Bankside']);
+
+    await fireEvent.press(screen.getByText(/Nearest ▾/));
+
+    expect(screen.getByText(/Featured ▾/)).toBeOnTheScreen();
+    // The featured place leads; unranked places keep their distance order
+    expect(names()).toEqual(['The Anchor Bankside', 'The George Inn', 'The Market Porter']);
   });
 
   test('shows the priming screen before permission is requested', async () => {

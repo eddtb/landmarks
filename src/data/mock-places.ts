@@ -168,7 +168,11 @@ export function placesByCategory(
   category: PlaceCategory,
   userLocation: Coordinates
 ): PlaceWithDistance[] {
-  return MockPlaces.filter((place) => place.category === category)
+  const matches = MockPlaces.filter((place) => place.category === category);
+  // Demo-mode prominence: rating order stands in for Google's ranking
+  const byRating = [...matches].sort((a, b) => b.rating - a.rating);
+  const prominenceRank = new Map(byRating.map((place, index) => [place.id, index]));
+  return matches
     .map((place) => {
       const distance = distanceMeters(userLocation, place.coordinates);
       return {
@@ -176,6 +180,7 @@ export function placesByCategory(
         distanceMeters: distance,
         // Demo-mode walking estimate: ~1.33 m/s along imaginary streets
         walkSeconds: Math.round(distance / 1.33),
+        prominenceRank: prominenceRank.get(place.id),
       };
     })
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
