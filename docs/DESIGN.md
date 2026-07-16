@@ -54,6 +54,17 @@ scale, never from a second face.
 Unused styles get deleted from `ThemedText`, not abandoned — dead tokens
 are how drift starts.
 
+## Navigation
+
+The five sections are the app's top-level destinations and live in the
+**native system tab bar** (liquid glass on iOS 26, Material tabs on
+Android) with SF Symbols. The browse header keeps its identity — NEARBY
+over the area name with the violet locator dot — and carries the one
+filter as an **All | Open** segmented control opposite the title.
+Spacing contract: the count line and first card sit tight beneath the
+header; its bottom padding is the only gap. Venue screens push over the
+tab bar; deeper content pushes; dip-in tools (compass) present modally.
+
 ## Screen grammar
 
 Three questions, asked in order; nothing appears on a screen unless it
