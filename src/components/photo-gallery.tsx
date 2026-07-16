@@ -9,7 +9,13 @@ type Props = {
   photoUrls: string[];
 };
 
-/** Paged photo strip with a dot indicator; a single photo renders plain. */
+/**
+ * Paged photo strip with a dot indicator. The structure never changes
+ * with the photo count: the screen mounts this with the summary's one
+ * cached photo, and when details land the extra pages append beside
+ * it — the first image element is keyed by URL and survives the
+ * update, so the hero never remounts (remounting is a visible flash).
+ */
 export function PhotoGallery({ photoUrls }: Props) {
   const [page, setPage] = useState(0);
   const { width: windowWidth } = useWindowDimensions();
@@ -20,21 +26,12 @@ export function PhotoGallery({ photoUrls }: Props) {
     setPage(Math.round(event.nativeEvent.contentOffset.x / width));
   };
 
-  if (photoUrls.length <= 1) {
-    return (
-      <Image
-        source={{ uri: photoUrls[0] }}
-        style={[styles.photo, { width }]}
-        contentFit="cover"
-      />
-    );
-  }
-
   return (
     <View>
       <ScrollView
         horizontal
         pagingEnabled
+        scrollEnabled={photoUrls.length > 1}
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScroll}
         style={{ width }}>
@@ -44,20 +41,23 @@ export function PhotoGallery({ photoUrls }: Props) {
             source={{ uri: url }}
             style={[styles.photo, { width }]}
             contentFit="cover"
+            cachePolicy="memory-disk"
           />
         ))}
       </ScrollView>
-      <View style={styles.dots}>
-        {photoUrls.map((url, index) => (
-          <View
-            key={url}
-            style={[
-              styles.dot,
-              { backgroundColor: index === page ? theme.text : theme.backgroundSelected },
-            ]}
-          />
-        ))}
-      </View>
+      {photoUrls.length > 1 && (
+        <View style={styles.dots}>
+          {photoUrls.map((url, index) => (
+            <View
+              key={url}
+              style={[
+                styles.dot,
+                { backgroundColor: index === page ? theme.text : theme.backgroundSelected },
+              ]}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }

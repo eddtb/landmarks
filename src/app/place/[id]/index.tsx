@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -129,11 +128,11 @@ export default function PlaceScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}>
-        {details?.photoUrls && details.photoUrls.length > 1 ? (
-          <PhotoGallery photoUrls={details.photoUrls} />
-        ) : (
-          <Image source={{ uri: place.photoUrl }} style={styles.photo} contentFit="cover" />
-        )}
+        {/* One owner from first frame: the gallery starts on the
+            summary's already-cached photo and gains pages when details
+            arrive. Swapping components here remounts the hero — flash. */}
+        <PhotoGallery photoUrls={details?.photoUrls ?? [place.photoUrl]} />
+
         <View style={styles.body}>
           {/* Identity — reads exactly like a card */}
           <View>
@@ -441,10 +440,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingBottom: Spacing.six,
-  },
-  photo: {
-    width: '100%',
-    aspectRatio: 16 / 9,
   },
   body: {
     padding: Spacing.four,
