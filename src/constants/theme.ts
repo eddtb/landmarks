@@ -19,8 +19,10 @@ export const Colors = {
     textSecondary: '#7B7E85',
     /** The one interactive colour — buttons, links, selection, the route. */
     accent: '#6A4BDB',
-    /** Violet's quiet surface tint (dial rings, soft highlights). */
-    accentSoft: '#E4DDF8',
+    /** Violet's quiet surface tint — chips, dial rings, soft highlights. */
+    accentSoft: '#EFEAFC',
+    /** The board's warm accent. Sparing highlights only — never state. */
+    accentWarm: '#F0B429',
   },
   dark: {
     text: '#ffffff',
@@ -29,7 +31,8 @@ export const Colors = {
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
     accent: '#A18BF5',
-    accentSoft: '#3A3357',
+    accentSoft: '#332B52',
+    accentWarm: '#F6CE5B',
   },
 } as const;
 

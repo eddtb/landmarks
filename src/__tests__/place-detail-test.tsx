@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
-import { Share } from 'react-native';
+import { Alert, Share } from 'react-native';
 
+import CompassScreen from '@/app/place/[id]/compass';
 import PlaceDetailScreen from '@/app/place/[id]/index';
 import ReviewsScreen from '@/app/place/[id]/reviews';
 import { MockPlaces } from '@/data/mock-places';
@@ -293,9 +294,9 @@ describe('<PlaceDetailScreen />', () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
-    // Kitchen hours live inside the expanded All hours block
+    // Kitchen hours live inside the expanded All hours block, with state
     await fireEvent.press(await screen.findByText('All hours'));
-    expect(await screen.findByText(/Kitchen today:/)).toBeOnTheScreen();
+    expect(await screen.findByText(/Kitchen · open now:/)).toBeOnTheScreen();
   });
 
   test('omits the reviews section when details have none', async () => {
@@ -327,13 +328,44 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('117 Rotherhithe St, London SE16 4NF')).toBeOnTheScreen();
   });
 
-  test('the Go button leads the actions', async () => {
+  test('the action row is Go, Share, Compass, and an overflow menu', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
-    // The journey is a mode, not a section — one violet button opens it
     expect(screen.getByText(/^Go/)).toBeOnTheScreen();
+    expect(screen.getByText('Share')).toBeOnTheScreen();
+    expect(screen.getByText('Compass')).toBeOnTheScreen();
+    expect(screen.getByText('⋯')).toBeOnTheScreen();
     expect(screen.queryByText('Directions')).not.toBeOnTheScreen();
+  });
+
+  test('the overflow menu offers Open in Maps, plus Call when a phone exists', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      phone: '020 7407 1002',
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+    await screen.findByText('Phone');
+
+    await fireEvent.press(screen.getByText('⋯'));
+
+    const buttons = alertSpy.mock.calls[0][2] ?? [];
+    const labels = buttons.map((button) => button.text);
+    expect(labels).toContain('Open in Maps');
+    expect(labels).toContain('Call 020 7407 1002');
+    alertSpy.mockRestore();
+  });
+
+  test('the compass modal shows the dial for the place', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<CompassScreen />);
+
+    expect(await screen.findByText('Tower Bridge')).toBeOnTheScreen();
+    expect(screen.getByText('away')).toBeOnTheScreen();
   });
 
   test("Share prefers Google's mapsUri once details load", async () => {

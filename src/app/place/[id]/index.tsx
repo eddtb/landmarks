@@ -4,6 +4,7 @@ import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -41,6 +42,11 @@ export default function PlaceScreen() {
   const walkSeconds =
     summary && 'walkSeconds' in summary
       ? (summary as { walkSeconds?: number }).walkSeconds
+      : undefined;
+  // Walking-mode Maps deep link rides in from the list search
+  const walkingUri =
+    summary && 'walkingDirectionsUri' in summary
+      ? (summary as { walkingDirectionsUri?: string }).walkingDirectionsUri
       : undefined;
   const storyState = useStory(place);
   const whatsOn = useWhatsOn(place);
@@ -136,6 +142,48 @@ export default function PlaceScreen() {
                 pressed && { opacity: 0.85 },
               ]}>
               <ThemedText type="smallBold">Share</ThemedText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                router.push({ pathname: '/place/[id]/compass', params: { id: place.id } })
+              }
+              style={({ pressed }) => [
+                styles.mini,
+                { backgroundColor: theme.backgroundElement },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold">Compass</ThemedText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More actions"
+              onPress={() =>
+                Alert.alert(place.name, undefined, [
+                  {
+                    text: 'Open in Maps',
+                    onPress: () =>
+                      Linking.openURL(
+                        walkingUri ?? details?.mapsUri ?? mapsSearchUrl(place.name, place.coordinates)
+                      ),
+                  },
+                  ...(details?.phone
+                    ? [
+                        {
+                          text: `Call ${details.phone}`,
+                          onPress: () => Linking.openURL(`tel:${details.phone}`),
+                        },
+                      ]
+                    : []),
+                  { text: 'Cancel', style: 'cancel' as const },
+                ])
+              }
+              style={({ pressed }) => [
+                styles.more,
+                { backgroundColor: theme.backgroundElement },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold">⋯</ThemedText>
             </Pressable>
           </View>
 
@@ -246,7 +294,13 @@ export default function PlaceScreen() {
                 ))}
                 {details.kitchenWeekdayHours && details.kitchenWeekdayHours.length > 0 && (
                   <ThemedText type="small" themeColor="textSecondary">
-                    Kitchen today: {details.kitchenWeekdayHours[todayIndex()]}
+                    Kitchen
+                    {details.kitchenOpenNow === undefined
+                      ? ''
+                      : details.kitchenOpenNow
+                        ? ' · open now'
+                        : ' · closed now'}
+                    : {details.kitchenWeekdayHours[todayIndex()]}
                   </ThemedText>
                 )}
               </View>
@@ -379,6 +433,12 @@ const styles = StyleSheet.create({
   },
   mini: {
     flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.two + Spacing.half,
+    borderRadius: Spacing.three - Spacing.one,
+  },
+  more: {
+    width: 44,
     alignItems: 'center',
     paddingVertical: Spacing.two + Spacing.half,
     borderRadius: Spacing.three - Spacing.one,
