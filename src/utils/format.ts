@@ -37,16 +37,47 @@ export function closesSoonLabel(nextCloseTime: string, now: Date): string | null
   return `Closes in ${minutes} min`;
 }
 
-/** "2026-07-15T23:00:00Z" -> "Open until 11pm" (device-local, minutes only when odd). */
+/** 17:30 -> "5:30pm", 9:00 -> "9am" — device-local, minutes only when odd. */
+function clockLabel(date: Date): string {
+  const hour12 = date.getHours() % 12 || 12;
+  const suffix = date.getHours() < 12 ? 'am' : 'pm';
+  const minutes = date.getMinutes();
+  return `${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''}${suffix}`;
+}
+
+/** "2026-07-15T23:00:00Z" -> "Open until 11pm". */
 export function openUntilLabel(nextCloseTime: string): string | null {
   const closesAt = new Date(nextCloseTime);
   if (!Number.isFinite(closesAt.getTime())) {
     return null;
   }
-  const hour12 = closesAt.getHours() % 12 || 12;
-  const suffix = closesAt.getHours() < 12 ? 'am' : 'pm';
-  const minutes = closesAt.getMinutes();
-  return `Open until ${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''}${suffix}`;
+  return `Open until ${clockLabel(closesAt)}`;
+}
+
+const ShortDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * The closed card's hopeful counterpart: "Opens in 20 min" when it's
+ * worth waiting, "Closed · Opens 5pm" same-day, "Closed · Opens Fri
+ * 9am" beyond. Null when the moment is past or malformed.
+ */
+export function opensLabel(nextOpenTime: string, now: Date): string | null {
+  const opensAt = new Date(nextOpenTime);
+  if (!Number.isFinite(opensAt.getTime())) {
+    return null;
+  }
+  const minutes = Math.round((opensAt.getTime() - now.getTime()) / 60000);
+  if (minutes <= 0) {
+    return null;
+  }
+  if (minutes <= 60) {
+    return `Opens in ${minutes} min`;
+  }
+  const sameDay = opensAt.toDateString() === now.toDateString();
+  const when = sameDay
+    ? clockLabel(opensAt)
+    : `${ShortDays[opensAt.getDay()]} ${clockLabel(opensAt)}`;
+  return `Closed · Opens ${when}`;
 }
 
 const DayAbbrev: Record<string, string> = {

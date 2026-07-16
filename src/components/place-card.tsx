@@ -11,6 +11,7 @@ import {
   formatDistance,
   formatRating,
   formatWalkTime,
+  opensLabel,
   openUntilLabel,
 } from '@/utils/format';
 
@@ -24,7 +25,9 @@ type Props = {
  */
 export function placeStateLabel(place: Place): string | null {
   if (place.openNow === false) {
-    return 'Closed';
+    return (
+      (place.nextOpenTime ? opensLabel(place.nextOpenTime, new Date()) : null) ?? 'Closed'
+    );
   }
   if (place.openNow && place.nextCloseTime) {
     return (
@@ -44,7 +47,9 @@ export function placeStateLabel(place: Place): string | null {
  */
 export function cardStateLabel(place: Place): string | null {
   if (place.openNow === false) {
-    return 'Closed';
+    return (
+      (place.nextOpenTime ? opensLabel(place.nextOpenTime, new Date()) : null) ?? 'Closed'
+    );
   }
   if (place.openNow && place.nextCloseTime) {
     return closesSoonLabel(place.nextCloseTime, new Date());
@@ -83,7 +88,9 @@ export function PlaceCard({ place }: Props) {
         styles.card,
         { backgroundColor: theme.backgroundElement },
         closed && styles.closedCard,
-        pressed && { opacity: 0.85 },
+        // Pressed must never OUTSHINE closed: a dimmed card darkens
+        // further on press instead of springing back to life
+        pressed && { opacity: closed ? 0.35 : 0.85 },
       ]}>
         <Image
           source={{ uri: place.photoUrl }}

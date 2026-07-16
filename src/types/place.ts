@@ -20,6 +20,8 @@ export type Place = {
   openNow?: boolean;
   /** RFC3339 next closing moment, when open — powers "Closes in 40 min". */
   nextCloseTime?: string;
+  /** RFC3339 next opening moment, when closed — powers "Opens 5pm". */
+  nextOpenTime?: string;
   /** "£" | "££" | "£££" | "££££" */
   priceLevel?: string;
   website?: `https://${string}`;
