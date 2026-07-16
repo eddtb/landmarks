@@ -6,6 +6,7 @@ import {
   formatRating,
   formatRatingCount,
   formatWalkTime,
+  opensLabel,
   openUntilLabel,
 } from '@/utils/format';
 
@@ -55,6 +56,34 @@ describe('openUntilLabel', () => {
 
   test('quiet on malformed timestamps', () => {
     expect(openUntilLabel('not-a-date')).toBeNull();
+  });
+});
+
+describe('opensLabel', () => {
+  const now = new Date(2026, 6, 17, 9, 0); // Friday 9am, local time
+
+  test('within the hour: worth waiting for', () => {
+    expect(opensLabel(new Date(2026, 6, 17, 9, 20).toISOString(), now)).toBe('Opens in 20 min');
+  });
+
+  test('later today: Google-style opens time', () => {
+    expect(opensLabel(new Date(2026, 6, 17, 17, 0).toISOString(), now)).toBe(
+      'Closed · Opens 5pm'
+    );
+    expect(opensLabel(new Date(2026, 6, 17, 17, 30).toISOString(), now)).toBe(
+      'Closed · Opens 5:30pm'
+    );
+  });
+
+  test('another day gets the day name', () => {
+    expect(opensLabel(new Date(2026, 6, 18, 9, 0).toISOString(), now)).toBe(
+      'Closed · Opens Sat 9am'
+    );
+  });
+
+  test('past or malformed moments are null', () => {
+    expect(opensLabel(new Date(2026, 6, 17, 8, 0).toISOString(), now)).toBeNull();
+    expect(opensLabel('not-a-date', now)).toBeNull();
   });
 });
 

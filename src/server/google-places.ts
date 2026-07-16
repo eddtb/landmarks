@@ -110,6 +110,7 @@ const ListFieldMask = [
   'places.primaryTypeDisplayName',
   'places.currentOpeningHours.openNow',
   'places.currentOpeningHours.nextCloseTime',
+  'places.currentOpeningHours.nextOpenTime',
   'places.priceLevel',
   'routingSummaries',
 ].join(',');
@@ -210,7 +211,7 @@ type GooglePlace = {
   rating?: number;
   formattedAddress?: string;
   websiteUri?: string;
-  currentOpeningHours?: { openNow?: boolean; nextCloseTime?: string };
+  currentOpeningHours?: { openNow?: boolean; nextCloseTime?: string; nextOpenTime?: string };
   outdoorSeating?: boolean;
   allowsDogs?: boolean;
   liveMusic?: boolean;
@@ -362,6 +363,7 @@ export function mapGooglePlace(
     ratingCount: googlePlace.userRatingCount,
     openNow: googlePlace.currentOpeningHours?.openNow,
     nextCloseTime: googlePlace.currentOpeningHours?.nextCloseTime,
+    nextOpenTime: googlePlace.currentOpeningHours?.nextOpenTime,
     priceLevel: googlePlace.priceLevel ? PriceLevelSymbols[googlePlace.priceLevel] : undefined,
   };
 
