@@ -1,6 +1,8 @@
 import {
   closesSoonLabel,
+  compactTimeRange,
   formatDistance,
+  formatHoursLine,
   formatRating,
   formatRatingCount,
   formatWalkTime,
@@ -53,6 +55,21 @@ describe('openUntilLabel', () => {
 
   test('quiet on malformed timestamps', () => {
     expect(openUntilLabel('not-a-date')).toBeNull();
+  });
+});
+
+describe('formatHoursLine', () => {
+  test("compacts Google's verbose weekday lines", () => {
+    expect(formatHoursLine('Monday: 11:00 AM – 11:00 PM')).toBe('Mon 11am–11pm');
+    expect(formatHoursLine('Friday: 9:30 AM – 5:00 PM')).toBe('Fri 9:30am–5pm');
+    expect(formatHoursLine('Sunday: Closed')).toBe('Sun Closed');
+    expect(formatHoursLine('Saturday: Open 24 hours')).toBe('Sat 24 hours');
+  });
+});
+
+describe('compactTimeRange', () => {
+  test('handles the bare first time Google writes', () => {
+    expect(compactTimeRange('12:00 – 9:00 PM')).toBe('12–9pm');
   });
 });
 
