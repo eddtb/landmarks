@@ -142,7 +142,7 @@ describe('<PlaceDetailScreen />', () => {
 
     expect(await screen.findByText('About')).toBeOnTheScreen();
     expect(screen.getByText(/artist-run project space/)).toBeOnTheScreen();
-    expect(screen.getByText('Researched by AI from public sources')).toBeOnTheScreen();
+    expect(screen.getByText('AI-researched')).toBeOnTheScreen();
   });
 
   test('a place with its own story never asks the AI', async () => {
@@ -201,9 +201,9 @@ describe('<PlaceDetailScreen />', () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
     await render(<PlaceDetailScreen />);
 
-    // Forecast lives in the DETAILS rows, plain grey, labelled estimate
+    // Forecast lives in the DETAILS rows — "usually" is the disclosure
     expect(await screen.findByText('Usually')).toBeOnTheScreen();
-    expect(screen.getByText(/quiet around this time · estimate/)).toBeOnTheScreen();
+    expect(screen.getByText('not busy')).toBeOnTheScreen();
   });
 
   test('landmarks get no busyness forecast', async () => {
