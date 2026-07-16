@@ -1,16 +1,19 @@
 import * as Location from 'expo-location';
 import { ReactNode, useCallback, useMemo, useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
+  Alert,
   FlatList,
   Linking,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HistoryCard } from '@/components/history-card';
 import { LocationPriming } from '@/components/location-priming';
@@ -141,6 +144,33 @@ function SectionHeader({
   );
 }
 
+/** Nearest = shortest walk; Featured = Google's own prominence ranking. */
+type SortMode = 'nearest' | 'featured';
+
+const SortLabels: Record<SortMode, string> = { nearest: 'Nearest', featured: 'Featured' };
+
+/**
+ * The count line's sort menu — system chrome, like the venue ⋯ menu.
+ * A sort has no "off", so it's a picker, not a segmented control.
+ */
+function showSortMenu(onSelect: (mode: SortMode) => void) {
+  if (Platform.OS === 'ios') {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { options: ['Nearest', 'Featured', 'Cancel'], cancelButtonIndex: 2 },
+      (index) => {
+        if (index === 0) onSelect('nearest');
+        if (index === 1) onSelect('featured');
+      }
+    );
+    return;
+  }
+  Alert.alert('Sort places', undefined, [
+    { text: 'Nearest', onPress: () => onSelect('nearest') },
+    { text: 'Featured', onPress: () => onSelect('featured') },
+    { text: 'Cancel', style: 'cancel' },
+  ]);
+}
+
 /** All | Open — both states visible, so "off" is never ambiguous. */
 function OpenNowSegmented({ value, onChange }: { value: boolean; onChange: (next: boolean) => void }) {
   const theme = useTheme();
@@ -170,6 +200,7 @@ function OpenNowSegmented({ value, onChange }: { value: boolean; onChange: (next
 
 export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
   const [openNowOnly, setOpenNowOnly] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('nearest');
 
   return (
     <LocationGate>
@@ -180,7 +211,13 @@ export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
               {...gate}
               control={<OpenNowSegmented value={openNowOnly} onChange={setOpenNowOnly} />}
             />
-            <PlacesBody category={category} center={gate.center} openNowOnly={openNowOnly} />
+            <PlacesBody
+              category={category}
+              center={gate.center}
+              openNowOnly={openNowOnly}
+              sortMode={sortMode}
+              onSortChange={setSortMode}
+            />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -207,12 +244,17 @@ function PlacesBody({
   category,
   center,
   openNowOnly,
+  sortMode,
+  onSortChange,
 }: {
   category: PlaceCategory;
   center: Coordinates;
   openNowOnly: boolean;
+  sortMode: SortMode;
+  onSortChange: (mode: SortMode) => void;
 }) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   // Fetch from a stable anchor (moves after ~250m walked); distances and
   // ordering below track the live position on every GPS update.
@@ -223,16 +265,26 @@ function PlacesBody({
     if (state.status !== 'ready') {
       return [];
     }
-    return state.places
-      // "Open" keeps unknowns: many landmarks report no hours at all,
-      // and hiding them would empty the section, not filter it
-      .filter((place) => !openNowOnly || place.openNow !== false)
-      .map((place) => ({
-        ...place,
-        distanceMeters: distanceMeters(center, place.coordinates),
-      }))
-      .sort((a, b) => a.distanceMeters - b.distanceMeters);
-  }, [state, center, openNowOnly]);
+    return (
+      state.places
+        // "Open" keeps unknowns: many landmarks report no hours at all,
+        // and hiding them would empty the section, not filter it
+        .filter((place) => !openNowOnly || place.openNow !== false)
+        .map((place) => ({
+          ...place,
+          distanceMeters: distanceMeters(center, place.coordinates),
+        }))
+        // Featured: Google's prominence order, unranked places last,
+        // distance as the tiebreak — no refetch, the rank rode in with
+        // the list. Nearest: live straight-line, tracking GPS.
+        .sort((a, b) =>
+          sortMode === 'featured'
+            ? (a.prominenceRank ?? Infinity) - (b.prominenceRank ?? Infinity) ||
+              a.distanceMeters - b.distanceMeters
+            : a.distanceMeters - b.distanceMeters
+        )
+    );
+  }, [state, center, openNowOnly, sortMode]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -283,12 +335,21 @@ function PlacesBody({
       data={livePlaces}
       keyExtractor={(place) => place.id}
       renderItem={({ item }) => <PlaceCard place={item} />}
-      contentContainerStyle={styles.list}
+      // The list scrolls under the translucent tab bar; the inset keeps
+      // the last card reachable above it
+      contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
       ListHeaderComponent={
         <ThemedText type="small" themeColor="textSecondary" style={styles.listMeta}>
-          {livePlaces.length} places · nearest first
+          {livePlaces.length} places ·{' '}
+          <ThemedText
+            type="smallBold"
+            themeColor="accent"
+            accessibilityRole="button"
+            onPress={() => showSortMenu(onSortChange)}>
+            {SortLabels[sortMode]} ▾
+          </ThemedText>
         </ThemedText>
       }
       ListEmptyComponent={
@@ -301,6 +362,7 @@ function PlacesBody({
 }
 
 function HistoryBody({ center }: { center: Coordinates }) {
+  const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
 
@@ -336,7 +398,7 @@ function HistoryBody({ center }: { center: Coordinates }) {
       data={state.items}
       keyExtractor={(item) => String(item.pageId)}
       renderItem={({ item }) => <HistoryCard item={item} />}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
       ListEmptyComponent={

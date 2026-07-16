@@ -1,6 +1,11 @@
 /* global jest */
 require('react-native-reanimated').setUpTests();
 
+// Official mock: SafeAreaView renders plain, useSafeAreaInsets returns zeros
+jest.mock('react-native-safe-area-context', () =>
+  require('react-native-safe-area-context/jest/mock').default
+);
+
 // expo-maps is a native module with no JS fallback — render a plain View
 // so component tests can assert the map's presence and props.
 // expo-glass-effect is native (iOS 26) — plain View + "unavailable"

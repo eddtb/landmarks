@@ -65,6 +65,17 @@ Spacing contract: the count line and first card sit tight beneath the
 header; its bottom padding is the only gap. Venue screens push over the
 tab bar; deeper content pushes; dip-in tools (compass) present modally.
 
+**The count line is the sort.** `39 places · Nearest ▾` — the violet
+word opens a system menu (Nearest / Featured). A sort has no "off", so
+it's a picker, not a segmented control; it lives on the line describing
+the result it reorders, and the approved header never grows for it.
+Featured is Google's own prominence ranking, which every browse already
+fetches — the toggle re-sorts on-device, no refetch, no spinner.
+
+Lists scroll under the translucent tab bar but pad their bottom by the
+safe-area inset: the last card must always be able to rest fully above
+the bar.
+
 ## Screen grammar
 
 Three questions, asked in order; nothing appears on a screen unless it

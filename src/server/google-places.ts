@@ -509,14 +509,21 @@ export async function searchNearby(options: {
   // nearest slots). Display sorts by walking time — merging widens the
   // net without changing the order. Everything is fetched up front:
   // no mid-scroll appending, no list jumping.
-  const queries = await Promise.all([runQuery('DISTANCE'), runQuery('POPULARITY')]);
+  const [nearest, prominent] = await Promise.all([
+    runQuery('DISTANCE'),
+    runQuery('POPULARITY'),
+  ]);
+
+  // The prominence order survives the merge as a rank — it's what the
+  // client's Featured sort reorders by, at no extra query cost.
+  const prominenceRank = new Map(prominent.map((place, index) => [place.id, index]));
 
   const seen = new Set<string>();
   const merged: PlaceWithDistance[] = [];
-  for (const place of queries.flat()) {
+  for (const place of [...nearest, ...prominent]) {
     if (!seen.has(place.id)) {
       seen.add(place.id);
-      merged.push(place);
+      merged.push({ ...place, prominenceRank: prominenceRank.get(place.id) });
     }
   }
   return sortByWalkTime(merged);
