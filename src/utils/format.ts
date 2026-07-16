@@ -49,6 +49,40 @@ export function openUntilLabel(nextCloseTime: string): string | null {
   return `Open until ${hour12}${minutes ? `:${String(minutes).padStart(2, '0')}` : ''}${suffix}`;
 }
 
+const DayAbbrev: Record<string, string> = {
+  Monday: 'Mon',
+  Tuesday: 'Tue',
+  Wednesday: 'Wed',
+  Thursday: 'Thu',
+  Friday: 'Fri',
+  Saturday: 'Sat',
+  Sunday: 'Sun',
+};
+
+/** "11:00 AM – 11:00 PM" -> "11am–11pm"; ":30" minutes survive. */
+export function compactTimeRange(times: string): string {
+  return times
+    .replace(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/gi, (_match, hour, minutes, meridiem) => {
+      const mins = minutes && minutes !== '00' ? `:${minutes}` : '';
+      return `${hour}${mins}${meridiem.toLowerCase()}`;
+    })
+    .replace(/\s*–\s*/g, '–')
+    // Bare ":00" without a meridiem (Google writes "12:00 – 9:00 PM")
+    .replace(/(\d{1,2}):00\b(?!\s*[ap]m)/gi, '$1')
+    .replace(/Open 24 hours/i, '24 hours');
+}
+
+/** Google's verbose weekday line, made concise: "Mon 11am–11pm". */
+export function formatHoursLine(line: string): string {
+  const separator = line.indexOf(': ');
+  if (separator === -1) {
+    return compactTimeRange(line);
+  }
+  const day = line.slice(0, separator);
+  const times = line.slice(separator + 2);
+  return `${DayAbbrev[day] ?? day} ${compactTimeRange(times)}`;
+}
+
 /** 847 -> "847", 2310 -> "2.3k" — evidence for the rating, card-sized */
 export function formatRatingCount(count: number): string {
   if (count < 1000) {

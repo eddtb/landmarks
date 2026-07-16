@@ -60,12 +60,16 @@ Three questions, asked in order; nothing appears on a screen unless it
 answers that screen's question.
 
 1. **What is it?** → the browse card: photo (nothing overlaid on it),
-   name, one grey meta line — `Pub · 4 min walk · ★ 4.7 · Open until 11pm`.
+   name, one grey meta line — `Pub · 4 min walk · ★ 4.7`. **Openness is
+   the default and defaults are silent**: a card says nothing, `Closes in
+   40 min` (final hour only), or `Closed` (and dims).
 2. **Worth going?** → the venue screen: identity block (reads exactly like
    a card), one violet **Go** button (with the walk time) + Share +
-   Compass + ⋯ overflow, then sections in the eyebrow grammar. Reviews are
-   a Gemini summary with one link deeper; hours live behind "All hours";
-   the leftovers form a quiet DETAILS list (plain separated rows, no box).
+   Compass; the ⋯ overflow (Open in Maps, Call) lives in the header. Then
+   sections in the eyebrow grammar, in order: STORY/ABOUT · WHAT'S ON ·
+   REVIEWS · DETAILS. Reviews are a Gemini summary with one link deeper;
+   weekly hours live behind "All hours" in concise form (`Mon 11am–11pm`),
+   Kitchen is its own row beneath Hours.
 3. **How do I get there?** → **Go mode**, full screen: the map with the
    violet route, the live instruction in a floating sheet with the compact
    compass dial beside it. The standalone compass is a glance-and-dismiss
@@ -85,8 +89,10 @@ talking.
   "· estimate" — and estimates say **usually**, never **now**.
 - Every AI-researched claim carries its source link. No source, no claim;
   an empty section is a correct answer.
-- Only the negative is marked: "Open" on every card is noise, "Closed" on
-  three cards is signal.
+- Only the negative is marked: openness is never announced on cards —
+  "Closed" on three cards is signal, "Open" on thirty-six is noise. The
+  closes-soon window is one hour: at two, every pub near closing time
+  would shout at once.
 
 ## Process
 

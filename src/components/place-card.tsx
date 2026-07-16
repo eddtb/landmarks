@@ -19,9 +19,8 @@ type Props = {
 };
 
 /**
- * State as plain words, per the design contract: no colour coding,
- * ever. Closed places dim; the words carry the rest. Unknown hours
- * say nothing.
+ * Venue-screen state words: openness gets "Open until 11pm", because
+ * the venue screen is where you'd ask.
  */
 export function placeStateLabel(place: Place): string | null {
   if (place.openNow === false) {
@@ -33,7 +32,22 @@ export function placeStateLabel(place: Place): string | null {
     );
   }
   if (place.openNow) {
-    return 'Open';
+    return 'Open now';
+  }
+  return null;
+}
+
+/**
+ * Card state words: openness is the default, and defaults are silent.
+ * A card says nothing, "Closes in 40 min" (final hour), or "Closed"
+ * (and dims). Nothing else.
+ */
+export function cardStateLabel(place: Place): string | null {
+  if (place.openNow === false) {
+    return 'Closed';
+  }
+  if (place.openNow && place.nextCloseTime) {
+    return closesSoonLabel(place.nextCloseTime, new Date());
   }
   return null;
 }
@@ -47,7 +61,7 @@ function metaLine(place: PlaceWithDistance): string {
       : formatDistance(place.distanceMeters),
     formatRating(place.rating),
   ];
-  const state = placeStateLabel(place);
+  const state = cardStateLabel(place);
   if (state) {
     parts.push(state);
   }

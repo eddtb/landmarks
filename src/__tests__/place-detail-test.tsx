@@ -1,12 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
-import { Alert, Share } from 'react-native';
+import { Share } from 'react-native';
 
 import CompassScreen from '@/app/place/[id]/compass';
-import PlaceDetailScreen from '@/app/place/[id]/index';
+import PlaceDetailScreen, { overflowActions } from '@/app/place/[id]/index';
 import ReviewsScreen from '@/app/place/[id]/reviews';
 import { MockPlaces } from '@/data/mock-places';
 import { cachePlaces } from '@/data/places-client';
+import { formatHoursLine } from '@/utils/format';
 
 const mockUseLocalSearchParams = jest.fn();
 
@@ -294,9 +295,9 @@ describe('<PlaceDetailScreen />', () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
-    // Kitchen hours live inside the expanded All hours block, with state
-    await fireEvent.press(await screen.findByText('All hours'));
-    expect(await screen.findByText(/Kitchen · open now:/)).toBeOnTheScreen();
+    // Kitchen is its own DETAILS row beneath Hours, concise
+    expect(await screen.findByText('Kitchen')).toBeOnTheScreen();
+    expect(screen.getByText(/Open now · 12–(8|9)pm/)).toBeOnTheScreen();
   });
 
   test('omits the reviews section when details have none', async () => {
@@ -328,36 +329,33 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('117 Rotherhithe St, London SE16 4NF')).toBeOnTheScreen();
   });
 
-  test('the action row is Go, Share, Compass, and an overflow menu', async () => {
+  test('the action row is Go, Share, Compass — the overflow lives in the header', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
     expect(screen.getByText(/^Go/)).toBeOnTheScreen();
     expect(screen.getByText('Share')).toBeOnTheScreen();
     expect(screen.getByText('Compass')).toBeOnTheScreen();
-    expect(screen.getByText('⋯')).toBeOnTheScreen();
+    // ⋯ renders in the native header (mocked away here), not the body
+    expect(screen.queryByText('⋯')).not.toBeOnTheScreen();
     expect(screen.queryByText('Directions')).not.toBeOnTheScreen();
   });
 
-  test('the overflow menu offers Open in Maps, plus Call when a phone exists', async () => {
-    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    mockFetchPlaceDetails.mockResolvedValue({
-      ...MockPlaces[0],
-      id: 'tower-bridge',
-      photoUrls: [MockPlaces[0].photoUrl],
+  test('the overflow menu offers Open in Maps, plus Call when a phone exists', () => {
+    const place = MockPlaces[0];
+    const details = {
+      ...place,
+      photoUrls: [place.photoUrl],
       phone: '020 7407 1002',
-    });
-    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
-    await render(<PlaceDetailScreen />);
-    await screen.findByText('Phone');
+      mapsUri: 'https://maps.google.com/?cid=123',
+    };
 
-    await fireEvent.press(screen.getByText('⋯'));
+    const labels = overflowActions(place, details, undefined).map((action) => action.text);
 
-    const buttons = alertSpy.mock.calls[0][2] ?? [];
-    const labels = buttons.map((button) => button.text);
-    expect(labels).toContain('Open in Maps');
-    expect(labels).toContain('Call 020 7407 1002');
-    alertSpy.mockRestore();
+    expect(labels).toEqual(['Open in Maps', 'Call 020 7407 1002', 'Cancel']);
+
+    overflowActions(place, details, undefined)[0].onPress?.();
+    expect(Linking.openURL).toHaveBeenCalledWith('https://maps.google.com/?cid=123');
   });
 
   test('the compass modal shows the dial for the place', async () => {
@@ -461,7 +459,7 @@ describe('<PlaceDetailScreen />', () => {
 
     // Expanded: all seven days are shown
     weekdayHours.forEach((line) => {
-      expect(screen.getByText(line)).toBeOnTheScreen();
+      expect(screen.getByText(formatHoursLine(line))).toBeOnTheScreen();
     });
 
     await fireEvent.press(screen.getByText('Hide'));

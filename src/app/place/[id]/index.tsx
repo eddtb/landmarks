@@ -25,13 +25,39 @@ import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
 import { useTheme } from '@/hooks/use-theme';
 import { useWhatsOn } from '@/hooks/use-whats-on';
-import { CategoryLabels } from '@/types/place';
+import { CategoryLabels, Place, PlaceDetails } from '@/types/place';
 import { describeBusyness } from '@/utils/busyness';
-import { formatRating, formatWalkTime } from '@/utils/format';
+import { compactTimeRange, formatHoursLine, formatRating, formatWalkTime } from '@/utils/format';
 
 /** Google's weekdayHours is Monday-first; JS's getDay() is Sunday-first (0-6). */
 function todayIndex(): number {
   return (new Date().getDay() + 6) % 7;
+}
+
+/** The header ⋯ menu — everything useful that didn't earn a button. */
+export function overflowActions(
+  place: Place,
+  details: PlaceDetails | undefined,
+  walkingUri: string | undefined
+) {
+  return [
+    {
+      text: 'Open in Maps',
+      onPress: () =>
+        Linking.openURL(
+          walkingUri ?? details?.mapsUri ?? mapsSearchUrl(place.name, place.coordinates)
+        ),
+    },
+    ...(details?.phone
+      ? [
+          {
+            text: `Call ${details.phone}`,
+            onPress: () => Linking.openURL(`tel:${details.phone}`),
+          },
+        ]
+      : []),
+    { text: 'Cancel', style: 'cancel' as const },
+  ];
 }
 
 export default function PlaceScreen() {
@@ -83,7 +109,22 @@ export default function PlaceScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: place.name }} />
+      <Stack.Screen
+        options={{
+          title: place.name,
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More actions"
+              hitSlop={Spacing.two}
+              onPress={() =>
+                Alert.alert(place.name, undefined, overflowActions(place, details, walkingUri))
+              }>
+              <ThemedText type="headline">⋯</ThemedText>
+            </Pressable>
+          ),
+        }}
+      />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scroll}
@@ -155,56 +196,7 @@ export default function PlaceScreen() {
               ]}>
               <ThemedText type="smallBold">Compass</ThemedText>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="More actions"
-              onPress={() =>
-                Alert.alert(place.name, undefined, [
-                  {
-                    text: 'Open in Maps',
-                    onPress: () =>
-                      Linking.openURL(
-                        walkingUri ?? details?.mapsUri ?? mapsSearchUrl(place.name, place.coordinates)
-                      ),
-                  },
-                  ...(details?.phone
-                    ? [
-                        {
-                          text: `Call ${details.phone}`,
-                          onPress: () => Linking.openURL(`tel:${details.phone}`),
-                        },
-                      ]
-                    : []),
-                  { text: 'Cancel', style: 'cancel' as const },
-                ])
-              }
-              style={({ pressed }) => [
-                styles.more,
-                { backgroundColor: theme.backgroundElement },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold">⋯</ThemedText>
-            </Pressable>
           </View>
-
-          {whatsOn.status === 'ready' && (
-            <View style={styles.section}>
-              <ThemedText type="eyebrow" themeColor="textSecondary">
-                What&apos;s on
-              </ThemedText>
-              {whatsOn.events.map((event) => (
-                <ThemedText key={`${event.title}-${event.schedule}`} type="small">
-                  {event.title} · {event.schedule}
-                  {event.detail ? ` · ${event.detail}` : ''}{' '}
-                  <ExternalLink href={event.sourceUrl as `https://${string}`}>
-                    <ThemedText type="small" themeColor="accent">
-                      Source
-                    </ThemedText>
-                  </ExternalLink>
-                </ThemedText>
-              ))}
-            </View>
-          )}
 
           {storyState.status === 'ready' ? (
             <View style={styles.section}>
@@ -239,13 +231,31 @@ export default function PlaceScreen() {
             </View>
           ) : null}
 
+          {whatsOn.status === 'ready' && (
+            <View style={styles.section}>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                What&apos;s on
+              </ThemedText>
+              {whatsOn.events.map((event) => (
+                <ThemedText key={`${event.title}-${event.schedule}`} type="small">
+                  {event.title} · {event.schedule}
+                  {event.detail ? ` · ${event.detail}` : ''}{' '}
+                  <ExternalLink href={event.sourceUrl as `https://${string}`}>
+                    <ThemedText type="small" themeColor="accent">
+                      Source
+                    </ThemedText>
+                  </ExternalLink>
+                </ThemedText>
+              ))}
+            </View>
+          )}
+
           {(details?.reviewSummary || (details?.reviews && details.reviews.length > 0)) && (
             <View style={styles.section}>
               <ThemedText type="eyebrow" themeColor="textSecondary">
                 Reviews
               </ThemedText>
               {details.reviewSummary && (
-                // Prose is serif, data is sans — same voice as Story/About
                 <ThemedText type="small">{details.reviewSummary}</ThemedText>
               )}
               <ThemedText type="small" themeColor="textSecondary">
@@ -289,20 +299,26 @@ export default function PlaceScreen() {
                     key={line}
                     type="small"
                     themeColor={index === todayIndex() ? undefined : 'textSecondary'}>
-                    {line}
+                    {formatHoursLine(line)}
                   </ThemedText>
                 ))}
-                {details.kitchenWeekdayHours && details.kitchenWeekdayHours.length > 0 && (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Kitchen
-                    {details.kitchenOpenNow === undefined
-                      ? ''
-                      : details.kitchenOpenNow
-                        ? ' · open now'
-                        : ' · closed now'}
-                    : {details.kitchenWeekdayHours[todayIndex()]}
-                  </ThemedText>
-                )}
+              </View>
+            )}
+            {details?.kitchenWeekdayHours && details.kitchenWeekdayHours.length > 0 && (
+              <View style={[styles.detailRow, { borderBottomColor: theme.backgroundElement }]}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Kitchen
+                </ThemedText>
+                <ThemedText type="small" style={styles.detailValue}>
+                  {details.kitchenOpenNow === undefined
+                    ? ''
+                    : details.kitchenOpenNow
+                      ? 'Open now · '
+                      : 'Closed now · '}
+                  {compactTimeRange(
+                    details.kitchenWeekdayHours[todayIndex()].replace(/^[A-Za-z]+:\s*/, '')
+                  )}
+                </ThemedText>
               </View>
             )}
             {busynessLine && (
