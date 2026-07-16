@@ -66,7 +66,8 @@ header; its bottom padding is the only gap. Venue screens push over the
 tab bar; deeper content pushes; dip-in tools (compass) present modally.
 
 **The count line is the sort.** `39 places · Nearest ▾` — the violet
-word opens a system menu (Nearest / Featured). A sort has no "off", so
+word opens an anchored system menu (`@expo/ui` MenuView; Nearest /
+Featured, checkmark on the active sort). A sort has no "off", so
 it's a picker, not a segmented control; it lives on the line describing
 the result it reorders, and the approved header never grows for it.
 Featured is Google's own prominence ranking, which every browse already

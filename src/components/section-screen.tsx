@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { ReactNode, useCallback, useMemo, useState } from 'react';
+import { ComponentType, ReactNode, useCallback, useMemo, useState } from 'react';
 import {
   ActionSheetIOS,
   ActivityIndicator,
@@ -149,11 +149,30 @@ type SortMode = 'nearest' | 'featured';
 
 const SortLabels: Record<SortMode, string> = { nearest: 'Nearest', featured: 'Featured' };
 
+type MenuViewProps = {
+  actions: { id: string; title: string; state?: 'on' | 'off' }[];
+  onPressAction: (event: { nativeEvent: { event: string } }) => void;
+  testID?: string;
+  children?: ReactNode;
+};
+
 /**
- * The count line's sort menu — system chrome, like the venue ⋯ menu.
- * A sort has no "off", so it's a picker, not a segmented control.
+ * @expo/ui resolves its native view at module scope, so this require
+ * throws on clients built before the dependency existed — the catch
+ * keeps older dev clients on the system-sheet fallback instead of
+ * crashing every tab.
  */
-function showSortMenu(onSelect: (mode: SortMode) => void) {
+const MenuView: ComponentType<MenuViewProps> | null = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('@expo/ui/community/menu').MenuView;
+  } catch {
+    return null;
+  }
+})();
+
+/** Fallback picker for clients whose build predates @expo/ui. */
+function showSortSheet(onSelect: (mode: SortMode) => void) {
   if (Platform.OS === 'ios') {
     ActionSheetIOS.showActionSheetWithOptions(
       { options: ['Nearest', 'Featured', 'Cancel'], cancelButtonIndex: 2 },
@@ -169,6 +188,52 @@ function showSortMenu(onSelect: (mode: SortMode) => void) {
     { text: 'Featured', onPress: () => onSelect('featured') },
     { text: 'Cancel', style: 'cancel' },
   ]);
+}
+
+/**
+ * The count line's sort control — an anchored system menu (per the
+ * approved mock) with a checkmark on the active sort. A sort has no
+ * "off", so it's a picker, not a segmented control.
+ */
+function SortMenu({
+  sortMode,
+  onSortChange,
+}: {
+  sortMode: SortMode;
+  onSortChange: (mode: SortMode) => void;
+}) {
+  const label = (
+    <ThemedText type="smallBold" themeColor="accent">
+      {SortLabels[sortMode]} ▾
+    </ThemedText>
+  );
+  if (!MenuView) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        hitSlop={Spacing.two}
+        onPress={() => showSortSheet(onSortChange)}>
+        {label}
+      </Pressable>
+    );
+  }
+  return (
+    <MenuView
+      testID="sort-menu"
+      actions={[
+        { id: 'nearest', title: 'Nearest', state: sortMode === 'nearest' ? 'on' : 'off' },
+        { id: 'featured', title: 'Featured', state: sortMode === 'featured' ? 'on' : 'off' },
+      ]}
+      onPressAction={({ nativeEvent }) => {
+        if (nativeEvent.event === 'nearest' || nativeEvent.event === 'featured') {
+          onSortChange(nativeEvent.event);
+        }
+      }}>
+      <Pressable accessibilityRole="button" hitSlop={Spacing.two}>
+        {label}
+      </Pressable>
+    </MenuView>
+  );
 }
 
 /** All | Open — both states visible, so "off" is never ambiguous. */
@@ -341,16 +406,13 @@ function PlacesBody({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
       ListHeaderComponent={
-        <ThemedText type="small" themeColor="textSecondary" style={styles.listMeta}>
-          {livePlaces.length} places ·{' '}
-          <ThemedText
-            type="smallBold"
-            themeColor="accent"
-            accessibilityRole="button"
-            onPress={() => showSortMenu(onSortChange)}>
-            {SortLabels[sortMode]} ▾
+        // A row, not nested Text: the menu anchor is a native view
+        <View style={styles.listMeta}>
+          <ThemedText type="small" themeColor="textSecondary">
+            {livePlaces.length} places ·{' '}
           </ThemedText>
-        </ThemedText>
+          <SortMenu sortMode={sortMode} onSortChange={onSortChange} />
+        </View>
       }
       ListEmptyComponent={
         <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
@@ -478,6 +540,8 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   listMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingBottom: 0,
   },
   empty: {

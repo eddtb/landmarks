@@ -18,6 +18,14 @@ jest.mock('expo-glass-effect', () => {
   };
 });
 
+// @expo/ui is native (SwiftUI/Compose hosts) — a plain View that keeps
+// its props lets tests fire onPressAction directly
+jest.mock('@expo/ui/community/menu', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return { MenuView: (props) => React.createElement(View, props) };
+});
+
 jest.mock('expo-maps', () => {
   const React = require('react');
   const { View } = require('react-native');
