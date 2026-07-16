@@ -80,12 +80,12 @@ describe('mapGooglePlace (lean list mapping)', () => {
     expect(place?.distanceMeters).toBeLessThan(200);
   });
 
-  test('routes photos through our proxy, never Google directly', () => {
+  test('routes photos through our proxy, keyed by place + index', () => {
     const place = mapGooglePlace(googlePlace, 'food', Origin, User);
 
-    expect(place?.photoUrl).toBe(
-      `${Origin}/api/photo?name=${encodeURIComponent('places/ChIJtest123/photos/one')}`
-    );
+    // Never Google's photo name: its token rotates between responses,
+    // and a URL that changes per response defeats the image cache.
+    expect(place?.photoUrl).toBe(`${Origin}/api/photo?place=ChIJtest123&i=0`);
     expect(place?.photoUrl).not.toContain('googleapis.com');
   });
 
@@ -124,7 +124,13 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
     });
     expect(details?.photoUrls).toHaveLength(2);
     expect(details?.photoUrl).toBe(details?.photoUrls[0]);
-    expect(details?.photoUrls.every((url) => url.startsWith(`${Origin}/api/photo`))).toBe(true);
+    expect(details?.photoUrls).toEqual([
+      `${Origin}/api/photo?place=ChIJtest123&i=0`,
+      `${Origin}/api/photo?place=ChIJtest123&i=1`,
+    ]);
+    // The list and details now agree on the hero URL by construction —
+    // that identity is what keeps the venue photo from flashing.
+    expect(details?.photoUrls[0]).toBe(mapGooglePlace(googlePlace, 'food', Origin, User)?.photoUrl);
   });
 
   test('drops non-https websites rather than passing them through', () => {
