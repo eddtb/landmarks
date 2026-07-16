@@ -342,7 +342,7 @@ export default function PlaceScreen() {
                   Usually
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.detailValue}>
-                  {busynessLine.replace(/^Usually /, '')}
+                  {sentenceCase(busynessLine.replace(/^Usually /, ''))}
                 </ThemedText>
               </View>
             )}
@@ -394,6 +394,11 @@ export default function PlaceScreen() {
       </ScrollView>
     </ThemedView>
   );
+}
+
+/** "a little busy" -> "A little busy" — Details values read like "Open until 8pm". */
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function detailsHoursLabel(hours: string | undefined): string | null {
