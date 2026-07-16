@@ -203,7 +203,7 @@ describe('<PlaceDetailScreen />', () => {
 
     // Forecast lives in the DETAILS rows — "usually" is the disclosure
     expect(await screen.findByText('Usually')).toBeOnTheScreen();
-    expect(screen.getByText('not busy')).toBeOnTheScreen();
+    expect(screen.getByText('Not busy')).toBeOnTheScreen();
   });
 
   test('landmarks get no busyness forecast', async () => {
