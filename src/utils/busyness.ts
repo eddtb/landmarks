@@ -10,11 +10,13 @@ export function currentSlot(date: Date): { day: Weekday; band: DayBand } {
   return { day, band };
 }
 
+// Google's own register — and "usually" itself carries the "this is
+// a typical pattern, not a live reading" disclosure.
 const LevelPhrases: Record<BusynessLevel, string> = {
-  quiet: 'Usually quiet around this time',
-  moderate: 'Usually fairly quiet around this time',
-  busy: 'Usually busy around this time',
-  packed: 'Usually packed around this time',
+  quiet: 'Usually not busy',
+  moderate: 'Usually a little busy',
+  busy: 'Usually busy',
+  packed: 'Usually very busy',
 };
 
 /** The one line the detail screen shows — always "usually", never "now". */

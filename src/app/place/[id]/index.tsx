@@ -226,7 +226,7 @@ export default function PlaceScreen() {
               </ThemedText>
               <ThemedText type="small">{blurb.blurb}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                Researched by AI from public sources
+                AI-researched
               </ThemedText>
             </View>
           ) : null}
@@ -342,7 +342,7 @@ export default function PlaceScreen() {
                   Usually
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.detailValue}>
-                  {busynessLine.replace(/^Usually /, '')} · estimate
+                  {busynessLine.replace(/^Usually /, '')}
                 </ThemedText>
               </View>
             )}

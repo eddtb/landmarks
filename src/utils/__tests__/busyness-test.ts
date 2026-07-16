@@ -36,15 +36,13 @@ describe('describeBusyness', () => {
     },
   };
 
-  test('speaks in "usually", never "now"', () => {
+  test('speaks in "usually", never "now" — Google\'s register', () => {
     const fridayNight = describeBusyness(pattern, new Date(2026, 6, 17, 22, 0));
-    expect(fridayNight).toBe('Usually packed around this time');
+    expect(fridayNight).toBe('Usually very busy');
     expect(fridayNight).not.toMatch(/now/);
   });
 
   test('reads the right slot for the moment', () => {
-    expect(describeBusyness(pattern, new Date(2026, 6, 19, 18, 0))).toBe(
-      'Usually quiet around this time'
-    );
+    expect(describeBusyness(pattern, new Date(2026, 6, 19, 18, 0))).toBe('Usually not busy');
   });
 });

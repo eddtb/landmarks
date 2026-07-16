@@ -85,9 +85,11 @@ dim. The photo does the talking.
 
 ## Honesty in the interface
 
-- AI-derived content is always labelled at the point of display:
-  "Researched by AI from public sources", "Summarised with Gemini",
-  "· estimate" — and estimates say **usually**, never **now**.
+- AI-derived content is always labelled at the point of display —
+  tersely: "AI-researched" on blurbs, "Summarised with Gemini" on review
+  summaries (Google's required attribution). Busyness speaks in Google's
+  register — "Usually a little busy" — where **usually** itself is the
+  estimate disclosure; forecasts never say **now**.
 - Every AI-researched claim carries its source link. No source, no claim;
   an empty section is a correct answer.
 - Only the negative is marked: openness is never announced on cards —
