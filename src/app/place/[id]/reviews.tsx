@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
 
@@ -36,6 +37,15 @@ export default function ReviewsScreen() {
           reviews={state.details.reviews ?? []}
           summary={state.details.reviewSummary}
         />
+        {state.details.mapsUri && (
+          <ThemedText
+            type="small"
+            themeColor="accent"
+            style={styles.allReviews}
+            onPress={() => Linking.openURL(state.details.mapsUri!)}>
+            All reviews on Google Maps ›
+          </ThemedText>
+        )}
       </ScrollView>
     </ThemedView>
   );
@@ -57,5 +67,8 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: Spacing.four,
+  },
+  allReviews: {
+    paddingTop: Spacing.three,
   },
 });

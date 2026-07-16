@@ -255,14 +255,29 @@ export default function PlaceScreen() {
               <ThemedText type="eyebrow" themeColor="textSecondary">
                 Reviews
               </ThemedText>
-              {details.reviewSummary && (
+              {details.reviewSummary ? (
                 <ThemedText type="small">{details.reviewSummary}</ThemedText>
-              )}
+              ) : details.reviews?.[0] ? (
+                // No Gemini consensus — a real voice beats an AI digest
+                // of four paragraphs
+                <>
+                  <ThemedText type="small" numberOfLines={5}>
+                    “{details.reviews[0].text}”
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {details.reviews[0].rating
+                      ? `${formatRating(details.reviews[0].rating)} · `
+                      : ''}
+                    {details.reviews[0].author}
+                    {details.reviews[0].when ? ` · ${details.reviews[0].when}` : ''}
+                  </ThemedText>
+                </>
+              ) : null}
               <ThemedText type="small" themeColor="textSecondary">
                 {details.reviewSummary ? 'Summarised with Gemini · ' : ''}
                 <Link href={{ pathname: '/place/[id]/reviews', params: { id: place.id } }}>
                   <ThemedText type="small" themeColor="accent">
-                    All reviews ›
+                    More reviews ›
                   </ThemedText>
                 </Link>
               </ThemedText>

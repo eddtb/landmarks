@@ -243,17 +243,38 @@ describe('<PlaceDetailScreen />', () => {
     expect(await screen.findByText('Reviews')).toBeOnTheScreen();
     expect(screen.getByText(/board game cafe has a huge games library/)).toBeOnTheScreen();
     expect(screen.getByText(/Summarised with Gemini/)).toBeOnTheScreen();
-    expect(screen.getByText('All reviews ›')).toBeOnTheScreen();
+    expect(screen.getByText('More reviews ›')).toBeOnTheScreen();
     // The comments themselves live one screen deeper
     expect(screen.queryByText('Splendid views.')).not.toBeOnTheScreen();
   });
 
-  test('the reviews screen shows the full comments', async () => {
+  test('without a Gemini summary the venue shows the featured review', async () => {
+    mockFetchPlaceDetails.mockResolvedValue({
+      ...MockPlaces[0],
+      id: 'tower-bridge',
+      photoUrls: [MockPlaces[0].photoUrl],
+      reviews: [
+        { author: 'Ada L.', rating: 5, text: 'Splendid views.', when: '2 months ago' },
+        { author: 'Brunel Jr.', rating: 4, text: 'Solid Victorian engineering.' },
+      ],
+    });
+    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
+    await render(<PlaceDetailScreen />);
+
+    // A real voice, quoted — not an AI digest of four paragraphs
+    expect(await screen.findByText('“Splendid views.”')).toBeOnTheScreen();
+    expect(screen.getByText(/★ 5\.0 · Ada L\. · 2 months ago/)).toBeOnTheScreen();
+    expect(screen.getByText('More reviews ›')).toBeOnTheScreen();
+    expect(screen.queryByText(/Summarised with Gemini/)).not.toBeOnTheScreen();
+  });
+
+  test('the reviews screen shows the full comments and the Google Maps link', async () => {
     mockFetchPlaceDetails.mockResolvedValue({
       ...MockPlaces[0],
       id: 'tower-bridge',
       photoUrls: [MockPlaces[0].photoUrl],
       reviewSummary: 'People say this board game cafe has a huge games library.',
+      mapsUri: 'https://maps.google.com/?cid=123',
       reviews: [
         { author: 'Ada L.', rating: 5, text: 'Splendid views.', when: '2 months ago' },
         { author: 'Brunel Jr.', rating: 4, text: 'Solid Victorian engineering.' },
@@ -265,6 +286,9 @@ describe('<PlaceDetailScreen />', () => {
     expect(await screen.findByText('Splendid views.')).toBeOnTheScreen();
     expect(screen.getByText(/Ada L\. · 2 months ago/)).toBeOnTheScreen();
     expect(screen.getByText('Solid Victorian engineering.')).toBeOnTheScreen();
+
+    fireEvent.press(screen.getByText('All reviews on Google Maps ›'));
+    expect(Linking.openURL).toHaveBeenCalledWith('https://maps.google.com/?cid=123');
   });
 
   test('shows kitchen hours with open state when a venue reports them', async () => {
@@ -305,7 +329,7 @@ describe('<PlaceDetailScreen />', () => {
     await render(<PlaceDetailScreen />);
 
     await screen.findByText('Tower Bridge');
-    expect(screen.queryByText('All reviews ›')).not.toBeOnTheScreen();
+    expect(screen.queryByText('More reviews ›')).not.toBeOnTheScreen();
   });
 
   test('cold deep link renders from fetched details without a cached summary', async () => {
