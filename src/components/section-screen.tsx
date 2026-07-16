@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { useCallback, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { HistoryCard } from '@/components/history-card';
 import { LocationPriming } from '@/components/location-priming';
 import { PlaceCard } from '@/components/place-card';
-import { Section, SectionPicker } from '@/components/section-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -28,7 +27,15 @@ import { useTheme } from '@/hooks/use-theme';
 import { PlaceCategory } from '@/types/place';
 import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
 
-export default function BrowseScreen() {
+/**
+ * The shared body of every tab: location gating, the NEARBY header
+ * with the locator dot, and the section's list. Sections became tabs
+ * (the pills were five top-level destinations dressed as a filter
+ * row); each tab renders one of these.
+ */
+
+/** Location gating shared by all tabs. */
+function LocationGate({ children }: { children: (props: GateProps) => ReactNode }) {
   const { status, coordinates, requestPermission } = useLocation();
   const [manualCenter, setManualCenter] = useState<Coordinates | null>(null);
 
@@ -52,25 +59,29 @@ export default function BrowseScreen() {
   }
 
   return (
-    <PlacesList
-      center={coordinates ?? manualCenter ?? FallbackCoordinates}
-      locationDenied={status === 'denied'}
-      onManualCenter={setManualCenter}
-    />
+    <>
+      {children({
+        center: coordinates ?? manualCenter ?? FallbackCoordinates,
+        locationDenied: status === 'denied',
+        onManualCenter: setManualCenter,
+      })}
+    </>
   );
 }
 
-function PlacesList({
-  center,
-  locationDenied,
-  onManualCenter,
-}: {
+type GateProps = {
   center: Coordinates;
   locationDenied: boolean;
   onManualCenter: (center: Coordinates) => void;
-}) {
-  const [section, setSection] = useState<Section>('landmark');
-  const [openNowOnly, setOpenNowOnly] = useState(false);
+};
+
+/** NEARBY over the area name with the locator dot; control sits opposite the title. */
+function SectionHeader({
+  center,
+  locationDenied,
+  onManualCenter,
+  control,
+}: GateProps & { control?: ReactNode }) {
   const [searchText, setSearchText] = useState('');
   const areaName = useAreaName(center);
   const theme = useTheme();
@@ -93,54 +104,102 @@ function PlacesList({
   }, [searchText, onManualCenter]);
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.header}>
-          <View>
-            <ThemedText type="eyebrow" themeColor="textSecondary">
-              Nearby
-            </ThemedText>
-            <ThemedText type="largeTitle">{areaName ?? 'Near you'}</ThemedText>
-          </View>
-          {locationDenied && (
-            <>
-              <ThemedText
-                type="small"
-                themeColor="textSecondary"
-                onPress={() => Linking.openSettings()}>
-                Location is off — enable it in Settings, or search a place to explore:
-              </ThemedText>
-              <TextInput
-                value={searchText}
-                onChangeText={setSearchText}
-                onSubmitEditing={onSearchSubmit}
-                placeholder="Search near a place…"
-                placeholderTextColor={theme.textSecondary}
-                returnKeyType="search"
-                style={[
-                  styles.search,
-                  { backgroundColor: theme.backgroundElement, color: theme.text },
-                ]}
-              />
-            </>
-          )}
-          <SectionPicker selected={section} onSelect={setSection} />
+    <View style={styles.header}>
+      <ThemedText type="eyebrow" themeColor="textSecondary">
+        Nearby
+      </ThemedText>
+      <View style={styles.titleRow}>
+        <View style={styles.titleGroup}>
+          <View style={[styles.locatorDot, { backgroundColor: theme.accent }]} />
+          <ThemedText type="largeTitle">{areaName ?? 'Near you'}</ThemedText>
         </View>
-        {/* key remounts the body per section: fresh scroll position, no
-            cross-section state; the session caches make revisits instant */}
-        {section === 'history' ? (
-          <HistoryBody key="history" center={center} />
-        ) : (
-          <PlacesBody
-            key={section}
-            category={section}
-            center={center}
-            openNowOnly={openNowOnly}
-            onToggleOpenNow={() => setOpenNowOnly((value) => !value)}
+        {control}
+      </View>
+      {locationDenied && (
+        <>
+          <ThemedText
+            type="small"
+            themeColor="textSecondary"
+            onPress={() => Linking.openSettings()}>
+            Location is off — enable it in Settings, or search a place to explore:
+          </ThemedText>
+          <TextInput
+            value={searchText}
+            onChangeText={setSearchText}
+            onSubmitEditing={onSearchSubmit}
+            placeholder="Search near a place…"
+            placeholderTextColor={theme.textSecondary}
+            returnKeyType="search"
+            style={[
+              styles.search,
+              { backgroundColor: theme.backgroundElement, color: theme.text },
+            ]}
           />
-        )}
-      </SafeAreaView>
-    </ThemedView>
+        </>
+      )}
+    </View>
+  );
+}
+
+/** All | Open — both states visible, so "off" is never ambiguous. */
+function OpenNowSegmented({ value, onChange }: { value: boolean; onChange: (next: boolean) => void }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.segmented, { backgroundColor: theme.backgroundElement }]}>
+      {([false, true] as const).map((openOnly) => {
+        const selected = value === openOnly;
+        return (
+          <Pressable
+            key={String(openOnly)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(openOnly)}
+            style={[styles.segment, selected && { backgroundColor: theme.accent }]}>
+            <ThemedText
+              type={selected ? 'smallBold' : 'small'}
+              style={selected ? styles.segmentSelected : undefined}
+              themeColor={selected ? undefined : 'textSecondary'}>
+              {openOnly ? 'Open' : 'All'}
+            </ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
+  const [openNowOnly, setOpenNowOnly] = useState(false);
+
+  return (
+    <LocationGate>
+      {(gate) => (
+        <ThemedView style={styles.container}>
+          <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+            <SectionHeader
+              {...gate}
+              control={<OpenNowSegmented value={openNowOnly} onChange={setOpenNowOnly} />}
+            />
+            <PlacesBody category={category} center={gate.center} openNowOnly={openNowOnly} />
+          </SafeAreaView>
+        </ThemedView>
+      )}
+    </LocationGate>
+  );
+}
+
+export function HistorySectionScreen() {
+  return (
+    <LocationGate>
+      {(gate) => (
+        <ThemedView style={styles.container}>
+          <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+            <SectionHeader {...gate} />
+            <HistoryBody center={gate.center} />
+          </SafeAreaView>
+        </ThemedView>
+      )}
+    </LocationGate>
   );
 }
 
@@ -148,12 +207,10 @@ function PlacesBody({
   category,
   center,
   openNowOnly,
-  onToggleOpenNow,
 }: {
   category: PlaceCategory;
   center: Coordinates;
   openNowOnly: boolean;
-  onToggleOpenNow: () => void;
 }) {
   const theme = useTheme();
   const [refreshing, setRefreshing] = useState(false);
@@ -167,8 +224,8 @@ function PlacesBody({
       return [];
     }
     return state.places
-      // "Open now" keeps unknowns: many landmarks report no hours at
-      // all, and hiding them would empty the section, not filter it
+      // "Open" keeps unknowns: many landmarks report no hours at all,
+      // and hiding them would empty the section, not filter it
       .filter((place) => !openNowOnly || place.openNow !== false)
       .map((place) => ({
         ...place,
@@ -230,22 +287,9 @@ function PlacesBody({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
       ListHeaderComponent={
-        <View style={styles.listMeta}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {livePlaces.length} places · nearest first
-          </ThemedText>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: openNowOnly }}
-            onPress={onToggleOpenNow}
-            hitSlop={Spacing.two}>
-            <ThemedText
-              type={openNowOnly ? 'smallBold' : 'small'}
-              themeColor={openNowOnly ? 'accent' : 'textSecondary'}>
-              Open now
-            </ThemedText>
-          </Pressable>
-        </View>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.listMeta}>
+          {livePlaces.length} places · nearest first
+        </ThemedText>
       }
       ListEmptyComponent={
         <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
@@ -330,11 +374,49 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
+    gap: Spacing.one,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: Spacing.three,
   },
+  titleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    flexShrink: 1,
+  },
+  locatorDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: 999,
+    padding: 2,
+  },
+  segment: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    borderRadius: 999,
+  },
+  segmentSelected: {
+    // White holds on the accent in both modes
+    color: '#FFFFFF',
+  },
+  // Spacing contract: the count line and first card sit tight beneath
+  // the header — its bottom padding is the only gap
   list: {
-    padding: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.four,
     gap: Spacing.three,
+  },
+  listMeta: {
+    paddingBottom: 0,
   },
   empty: {
     textAlign: 'center',
@@ -349,12 +431,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 14,
-  },
-  listMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: Spacing.one,
   },
   skeletonCard: {
     borderRadius: Spacing.three,
