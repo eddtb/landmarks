@@ -1,5 +1,4 @@
 import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
-import { ActionSheetIOS } from 'react-native';
 
 import ActivitiesTab from '@/app/(tabs)/activities';
 import DrinksTab from '@/app/(tabs)/drinks';
@@ -121,10 +120,6 @@ describe('section tab screens', () => {
         prominenceRank: place.name === 'The Anchor Bankside' ? 0 : undefined,
       }))
     );
-    jest
-      .spyOn(ActionSheetIOS, 'showActionSheetWithOptions')
-      .mockImplementation((_options, callback) => callback(1)); // "Featured"
-
     await render(<DrinksTab />);
     await screen.findByText('The George Inn');
 
@@ -133,8 +128,12 @@ describe('section tab screens', () => {
         .getAllByText(/The George Inn|The Anchor Bankside|The Market Porter/)
         .map((node) => node.props.children);
     expect(names()).toEqual(['The George Inn', 'The Market Porter', 'The Anchor Bankside']);
+    expect(screen.getByText(/Nearest ▾/)).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByText(/Nearest ▾/));
+    // The anchored menu is native chrome; select Featured via its event
+    await fireEvent(screen.getByTestId('sort-menu'), 'pressAction', {
+      nativeEvent: { event: 'featured' },
+    });
 
     expect(screen.getByText(/Featured ▾/)).toBeOnTheScreen();
     // The featured place leads; unranked places keep their distance order
