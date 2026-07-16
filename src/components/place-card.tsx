@@ -84,13 +84,12 @@ export function PlaceCard({ place }: Props) {
     <Pressable
       accessibilityRole="button"
       onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}
-      style={({ pressed }) => [
+      // No pressed effect: navigation is instant and the push
+      // transition IS the feedback — buttons flash, cards don't
+      style={[
         styles.card,
         { backgroundColor: theme.backgroundElement },
         closed && styles.closedCard,
-        // Pressed must never OUTSHINE closed: a dimmed card darkens
-        // further on press instead of springing back to life
-        pressed && { opacity: closed ? 0.35 : 0.85 },
       ]}>
         <Image
           source={{ uri: place.photoUrl }}

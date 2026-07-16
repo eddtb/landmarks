@@ -79,8 +79,9 @@ answers that screen's question.
 ## Cards
 
 Soft grey surface (`backgroundElement`), 14px corners, no borders, no
-shadows, no badges on photos. Closed places dim. The photo does the
-talking.
+shadows, no badges on photos, **no pressed effect** — cards navigate, and
+the push transition is the feedback; only buttons flash. Closed places
+dim. The photo does the talking.
 
 ## Honesty in the interface
 
