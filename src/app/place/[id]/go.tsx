@@ -1,6 +1,14 @@
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ReactNode, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Compass } from '@/components/compass';
@@ -18,6 +26,31 @@ import { formatDistance, formatWalkTime } from '@/utils/format';
 import { guidanceFor } from '@/utils/guidance';
 
 /**
+ * Liquid glass chrome where supported (iOS 26+); the themed solid
+ * surface — today's exact look — everywhere else. Content stays
+ * opaque; only the chrome floating over the map is glass.
+ */
+function ChromeSurface({
+  style,
+  interactive,
+  children,
+}: {
+  style: StyleProp<ViewStyle>;
+  interactive?: boolean;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  if (isLiquidGlassAvailable()) {
+    return (
+      <GlassView glassEffectStyle="regular" isInteractive={interactive} style={style}>
+        {children}
+      </GlassView>
+    );
+  }
+  return <View style={[style, { backgroundColor: theme.background }]}>{children}</View>;
+}
+
+/**
  * Go mode: the whole screen is the journey. The map fills it; the
  * directions sheet carries the compass dial beside the live step —
  * one block, per the design. No walking route degrades to the big
@@ -28,7 +61,6 @@ export default function GoScreen() {
   const { summary, state } = usePlaceDetails(id);
   const place = state.status === 'ready' ? state.details : summary;
   const { coordinates } = useLocation();
-  const theme = useTheme();
   const [stepsOpen, setStepsOpen] = useState(false);
   const [routeState, setRouteState] = useState<
     { status: 'loading' } | { status: 'none' } | { status: 'ready'; route: WalkingRoute }
@@ -95,7 +127,7 @@ export default function GoScreen() {
       )}
 
       <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
-        <View style={[styles.topCard, { backgroundColor: theme.background }]}>
+        <ChromeSurface style={styles.topCard} interactive>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close"
@@ -115,15 +147,16 @@ export default function GoScreen() {
               </ThemedText>
             )}
           </View>
-        </View>
+        </ChromeSurface>
       </SafeAreaView>
 
       {guidance && (
         <SafeAreaView style={styles.sheetArea} edges={['bottom']} pointerEvents="box-none">
+          <ChromeSurface style={styles.sheet} interactive>
           <Pressable
             accessibilityRole="button"
             onPress={() => setStepsOpen((open) => !open)}
-            style={[styles.sheet, { backgroundColor: theme.background }]}>
+            style={styles.sheetPress}>
             <View style={styles.sheetHeader}>
               <PointerDial
                 compact
@@ -158,6 +191,7 @@ export default function GoScreen() {
                 </ThemedText>
               ))}
           </Pressable>
+          </ChromeSurface>
         </SafeAreaView>
       )}
     </ThemedView>
@@ -202,8 +236,11 @@ const styles = StyleSheet.create({
   sheet: {
     marginHorizontal: Spacing.three,
     marginBottom: Spacing.three,
-    padding: Spacing.three,
     borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  sheetPress: {
+    padding: Spacing.three,
     gap: Spacing.two,
   },
   sheetHeader: {
