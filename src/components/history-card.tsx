@@ -22,11 +22,8 @@ export function HistoryCard({ item }: Props) {
       onPress={() =>
         router.push({ pathname: '/history/[pageId]', params: { pageId: String(item.pageId) } })
       }
-      style={({ pressed }) => [
-        styles.card,
-        { backgroundColor: theme.backgroundElement },
-        pressed && { opacity: 0.85 },
-      ]}>
+      // No pressed effect — cards navigate; the transition is the feedback
+      style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
         {item.thumbnailUrl && (
           <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
         )}
