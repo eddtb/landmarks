@@ -1,3 +1,4 @@
+import { rememberPhotoNames } from '@/server/photo-names';
 import { Place, PlaceCategory, PlaceDetails, PlaceReview, PlaceWithDistance } from '@/types/place';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
@@ -310,8 +311,15 @@ function mapReviews(googleReviews: GooglePlace['reviews']): PlaceReview[] | unde
   return reviews.length > 0 ? reviews : undefined;
 }
 
-function photoProxyUrl(photoName: string, origin: string): string {
-  return `${origin}/api/photo?name=${encodeURIComponent(photoName)}`;
+/**
+ * The URL is keyed by place + index, never by Google's photo name —
+ * those carry a token that rotates between responses, and a URL that
+ * changes per response defeats the image cache (the venue hero would
+ * visibly refetch a photo the card already showed). The photo route
+ * resolves the current token server-side via the photo-names cache.
+ */
+function photoProxyUrl(placeId: string, index: number, origin: string): string {
+  return `${origin}/api/photo?place=${encodeURIComponent(placeId)}&i=${index}`;
 }
 
 /** Street-level imagery via our proxy — Google Maps' own no-photos fallback. */
@@ -347,7 +355,8 @@ export function mapGooglePlace(
     return null;
   }
 
-  const photoName = googlePlace.photos?.[0]?.name;
+  const photoNames = (googlePlace.photos ?? []).map((photo) => photo.name);
+  rememberPhotoNames(googlePlace.id, photoNames);
 
   const place: Place = {
     id: googlePlace.id,
@@ -356,9 +365,10 @@ export function mapGooglePlace(
     primaryLabel: googlePlace.primaryTypeDisplayName?.text,
     coordinates: { latitude, longitude },
     rating: googlePlace.rating ?? 0,
-    photoUrl: photoName
-      ? photoProxyUrl(photoName, origin)
-      : streetViewUrl(origin, { latitude, longitude }),
+    photoUrl:
+      photoNames.length > 0
+        ? photoProxyUrl(googlePlace.id, 0, origin)
+        : streetViewUrl(origin, { latitude, longitude }),
     address: googlePlace.formattedAddress ?? '',
     ratingCount: googlePlace.userRatingCount,
     openNow: googlePlace.currentOpeningHours?.openNow,
@@ -382,9 +392,13 @@ export function mapGooglePlaceDetails(
 
   const website = googlePlace.websiteUri;
   const openNow = googlePlace.currentOpeningHours?.openNow;
+  rememberPhotoNames(
+    googlePlace.id,
+    (googlePlace.photos ?? []).map((photo) => photo.name)
+  );
   const photoUrls = (googlePlace.photos ?? [])
     .slice(0, MaxDetailPhotos)
-    .map((photo) => photoProxyUrl(photo.name, origin));
+    .map((_, index) => photoProxyUrl(googlePlace.id, index, origin));
 
   return {
     id: googlePlace.id,
