@@ -34,7 +34,10 @@ const globalCache = globalThis as {
 };
 
 const PlanTtlMs = 2 * 60 * 60 * 1000;
-const ListTtlMs = 10 * 60 * 1000;
+// An hour, not ten minutes: the suggestion rail refetches after
+// every plan edit, and a cold refetch is 8 top-tier queries — the
+// 10-min TTL made a day of plan-testing trip the $5 breaker
+const ListTtlMs = 60 * 60 * 1000;
 
 const DurationMinutes: Record<PlanDuration, number> = {
   hour: 75,
