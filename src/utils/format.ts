@@ -121,3 +121,21 @@ export function formatRatingCount(count: number): string {
   }
   return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}k`;
 }
+
+/**
+ * The history card's hook: the extract's first sentence, because
+ * "a nuclear reactor ran here until 1996" is the reason to tap and
+ * the title alone never says it. Capped so a rambling opening
+ * sentence can't swallow the card.
+ */
+export function storyHook(extract: string | undefined): string | undefined {
+  if (!extract) {
+    return undefined;
+  }
+  const match = extract.match(/^.*?\.(?=\s|$)/);
+  const sentence = (match?.[0] ?? extract).trim();
+  if (sentence.length <= 160) {
+    return sentence;
+  }
+  return `${sentence.slice(0, 157).trimEnd()}…`;
+}

@@ -54,6 +54,8 @@ describe('section tab screens', () => {
         title: 'Borough Compter',
         coordinates: { latitude: 51.5045, longitude: -0.0905 },
         distanceMeters: 112,
+        extract:
+          'The Borough Compter was a small prison in Southwark, used for debtors and petty offenders.',
         url: 'https://en.wikipedia.org/wiki/Borough_Compter',
       },
     ]);
@@ -91,8 +93,12 @@ describe('section tab screens', () => {
     await render(<HistoryTab />);
 
     expect(await screen.findByText('Borough Compter')).toBeOnTheScreen();
-    expect(screen.getByText(/History · 112 m/)).toBeOnTheScreen();
-    expect(screen.getByText('From Wikipedia, near your location')).toBeOnTheScreen();
+    // The hook line leads; the meta reads like every other card
+    expect(
+      screen.getByText('The Borough Compter was a small prison in Southwark, used for debtors and petty offenders.')
+    ).toBeOnTheScreen();
+    expect(screen.getByText(/1 min walk · Wikipedia/)).toBeOnTheScreen();
+    expect(screen.getByText('1 story')).toBeOnTheScreen();
   });
 
   test('the All | Open control filters closed places, keeping unknowns', async () => {

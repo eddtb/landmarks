@@ -149,6 +149,24 @@ type BatchPage = {
   fullurl?: string;
 };
 
+/**
+ * Register gate: geosearch mixes genuine stories (vanished palaces,
+ * a nuclear reactor in the Naval College) with infrastructure that
+ * merely has an article — stations, plain streets, piers. Those read
+ * identically in a list and dilute the treasure, so they're gated by
+ * title pattern — the same spirit as the venue lists' two-photo rule.
+ * (Measured near Greenwich: 20 items → 4 gated, all noise.)
+ */
+const NoiseTitlePatterns = [
+  / stations?$/i, // "Cutty Sark for Maritime Greenwich DLR station"
+  / (Street|Road|Walk|Lane|Avenue|Approach|Roundabout)$/, // plain street articles
+  / Pier$/,
+];
+
+export function isStoryTitle(title: string): boolean {
+  return !NoiseTitlePatterns.some((pattern) => pattern.test(title));
+}
+
 /** Pure assembly step, unit-testable without network. */
 export function buildHistoryItems(
   entries: GeosearchEntry[],
@@ -158,6 +176,7 @@ export function buildHistoryItems(
   const pagesById = new Map(Object.values(pages).map((page) => [page.pageid, page]));
 
   return entries
+    .filter((entry) => isStoryTitle(entry.title))
     .map((entry) => {
       const page = pagesById.get(entry.pageid);
       const coordinates = { latitude: entry.lat, longitude: entry.lon };

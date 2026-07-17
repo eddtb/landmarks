@@ -26,7 +26,15 @@ export default function RootLayout() {
           name="place/[id]/reviews"
           options={{ title: 'Reviews', headerBackTitle: 'Back' }}
         />
-        <Stack.Screen name="history/[pageId]" options={{ title: '', headerBackTitle: 'Nearby' }} />
+        <Stack.Screen
+          name="history/[pageId]/index"
+          options={{ title: '', headerBackTitle: 'Nearby' }}
+        />
+        <Stack.Screen name="history/[pageId]/go" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="history/[pageId]/compass"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
       </Stack>
     </ThemeProvider>
   );

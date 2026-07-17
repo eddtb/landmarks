@@ -606,17 +606,19 @@ function HistoryBody({ center }: { center: Coordinates }) {
       contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
+      ListHeaderComponent={
+        state.items.length > 0 ? (
+          // Attribution rides each card now; the count line matches
+          // the venue tabs' grammar
+          <ThemedText type="small" themeColor="textSecondary" style={styles.listMeta}>
+            {state.items.length} {state.items.length === 1 ? 'story' : 'stories'}
+          </ThemedText>
+        ) : null
+      }
       ListEmptyComponent={
         <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
           No recorded history right here — wander a little.
         </ThemedText>
-      }
-      ListFooterComponent={
-        state.items.length > 0 ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.footer}>
-            From Wikipedia, near your location
-          </ThemedText>
-        ) : null
       }
     />
   );
@@ -690,10 +692,6 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     paddingTop: Spacing.six,
-  },
-  footer: {
-    textAlign: 'center',
-    paddingVertical: Spacing.four,
   },
   search: {
     borderRadius: Spacing.three,
