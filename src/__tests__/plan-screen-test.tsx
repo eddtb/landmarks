@@ -152,3 +152,38 @@ describe('<PlanScreen />', () => {
     expect(screen.getByText('How long?')).toBeOnTheScreen();
   });
 });
+
+describe('<PlanScreen /> build mode', () => {
+  beforeEach(() => {
+    mockUseLocation.mockReturnValue({
+      status: 'ready',
+      coordinates: { latitude: 51.4826, longitude: -0.0077 },
+      requestPermission: jest.fn(),
+    });
+    mockFetchPlan.mockReset();
+    mockFetchPlan.mockResolvedValue(EveningPlan);
+  });
+
+  test('walks the slots as doors; picks carry into the timeline', async () => {
+    await render(<PlanTab />);
+    await fireEvent.press(screen.getByText(/or build it together/));
+
+    // Step 1: the landmark slot's doors, Venture's pick marked
+    expect(await screen.findByText('Building the plan')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 2')).toBeOnTheScreen();
+    expect(screen.getByText('Greenwich Park')).toBeOnTheScreen();
+    expect(screen.getByText('Greenwich Market')).toBeOnTheScreen();
+
+    // Pick the alternate door
+    await fireEvent.press(screen.getByText('Greenwich Market'));
+    expect(screen.getByText('2 of 2')).toBeOnTheScreen();
+
+    // Last slot has no alternates — one door
+    await fireEvent.press(screen.getByText('Little Yak'));
+
+    // The assembled timeline honours the pick
+    expect(await screen.findByText('Golden hour to last orders')).toBeOnTheScreen();
+    expect(screen.getByText('Greenwich Market')).toBeOnTheScreen();
+    expect(screen.queryByText('Greenwich Park')).not.toBeOnTheScreen();
+  });
+});

@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
@@ -53,8 +54,9 @@ export function defaultDuration(now: Date): PlanDuration {
 
 type PlanState =
   | { status: 'picking' }
-  | { status: 'composing' }
-  | { status: 'ready'; plan: Plan }
+  | { status: 'composing'; build: boolean }
+  | { status: 'ready'; plan: Plan; initialSwaps?: Record<number, number> }
+  | { status: 'building'; plan: Plan; step: number; picks: Record<number, number> }
   | { status: 'error' };
 
 export function PlanScreen() {
@@ -79,11 +81,15 @@ function PlanBody({ center }: { center: Coordinates }) {
   const [state, setState] = useState<PlanState>({ status: 'picking' });
 
   const compose = useCallback(
-    async (fresh: boolean) => {
-      setState({ status: 'composing' });
+    async (fresh: boolean, build = false) => {
+      setState({ status: 'composing', build });
       try {
         const plan = await fetchPlan({ center, duration, company, fresh });
-        setState({ status: 'ready', plan });
+        setState(
+          build
+            ? { status: 'building', plan, step: 0, picks: {} }
+            : { status: 'ready', plan }
+        );
       } catch (error) {
         console.warn('Plan composition failed:', error);
         setState({ status: 'error' });
@@ -96,8 +102,31 @@ function PlanBody({ center }: { center: Coordinates }) {
     return (
       <PlanView
         plan={state.plan}
+        initialSwaps={state.initialSwaps}
         onClose={() => setState({ status: 'picking' })}
         onRecompose={() => compose(true)}
+      />
+    );
+  }
+
+  if (state.status === 'building') {
+    return (
+      <BuildStep
+        plan={state.plan}
+        step={state.step}
+        onBack={() =>
+          state.step === 0
+            ? setState({ status: 'picking' })
+            : setState({ ...state, step: state.step - 1 })
+        }
+        onPick={(rotation) => {
+          const picks = { ...state.picks, [state.step]: rotation };
+          if (state.step + 1 < state.plan.stops.length) {
+            setState({ ...state, picks, step: state.step + 1 });
+          } else {
+            setState({ status: 'ready', plan: state.plan, initialSwaps: picks });
+          }
+        }}
       />
     );
   }
@@ -156,7 +185,99 @@ function PlanBody({ center }: { center: Coordinates }) {
           {ComposeLabels[duration]}
         </ThemedText>
       </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => compose(false, true)}
+        hitSlop={Spacing.two}
+        style={styles.buildLink}>
+        <ThemedText type="smallBold" themeColor="accent">
+          or build it together, stop by stop ›
+        </ThemedText>
+      </Pressable>
     </ScrollView>
+  );
+}
+
+/**
+ * Build mode: 2–3 doors per slot, never a catalogue. The machine
+ * can't know you — so taste gets revealed through picks instead of
+ * asked for through profiles. Doors are the engine's chosen stop
+ * plus its window-fitted understudies; Venture's pick is marked,
+ * not imposed. Stepping is instant: no model call, no spinner.
+ */
+function BuildStep({
+  plan,
+  step,
+  onBack,
+  onPick,
+}: {
+  plan: Plan;
+  step: number;
+  onBack: () => void;
+  onPick: (rotation: number) => void;
+}) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const stop = plan.stops[step];
+  const doors = [stop, ...stop.alternates];
+  const slotNames: Record<string, string> = {
+    coffee: 'Coffee',
+    landmark: 'Somewhere to see',
+    activity: 'Something to do',
+    meal: 'Dinner',
+    drink: 'A drink',
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.planBar}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} hitSlop={Spacing.two}>
+          <ThemedText type="headline" themeColor="textSecondary">
+            ‹
+          </ThemedText>
+        </Pressable>
+        <ThemedText type="smallBold">Building the plan</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {step + 1} of {plan.stops.length}
+        </ThemedText>
+      </View>
+      <ScrollView
+        contentContainerStyle={[styles.timeline, { paddingBottom: Spacing.four + insets.bottom }]}
+        showsVerticalScrollIndicator={false}>
+        <View>
+          <ThemedText type="eyebrow" themeColor="textSecondary">
+            {slotNames[stop.slotKind] ?? stop.slotKind} · around {clockLabel(new Date(stop.arrive))}
+          </ThemedText>
+        </View>
+        {doors.map((door, index) => (
+          <Pressable
+            key={door.placeId}
+            accessibilityRole="button"
+            onPress={() => onPick(index)}
+            style={[
+              styles.door,
+              { backgroundColor: theme.backgroundElement },
+              index === 0 && { borderColor: theme.accent, borderWidth: 2 },
+            ]}>
+            <Image source={{ uri: door.photoUrl }} style={styles.doorPhoto} contentFit="cover" cachePolicy="memory-disk" />
+            <View style={styles.doorBody}>
+              <View style={styles.doorTitleRow}>
+                <ThemedText type="headline">{door.name}</ThemedText>
+                {index === 0 && (
+                  <ThemedText type="eyebrow" themeColor="accent">
+                    Venture&apos;s pick
+                  </ThemedText>
+                )}
+              </View>
+              {door.why && <ThemedText type="small">{door.why}</ThemedText>}
+              <ThemedText type="small" themeColor="textSecondary">
+                {[door.primaryLabel, ...door.facts].filter(Boolean).join(' · ')}
+              </ThemedText>
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -203,10 +324,12 @@ function OptionGrid<T extends string>({
 /** The composed timeline: violet times on a rail, whys and facts apart. */
 function PlanView({
   plan,
+  initialSwaps,
   onClose,
   onRecompose,
 }: {
   plan: Plan;
+  initialSwaps?: Record<number, number>;
   onClose: () => void;
   onRecompose: () => void;
 }) {
@@ -214,7 +337,7 @@ function PlanView({
   const insets = useSafeAreaInsets();
   // Swapping rotates a stop through [chosen, ...alternates] — the
   // understudies were fitted to the same window, so times hold
-  const [swaps, setSwaps] = useState<Record<number, number>>({});
+  const [swaps, setSwaps] = useState<Record<number, number>>(initialSwaps ?? {});
 
   const stopAt = (index: number): PlanStop => {
     const stop = plan.stops[index];
@@ -448,6 +571,28 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three - 2,
     padding: Spacing.three,
     gap: Spacing.one,
+  },
+  buildLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.three,
+  },
+  door: {
+    borderRadius: Spacing.three - 2,
+    overflow: 'hidden',
+  },
+  doorPhoto: {
+    width: '100%',
+    height: 96,
+  },
+  doorBody: {
+    padding: Spacing.three,
+    gap: Spacing.one,
+  },
+  doorTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    flexWrap: 'wrap',
   },
   share: {
     marginTop: Spacing.three,
