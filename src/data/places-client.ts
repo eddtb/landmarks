@@ -87,6 +87,7 @@ export async function fetchNearbyPlaces(
     lat: String(center.latitude),
     lng: String(center.longitude),
     category,
+    ...(options?.forceRefresh ? { fresh: '1' } : {}),
   });
 
   const response = await fetch(apiUrl(`/api/places?${params}`));
