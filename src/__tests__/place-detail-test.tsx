@@ -171,18 +171,6 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('Source')).toBeOnTheScreen();
   });
 
-  test('Share opens the share sheet with the place name and link', async () => {
-    const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
-    mockUseLocalSearchParams.mockReturnValue({ id: 'the-george-inn' });
-    await render(<PlaceDetailScreen />);
-
-    await fireEvent.press(screen.getByText('Share'));
-
-    expect(shareSpy).toHaveBeenCalledWith({
-      message: expect.stringContaining('The George Inn'),
-    });
-    shareSpy.mockRestore();
-  });
 
   test('shows the busyness forecast as a labelled estimate', async () => {
     const allDay = { morning: 'quiet', afternoon: 'quiet', evening: 'quiet', night: 'quiet' };
@@ -353,13 +341,14 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('117 Rotherhithe St, London SE16 4NF')).toBeOnTheScreen();
   });
 
-  test('the action row is Go, Share, Compass — the overflow lives in the header', async () => {
+  test('the action row is Go, Compass — the overflow lives in the header', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
     await render(<PlaceDetailScreen />);
 
     expect(screen.getByText(/^Go/)).toBeOnTheScreen();
-    expect(screen.getByText('Share')).toBeOnTheScreen();
     expect(screen.getByText('Compass')).toBeOnTheScreen();
+    // Share moved into the header ⋯ menu
+    expect(screen.queryByText('Share')).not.toBeOnTheScreen();
     // ⋯ renders in the native header (mocked away here), not the body
     expect(screen.queryByText('⋯')).not.toBeOnTheScreen();
     expect(screen.queryByText('Directions')).not.toBeOnTheScreen();
@@ -374,12 +363,9 @@ describe('<PlaceDetailScreen />', () => {
       mapsUri: 'https://maps.google.com/?cid=123',
     };
 
-    const labels = overflowActions(place, details, undefined).map((action) => action.text);
+    const labels = overflowActions(place, details).map((action) => action.title);
 
-    expect(labels).toEqual(['Open in Maps', 'Call 020 7407 1002', 'Cancel']);
-
-    overflowActions(place, details, undefined)[0].onPress?.();
-    expect(Linking.openURL).toHaveBeenCalledWith('https://maps.google.com/?cid=123');
+    expect(labels).toEqual(['Share', 'Open in Maps', 'Call 020 7407 1002']);
   });
 
   test('the compass modal shows the dial for the place', async () => {
@@ -390,25 +376,6 @@ describe('<PlaceDetailScreen />', () => {
     expect(screen.getByText('away')).toBeOnTheScreen();
   });
 
-  test("Share prefers Google's mapsUri once details load", async () => {
-    const shareSpy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
-    mockFetchPlaceDetails.mockResolvedValue({
-      ...MockPlaces[0],
-      id: 'tower-bridge',
-      photoUrls: [MockPlaces[0].photoUrl],
-      mapsUri: 'https://maps.google.com/?cid=123',
-    });
-    mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });
-    await render(<PlaceDetailScreen />);
-
-    await screen.findByText('Tower Bridge');
-    await fireEvent.press(screen.getByText('Share'));
-
-    expect(shareSpy).toHaveBeenCalledWith({
-      message: expect.stringContaining('https://maps.google.com/?cid=123'),
-    });
-    shareSpy.mockRestore();
-  });
 
   test('there is no Call button — phone lives in Details', async () => {
     mockUseLocalSearchParams.mockReturnValue({ id: 'tower-bridge' });

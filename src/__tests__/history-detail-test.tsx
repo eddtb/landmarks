@@ -41,7 +41,6 @@ describe('<HistoryDetailScreen />', () => {
     // 112m at walking pace rounds to the 1-minute floor
     expect(screen.getByText(/History · 1 min walk · Wikipedia/)).toBeOnTheScreen();
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
-    expect(screen.getByText('Share')).toBeOnTheScreen();
     expect(screen.getByText('Compass')).toBeOnTheScreen();
     expect(screen.getByText('Story')).toBeOnTheScreen();
     expect(screen.getByText(/demolished in 1855/)).toBeOnTheScreen();
