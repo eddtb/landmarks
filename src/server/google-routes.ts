@@ -1,3 +1,4 @@
+import { chargeGoogle } from '@/server/google-budget';
 import { WalkingRoute } from '@/types/route';
 import { Coordinates } from '@/utils/geo';
 
@@ -70,6 +71,7 @@ export async function computeWalkingRoute(
   from: Coordinates,
   to: Coordinates
 ): Promise<WalkingRoute | null> {
+  chargeGoogle('route');
   const response = await fetch(RoutesEndpoint, {
     method: 'POST',
     headers: {

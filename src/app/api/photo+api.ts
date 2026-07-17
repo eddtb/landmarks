@@ -8,6 +8,7 @@
  * token via the photo-names cache, then redirects to Google's
  * key-less CDN URL. The key itself never leaves the server.
  */
+import { chargeGoogle } from '@/server/google-budget';
 import { fetchPhotoNames, getRememberedPhotoName } from '@/server/photo-names';
 
 const MaxPhotoIndex = 9;
@@ -52,6 +53,7 @@ export async function GET(request: Request) {
 }
 
 async function resolveMediaUri(name: string, apiKey: string): Promise<string | undefined> {
+  chargeGoogle('photoMedia');
   const mediaUrl = `https://places.googleapis.com/v1/${name}/media?maxWidthPx=800&skipHttpRedirect=true`;
   const response = await fetch(mediaUrl, { headers: { 'X-Goog-Api-Key': apiKey } });
   if (!response.ok) {

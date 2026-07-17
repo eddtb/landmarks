@@ -11,6 +11,8 @@
  * within the server process.
  */
 
+import { chargeGoogle } from '@/server/google-budget';
+
 const PlaceDetailsEndpoint = 'https://places.googleapis.com/v1/places';
 
 type CacheEntry = { names: string[]; expires: number };
@@ -42,6 +44,7 @@ export function getRememberedPhotoName(placeId: string, index: number): string |
 
 /** Cache miss (server restart, expiry): one lean details call re-learns the tokens. */
 export async function fetchPhotoNames(placeId: string, apiKey: string): Promise<string[]> {
+  chargeGoogle('photoNames');
   const response = await fetch(`${PlaceDetailsEndpoint}/${encodeURIComponent(placeId)}`, {
     headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': 'photos.name' },
   });
