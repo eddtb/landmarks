@@ -291,7 +291,11 @@ function PlanView({
                 </View>
               </View>
               <View style={styles.stopRow}>
-                <ThemedText type="smallBold" themeColor="accent" style={styles.stopTime}>
+                <ThemedText
+                  type="smallBold"
+                  themeColor="accent"
+                  numberOfLines={1}
+                  style={styles.stopTime}>
                   {clockLabel(new Date(stop.arrive))}
                 </ThemedText>
                 <Pressable
@@ -434,7 +438,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   stopTime: {
-    width: 52,
+    // Wide enough for "12:45pm" at bold — 52 wrapped the trailing m
+    width: 66,
     paddingTop: Spacing.three,
     fontVariant: ['tabular-nums'],
   },
