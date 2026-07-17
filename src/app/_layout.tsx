@@ -26,9 +26,10 @@ export default function RootLayout() {
           name="place/[id]/reviews"
           options={{ title: 'Reviews', headerBackTitle: 'Back' }}
         />
+        <Stack.Screen name="stories" options={{ title: 'Stories', headerBackTitle: 'Nearby' }} />
         <Stack.Screen
           name="history/[pageId]/index"
-          options={{ title: '', headerBackTitle: 'Nearby' }}
+          options={{ title: '', headerBackTitle: 'Stories' }}
         />
         <Stack.Screen name="history/[pageId]/go" options={{ headerShown: false }} />
         <Stack.Screen

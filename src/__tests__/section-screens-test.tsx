@@ -2,7 +2,7 @@ import { fireEvent, render, screen, userEvent } from '@testing-library/react-nat
 
 import ActivitiesTab from '@/app/(tabs)/activities';
 import DrinksTab from '@/app/(tabs)/drinks';
-import HistoryTab from '@/app/(tabs)/history';
+import StoriesScreen from '@/app/stories';
 import LandmarksTab from '@/app/(tabs)/index';
 import { placesByCategory } from '@/data/mock-places';
 import { LocationStatus } from '@/hooks/use-location';
@@ -88,9 +88,9 @@ describe('section tab screens', () => {
     expect(await screen.findByText('Southbank Snooker & Pool Club')).toBeOnTheScreen();
   });
 
-  test('the History tab shows nearby Wikipedia articles', async () => {
+  test('the Stories screen shows nearby Wikipedia articles', async () => {
     locationState('ready', NearTowerBridge);
-    await render(<HistoryTab />);
+    await render(<StoriesScreen />);
 
     expect(await screen.findByText('Borough Compter')).toBeOnTheScreen();
     // The hook line leads; the meta reads like every other card
@@ -144,6 +144,17 @@ describe('section tab screens', () => {
     expect(screen.getByText(/Featured ▾/)).toBeOnTheScreen();
     // The featured place leads; unranked places keep their distance order
     expect(names()).toEqual(['The Anchor Bankside', 'The George Inn', 'The Market Porter']);
+  });
+
+  test('the Landmarks tab invites into the stories of the area', async () => {
+    locationState('ready', NearTowerBridge);
+    await render(<LandmarksTab />);
+    await screen.findByText('Tower Bridge');
+
+    expect(await screen.findByText(/The stories of/)).toBeOnTheScreen();
+    expect(
+      screen.getByText('What happened right here — 1 story from Wikipedia')
+    ).toBeOnTheScreen();
   });
 
   test('the noun menu filters to one type and rewrites the sentence', async () => {

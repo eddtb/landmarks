@@ -56,11 +56,23 @@ are how drift starts.
 
 ## Navigation
 
-The five sections are the app's top-level destinations and live in the
-**native system tab bar** (liquid glass on iOS 26, Material tabs on
-Android) with SF Symbols. The browse header keeps its identity — NEARBY
-over the area name with the violet locator dot — and carries the one
-filter as an **All | Open** segmented control opposite the title.
+The five tabs are Landmarks · Food · Drinks · Activities · **Plan** —
+real estate follows frequency: Plan (AI-composed outings) is the weekly
+habit; History's stories moved to a **lavender banner** above the
+Landmarks list ("The stories of Greenwich ›") that pushes the Stories
+screen, reachable wherever the header lives. The browse header keeps
+its identity — NEARBY over the area name with the violet locator dot —
+and carries the one filter as an **All | Open** segmented control
+opposite the title.
+
+**Plan speaks in two voices.** The occasion screen asks two one-tap
+questions (How long? × Who with?; the clock preselects duration). The
+itinerary is a timeline: violet times on a rail, each stop carrying a
+*why* (Claude's voice) and grey *facts* (our APIs' voice — the model
+never states a fact). Stories and weather notes ride the legs; every
+leg's Go › opens Go mode; Swap rotates a stop through understudies
+fitted to the same window; ↻ recomposes. Thin neighbourhoods yield
+shorter plans plus an honest note — never padding.
 Spacing contract: the count line and first card sit tight beneath the
 header; its bottom padding is the only gap. The count line is **fixed
 with the header, not scrolled with the list** — controls that change

@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import { ComponentType, ReactNode, useCallback, useMemo, useState } from 'react';
 import {
   ActionSheetIOS,
@@ -44,7 +45,7 @@ import {
  */
 
 /** Location gating shared by all tabs. */
-function LocationGate({ children }: { children: (props: GateProps) => ReactNode }) {
+export function LocationGate({ children }: { children: (props: GateProps) => ReactNode }) {
   const { status, coordinates, requestPermission } = useLocation();
   const [manualCenter, setManualCenter] = useState<Coordinates | null>(null);
 
@@ -78,7 +79,7 @@ function LocationGate({ children }: { children: (props: GateProps) => ReactNode 
   );
 }
 
-type GateProps = {
+export type GateProps = {
   center: Coordinates;
   locationDenied: boolean;
   onManualCenter: (center: Coordinates) => void;
@@ -418,18 +419,38 @@ export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
   );
 }
 
-export function HistorySectionScreen() {
+/**
+ * History's home since it left the tab bar: a lavender invitation
+ * above the Landmarks list, pitching its actual content. Scrolls
+ * with the list — occasional content doesn't earn fixed chrome.
+ */
+function StoriesBanner({ center }: { center: Coordinates }) {
+  const theme = useTheme();
+  const areaName = useAreaName(center);
+  const { state } = useHistory(center);
+  const count = state.status === 'ready' ? state.items.length : 0;
+  if (state.status === 'ready' && count === 0) {
+    return null;
+  }
   return (
-    <LocationGate>
-      {(gate) => (
-        <ThemedView style={styles.container}>
-          <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-            <SectionHeader {...gate} />
-            <HistoryBody center={gate.center} />
-          </SafeAreaView>
-        </ThemedView>
-      )}
-    </LocationGate>
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push('/stories')}
+      style={[styles.banner, { backgroundColor: theme.accentSoft }]}>
+      <View style={styles.bannerText}>
+        <ThemedText type="smallBold" themeColor="accent">
+          The stories of {areaName ?? 'this place'}
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {count > 0
+            ? `What happened right here — ${count} ${count === 1 ? 'story' : 'stories'} from Wikipedia`
+            : 'What happened right here, from Wikipedia'}
+        </ThemedText>
+      </View>
+      <ThemedText type="headline" themeColor="accent">
+        ›
+      </ThemedText>
+    </Pressable>
   );
 }
 
@@ -557,6 +578,7 @@ function PlacesBody({
         contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={category === 'landmark' ? <StoriesBanner center={center} /> : null}
         ListEmptyComponent={
           <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
             Nothing here yet — try another section.
@@ -567,7 +589,7 @@ function PlacesBody({
   );
 }
 
-function HistoryBody({ center }: { center: Coordinates }) {
+export function HistoryBody({ center }: { center: Coordinates }) {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
@@ -697,6 +719,18 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     paddingTop: Spacing.six,
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    borderRadius: Spacing.three - 2,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+  },
+  bannerText: {
+    flex: 1,
+    gap: 1,
   },
   search: {
     borderRadius: Spacing.three,

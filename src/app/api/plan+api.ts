@@ -91,7 +91,9 @@ export async function GET(request: Request) {
 
   globalCache.planCache ??= new Map();
   const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}|${duration}|${company}|${start.toDateString()}|${Math.floor(start.getHours() / 2)}`;
-  const cached = globalCache.planCache.get(cacheKey);
+  // fresh=1 is the ↻: skip the cache read (the recompose still writes)
+  const fresh = url.searchParams.get('fresh') === '1';
+  const cached = fresh ? undefined : globalCache.planCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return Response.json({ plan: cached.plan, cached: true });
   }
