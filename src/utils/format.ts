@@ -139,3 +139,23 @@ export function storyHook(extract: string | undefined): string | undefined {
   }
   return `${sentence.slice(0, 157).trimEnd()}…`;
 }
+
+/**
+ * The clock corrects the cache: openNow is a snapshot from fetch
+ * time, but nextCloseTime/nextOpenTime are exact moments — so the
+ * honest current state is derivable free. A venue past its close
+ * shows closed; one past its open shows open. Openness stays
+ * truthful through the whole cached hour without another API call.
+ */
+export function liveOpenNow(
+  place: { openNow?: boolean; nextCloseTime?: string; nextOpenTime?: string },
+  now: Date = new Date()
+): boolean | undefined {
+  if (place.openNow === true && place.nextCloseTime && now >= new Date(place.nextCloseTime)) {
+    return false;
+  }
+  if (place.openNow === false && place.nextOpenTime && now >= new Date(place.nextOpenTime)) {
+    return true;
+  }
+  return place.openNow;
+}

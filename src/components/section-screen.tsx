@@ -29,6 +29,7 @@ import { useLocation } from '@/hooks/use-location';
 import { usePlaces } from '@/hooks/use-places';
 import { useTheme } from '@/hooks/use-theme';
 import { Place, PlaceCategory } from '@/types/place';
+import { liveOpenNow } from '@/utils/format';
 import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
 import {
   buildTypeGroups,
@@ -500,7 +501,7 @@ function PlacesBody({
       state.places
         // "Open" keeps unknowns: many landmarks report no hours at all,
         // and hiding them would empty the section, not filter it
-        .filter((place) => !openNowOnly || place.openNow !== false)
+        .filter((place) => !openNowOnly || liveOpenNow(place) !== false)
         .map((place) => ({
           ...place,
           distanceMeters: distanceMeters(center, place.coordinates),

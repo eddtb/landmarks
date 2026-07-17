@@ -7,6 +7,7 @@ import {
   formatRatingCount,
   formatWalkTime,
   opensLabel,
+  liveOpenNow,
   openUntilLabel,
   storyHook,
 } from '@/utils/format';
@@ -144,5 +145,23 @@ describe('storyHook', () => {
   test('handles missing extracts and ones with no full stop', () => {
     expect(storyHook(undefined)).toBeUndefined();
     expect(storyHook('A fragment without a full stop')).toBe('A fragment without a full stop');
+  });
+});
+
+describe('liveOpenNow', () => {
+  test('a venue past its closing time reads closed, even from a stale snapshot', () => {
+    const place = { openNow: true, nextCloseTime: '2026-07-18T15:00:00Z' };
+    expect(liveOpenNow(place, new Date('2026-07-18T15:20:00Z'))).toBe(false);
+    expect(liveOpenNow(place, new Date('2026-07-18T14:40:00Z'))).toBe(true);
+  });
+
+  test('a venue past its opening time reads open', () => {
+    const place = { openNow: false, nextOpenTime: '2026-07-18T11:00:00Z' };
+    expect(liveOpenNow(place, new Date('2026-07-18T11:05:00Z'))).toBe(true);
+    expect(liveOpenNow(place, new Date('2026-07-18T10:00:00Z'))).toBe(false);
+  });
+
+  test('unknown hours stay unknown', () => {
+    expect(liveOpenNow({}, new Date())).toBeUndefined();
   });
 });
