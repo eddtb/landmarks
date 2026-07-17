@@ -11,6 +11,7 @@
  * within the server process.
  */
 
+import { diskBackedMap } from '@/server/ai-cache';
 import { chargeGoogle } from '@/server/google-budget';
 
 const PlaceDetailsEndpoint = 'https://places.googleapis.com/v1/places';
@@ -20,7 +21,7 @@ type CacheEntry = { names: string[]; expires: number };
 const globalCache = globalThis as { photoNamesCache?: Map<string, CacheEntry> };
 
 function cache(): Map<string, CacheEntry> {
-  globalCache.photoNamesCache ??= new Map();
+  globalCache.photoNamesCache ??= diskBackedMap<CacheEntry>('photo-names');
   return globalCache.photoNamesCache;
 }
 
