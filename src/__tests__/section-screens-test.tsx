@@ -140,6 +140,28 @@ describe('section tab screens', () => {
     expect(names()).toEqual(['The Anchor Bankside', 'The George Inn', 'The Market Porter']);
   });
 
+  test('the noun menu filters to one type and rewrites the sentence', async () => {
+    locationState('ready', NearTowerBridge);
+    await render(<DrinksTab />);
+    await screen.findByText('The George Inn');
+    expect(screen.getByText(/4 places ▾/)).toBeOnTheScreen();
+
+    await fireEvent(screen.getByTestId('type-menu'), 'pressAction', {
+      nativeEvent: { event: 'group:Coffee Shop' },
+    });
+
+    // The sentence rewrites itself (singular!); only the coffee shop remains
+    expect(screen.getByText(/1 coffee shop ▾/)).toBeOnTheScreen();
+    expect(screen.getByText('Monmouth Coffee Company')).toBeOnTheScreen();
+    expect(screen.queryByText('The George Inn')).not.toBeOnTheScreen();
+
+    await fireEvent(screen.getByTestId('type-menu'), 'pressAction', {
+      nativeEvent: { event: 'all' },
+    });
+    expect(screen.getByText(/4 places ▾/)).toBeOnTheScreen();
+    expect(screen.getByText('The George Inn')).toBeOnTheScreen();
+  });
+
   test('shows the priming screen before permission is requested', async () => {
     locationState('priming');
     await render(<LandmarksTab />);

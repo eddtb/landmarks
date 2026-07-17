@@ -65,13 +65,20 @@ Spacing contract: the count line and first card sit tight beneath the
 header; its bottom padding is the only gap. Venue screens push over the
 tab bar; deeper content pushes; dip-in tools (compass) present modally.
 
-**The count line is the sort.** `39 places · Nearest ▾` — the violet
-word opens an anchored system menu (`@expo/ui` MenuView; Nearest /
-Featured, checkmark on the active sort). A sort has no "off", so
-it's a picker, not a segmented control; it lives on the line describing
-the result it reorders, and the approved header never grows for it.
-Featured is Google's own prominence ranking, which every browse already
-fetches — the toggle re-sorts on-device, no refetch, no spinner.
+**The count line is the controls.** `31 places ▾ · Nearest ▾` — a
+sentence whose words are the list's controls, each an anchored system
+menu (`@expo/ui` MenuView, checkmark on the active choice). The **noun
+is the type filter**: it opens the groups present in the loaded
+results with live counts ("Pubs · 21"), and picking one rewrites the
+sentence — `7 coffee shops ▾ · Nearest ▾` — so the filter state can
+never be forgotten. Labels sharing a head noun fold into one group
+("Chinese Restaurant" → Restaurants) with the specifics in a native
+submenu; counts ride in menu titles (native items have no trailing
+slot). The **tail is the sort** (Nearest / Featured): a sort has no
+"off", so it's a picker, not a segmented control. Featured is Google's
+own prominence ranking, which every browse already fetches — all of it
+re-sorts and re-filters on-device, no refetch, no spinner, and the
+approved header never grows.
 
 Lists scroll under the translucent tab bar but pad their bottom by the
 safe-area inset: the last card must always be able to rest fully above
