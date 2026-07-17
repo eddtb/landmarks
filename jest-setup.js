@@ -28,26 +28,6 @@ jest.mock('@expo/ui/community/menu', () => {
   return { MenuView: (props) => React.createElement(View, props) };
 });
 
-// Drag needs native gestures — render a plain list in tests
-jest.mock('react-native-draggable-flatlist', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  const List = ({ data, renderItem, keyExtractor, ListFooterComponent }) =>
-    React.createElement(
-      View,
-      null,
-      data.map((item, index) =>
-        React.createElement(
-          View,
-          { key: keyExtractor ? keyExtractor(item, index) : index },
-          renderItem({ item, drag: () => {}, isActive: false, getIndex: () => index })
-        )
-      ),
-      ListFooterComponent
-    );
-  return { __esModule: true, default: List };
-});
-
 jest.mock('expo-maps', () => {
   const React = require('react');
   const { View } = require('react-native');
