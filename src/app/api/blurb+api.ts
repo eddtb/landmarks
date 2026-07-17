@@ -1,3 +1,4 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { fetchPlaceBlurb } from '@/server/anthropic';
 
 /**
@@ -16,7 +17,7 @@ type CacheEntry = { blurb: string | null; fetchedAt: number };
 
 // globalThis: the dev server re-evaluates route modules per request
 const globalCache = globalThis as { blurbCache?: Map<string, CacheEntry> };
-const cache = (globalCache.blurbCache ??= new Map<string, CacheEntry>());
+const cache = (globalCache.blurbCache ??= diskBackedMap<CacheEntry>('blurb'));
 
 export async function GET(request: Request) {
   const url = new URL(request.url);

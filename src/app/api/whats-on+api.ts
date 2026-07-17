@@ -1,3 +1,4 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { fetchWhatsOn } from '@/server/anthropic';
 import { WhatsOnEvent } from '@/types/whats-on';
 
@@ -26,7 +27,7 @@ type CacheEntry = { events: WhatsOnEvent[]; fetchedAt: number };
 // server process. (Verified: a plain module Map re-researched — and
 // re-billed — every identical request.)
 const globalCache = globalThis as { whatsOnCache?: Map<string, CacheEntry> };
-const cache = (globalCache.whatsOnCache ??= new Map<string, CacheEntry>());
+const cache = (globalCache.whatsOnCache ??= diskBackedMap<CacheEntry>('whats-on'));
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
