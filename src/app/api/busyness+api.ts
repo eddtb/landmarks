@@ -1,3 +1,4 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { fetchBusynessPattern } from '@/server/anthropic';
 import { BusynessPattern } from '@/types/busyness';
 import { WhatsOnEvent } from '@/types/whats-on';
@@ -23,7 +24,7 @@ const globalCache = globalThis as {
   busynessCache?: Map<string, CacheEntry>;
   whatsOnCache?: Map<string, WhatsOnCacheEntry>;
 };
-const cache = (globalCache.busynessCache ??= new Map<string, CacheEntry>());
+const cache = (globalCache.busynessCache ??= diskBackedMap<CacheEntry>('busyness'));
 
 function knownEvents(placeId: string): string[] {
   const cached = globalCache.whatsOnCache?.get(placeId);

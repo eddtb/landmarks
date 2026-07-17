@@ -84,13 +84,44 @@ export function parseWhatsOnEvents(text: string): WhatsOnEvent[] {
 
 type MessagesResponse = {
   content?: { type: string; text?: string }[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    server_tool_use?: { web_search_requests?: number };
+  };
 };
+
+/**
+ * Spend visibility: every billed call logs its own usage and the
+ * running session total, priced at Haiku rates ($1/M in, $5/M out,
+ * $10/1k searches). The searches dominate — this line is how a
+ * runaway pattern gets noticed in the dev logs instead of on the
+ * billing page.
+ */
+const spend = ((globalThis as { aiSpend?: { calls: number; dollars: number } }).aiSpend ??= {
+  calls: 0,
+  dollars: 0,
+});
+
+function logUsage(label: string, usage: MessagesResponse['usage']) {
+  const input = usage?.input_tokens ?? 0;
+  const output = usage?.output_tokens ?? 0;
+  const searches = usage?.server_tool_use?.web_search_requests ?? 0;
+  const dollars = input / 1e6 + (output * 5) / 1e6 + searches / 100;
+  spend.calls += 1;
+  spend.dollars += dollars;
+  console.log(
+    `[ai] ${label}: ${input} in / ${output} out / ${searches} searches ≈ $${dollars.toFixed(4)} ` +
+      `(session: ${spend.calls} calls ≈ $${spend.dollars.toFixed(2)})`
+  );
+}
 
 async function researchWithWebSearch(options: {
   apiKey: string;
   prompt: string;
   maxTokens: number;
   maxSearches: number;
+  label: string;
 }): Promise<string> {
   const response = await fetch(MessagesEndpoint, {
     method: 'POST',
@@ -120,6 +151,7 @@ async function researchWithWebSearch(options: {
   }
 
   const body = (await response.json()) as MessagesResponse;
+  logUsage(options.label, body.usage);
   return (body.content ?? [])
     .filter((block) => block.type === 'text' && block.text)
     .map((block) => block.text)
@@ -136,6 +168,7 @@ export async function fetchWhatsOn(options: {
     prompt: whatsOnPrompt(options.name, options.address),
     maxTokens: 900,
     maxSearches: MaxSearches,
+    label: 'whats-on',
   });
   return parseWhatsOnEvents(text);
 }
@@ -268,7 +301,8 @@ export async function fetchPlaceBlurb(options: {
     apiKey: options.apiKey,
     prompt: blurbPrompt(options.name, options.typeLabel, options.address),
     maxTokens: 600,
-    maxSearches: 3,
+    maxSearches: 2,
+    label: 'blurb',
   });
   return parseBlurb(text);
 }
@@ -286,6 +320,7 @@ export async function fetchBusynessPattern(options: {
     prompt: busynessPrompt(options),
     maxTokens: 800,
     maxSearches: 0,
+    label: 'busyness',
   });
   return parseBusynessPattern(text);
 }
@@ -352,6 +387,7 @@ export async function fetchPlanAnnotations(options: {
     prompt: planAnnotationPrompt(options.brief),
     maxTokens: 900,
     maxSearches: 0,
+    label: 'plan',
   });
   return parsePlanAnnotations(text);
 }
