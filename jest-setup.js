@@ -11,6 +11,9 @@ jest.mock('react-native-safe-area-context', () =>
 // expo-maps is a native module with no JS fallback — render a plain View
 // so component tests can assert the map's presence and props.
 // expo-glass-effect is native (iOS 26) — plain View + "unavailable"
+// Screens render outside a navigator in tests — always "focused"
+jest.mock('expo-router/build/useIsFocused', () => ({ useIsFocused: () => true }));
+
 jest.mock('expo-glass-effect', () => {
   const React = require('react');
   const { View } = require('react-native');

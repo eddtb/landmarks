@@ -1,8 +1,12 @@
 import { placesByCategory } from '@/data/mock-places';
+import { diskBackedMap } from '@/server/ai-cache';
 import { searchNearby } from '@/server/google-places';
 import { PlaceCategory } from '@/types/place';
 
 const Categories: PlaceCategory[] = ['landmark', 'food', 'drink', 'activity'];
+
+type ListEntry = { places: unknown[]; expires: number };
+const listCache = diskBackedMap<ListEntry>('places-lists');
 
 /**
  * GET /api/places?lat=51.5&lng=-0.09&category=landmark
@@ -36,6 +40,15 @@ export async function GET(request: Request) {
     return Response.json({ places: placesByCategory(category, center), demo: true });
   }
 
+  // The fix for £1-per-app-open: the server answers repeat questions
+  // from its own disk-backed cache. One fetch per ~100m area bucket
+  // per category per hour, shared across every app open and restart.
+  const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}|${category}`;
+  const cached = listCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    return Response.json({ places: cached.places, cached: true });
+  }
+
   try {
     const places = await searchNearby({
       apiKey,
@@ -43,6 +56,7 @@ export async function GET(request: Request) {
       center,
       origin: url.origin,
     });
+    listCache.set(cacheKey, { places, expires: Date.now() + 60 * 60 * 1000 });
     return Response.json({ places });
   } catch (error) {
     console.error('Nearby search failed:', error);
