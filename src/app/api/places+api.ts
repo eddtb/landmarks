@@ -43,8 +43,12 @@ export async function GET(request: Request) {
   // The fix for £1-per-app-open: the server answers repeat questions
   // from its own disk-backed cache. One fetch per ~100m area bucket
   // per category per hour, shared across every app open and restart.
+  // Pull-to-refresh is the deliberate escape hatch: fresh=1 forces a
+  // real fetch (a cached "refresh" is a placebo button). Passive loads
+  // still read the hour cache.
+  const fresh = url.searchParams.get('fresh') === '1';
   const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}|${category}`;
-  const cached = listCache.get(cacheKey);
+  const cached = fresh ? undefined : listCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) {
     return Response.json({ places: cached.places, cached: true });
   }
