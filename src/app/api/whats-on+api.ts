@@ -39,8 +39,9 @@ export async function GET(request: Request) {
     return Response.json({ error: 'Expected id and name' }, { status: 400 });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  // Either provider serves; the router in anthropic.ts picks
+  const apiKey = process.env.ANTHROPIC_API_KEY ?? '';
+  if (!apiKey && !process.env.GEMINI_API_KEY) {
     return Response.json({ events: [] });
   }
 

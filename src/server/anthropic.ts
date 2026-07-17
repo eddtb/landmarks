@@ -1,4 +1,5 @@
 import { assertBudget, dailyBudgetUsd, recordSpend, todaysSpend } from '@/server/ai-budget';
+import { generateWithGemini } from '@/server/gemini';
 import {
   BusynessLevels,
   BusynessPattern,
@@ -126,6 +127,19 @@ async function researchWithWebSearch(options: {
   maxSearches: number;
   label: string;
 }): Promise<string> {
+  // Provider routing: Gemini's free tier is the default home for
+  // every feature (grounded search replaces web search); Anthropic
+  // remains one env flip away (AI_PROVIDER=anthropic) as fallback.
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey && process.env.AI_PROVIDER !== 'anthropic') {
+    return generateWithGemini({
+      apiKey: geminiKey,
+      prompt: options.prompt,
+      maxTokens: options.maxTokens,
+      grounded: options.maxSearches > 0,
+      label: options.label,
+    });
+  }
   // The circuit breaker: at the daily cap, refuse BEFORE spending.
   // Callers already treat a throw as "no result" and degrade quietly.
   assertBudget();

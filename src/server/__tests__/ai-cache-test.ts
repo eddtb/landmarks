@@ -15,7 +15,7 @@ const { existsSync, rmSync } = require('fs') as {
  */
 describe('diskBackedMap', () => {
   const name = 'test-suite-cache';
-  const path = `.ai-cache/${name}.json`;
+  const path = `${process.env.AI_CACHE_DIR}/${name}.json`;
 
   afterAll(() => {
     if (existsSync(path)) {
@@ -42,5 +42,36 @@ describe('diskBackedMap', () => {
     const b = diskBackedMap<number>(name);
     a.set('k', 7);
     expect(b.get('k')).toBe(7);
+  });
+});
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { extractAnswerText } = require('@/server/gemini') as {
+  extractAnswerText: (parts: { text?: string; thought?: boolean }[]) => string;
+};
+
+describe('extractAnswerText (Gemini part handling)', () => {
+  test('drops thought parts and takes the fenced block when present', () => {
+    const text = extractAnswerText([
+      { text: 'Let me research this venue…', thought: true },
+      { text: 'Here is the answer:\n```json\n[{"title": "Quiz Night"}]\n```' },
+      { text: '```json\n[{"title": "Quiz Night"}]\n```' },
+    ]);
+    // The duplicate-block trap: first fenced block wins, cleanly
+    expect(JSON.parse(text)).toEqual([{ title: 'Quiz Night' }]);
+  });
+
+  test('plain unfenced answers pass through untouched', () => {
+    expect(extractAnswerText([{ text: '[{"a": 1}]' }])).toBe('[{"a": 1}]');
+  });
+});
+
+describe('extractAnswerText truncation handling', () => {
+  test('skips a truncated first block for the complete repeat', () => {
+    const text = extractAnswerText([
+      { text: '```json\n[{"title": "Quiz", "sourceUrl": "https://truncat' },
+      { text: '```\n```json\n[{"title": "Quiz", "sourceUrl": "https://full.example"}]\n```' },
+    ]);
+    expect(JSON.parse(text)).toEqual([{ title: 'Quiz', sourceUrl: 'https://full.example' }]);
   });
 });

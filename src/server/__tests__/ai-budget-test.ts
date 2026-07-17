@@ -1,4 +1,4 @@
-import { assertBudget, BudgetExceededError, recordSpend, todaysSpend } from '@/server/ai-budget';
+import { anthropicBudget, assertBudget, BudgetExceededError, recordSpend, todaysSpend } from '@/server/ai-budget';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { existsSync, rmSync } = require('fs') as {
@@ -10,16 +10,18 @@ describe('the AI spend circuit breaker', () => {
   // The debounced disk write can land AFTER afterAll's delete,
   // poisoning the next run — so clean before, not just after
   beforeAll(() => {
+    // The module's ledger closure hydrated at import — clear CONTENTS
+    anthropicBudget.reset();
     (globalThis as { aiDiskMaps?: Map<string, unknown> }).aiDiskMaps?.delete('spend-ledger');
-    if (existsSync('.ai-cache/spend-ledger.json')) {
-      rmSync('.ai-cache/spend-ledger.json');
+    if (existsSync('.ai-cache-test/spend-ledger.json')) {
+      rmSync('.ai-cache-test/spend-ledger.json');
     }
   });
 
   afterAll(() => {
     (globalThis as { aiDiskMaps?: Map<string, unknown> }).aiDiskMaps?.delete('spend-ledger');
-    if (existsSync('.ai-cache/spend-ledger.json')) {
-      rmSync('.ai-cache/spend-ledger.json');
+    if (existsSync('.ai-cache-test/spend-ledger.json')) {
+      rmSync('.ai-cache-test/spend-ledger.json');
     }
   });
 
