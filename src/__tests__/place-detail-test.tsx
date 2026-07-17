@@ -1,6 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as Linking from 'expo-linking';
-import { Share } from 'react-native';
 
 import CompassScreen from '@/app/place/[id]/compass';
 import PlaceDetailScreen, { overflowActions } from '@/app/place/[id]/index';
