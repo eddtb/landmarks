@@ -1,3 +1,5 @@
+import { chargeGoogle } from '@/server/google-budget';
+
 /**
  * GET /api/streetview?lat&lng — street-level imagery for places whose
  * Google listing has no photos (matching Google Maps' own fallback).
@@ -36,6 +38,7 @@ export async function GET(request: Request) {
       return Response.json({ error: 'No imagery available' }, { status: 404 });
     }
 
+    chargeGoogle('streetView');
     const image = await fetch(
       `https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${location}&source=outdoor&key=${apiKey}`
     );

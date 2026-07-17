@@ -1,3 +1,4 @@
+import { chargeGoogle } from '@/server/google-budget';
 import { rememberPhotoNames } from '@/server/photo-names';
 import { Place, PlaceCategory, PlaceDetails, PlaceReview, PlaceWithDistance } from '@/types/place';
 import { Coordinates, distanceMeters } from '@/utils/geo';
@@ -452,6 +453,7 @@ export async function searchNearby(options: {
   } = options;
 
   async function runQuery(rankPreference: 'DISTANCE' | 'POPULARITY') {
+    chargeGoogle('nearbySearch');
     const response = await fetch(NearbySearchEndpoint, {
       method: 'POST',
       headers: {
@@ -536,6 +538,7 @@ export async function getPlaceDetails(options: {
 }): Promise<PlaceDetails | null> {
   const { apiKey, placeId, origin } = options;
 
+  chargeGoogle('placeDetails');
   const response = await fetch(`${PlaceDetailsEndpoint}/${encodeURIComponent(placeId)}`, {
     headers: {
       'X-Goog-Api-Key': apiKey,

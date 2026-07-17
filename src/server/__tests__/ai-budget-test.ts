@@ -7,6 +7,15 @@ const { existsSync, rmSync } = require('fs') as {
 };
 
 describe('the AI spend circuit breaker', () => {
+  // The debounced disk write can land AFTER afterAll's delete,
+  // poisoning the next run — so clean before, not just after
+  beforeAll(() => {
+    (globalThis as { aiDiskMaps?: Map<string, unknown> }).aiDiskMaps?.delete('spend-ledger');
+    if (existsSync('.ai-cache/spend-ledger.json')) {
+      rmSync('.ai-cache/spend-ledger.json');
+    }
+  });
+
   afterAll(() => {
     (globalThis as { aiDiskMaps?: Map<string, unknown> }).aiDiskMaps?.delete('spend-ledger');
     if (existsSync('.ai-cache/spend-ledger.json')) {
