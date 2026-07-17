@@ -49,3 +49,14 @@ describe('the AI spend circuit breaker', () => {
     expect(() => assertBudget()).toThrow(BudgetExceededError);
   });
 });
+
+describe('replay-only dev mode', () => {
+  test('refuses every billed call regardless of budget', () => {
+    process.env.REPLAY_ONLY = '1';
+    try {
+      expect(() => assertBudget()).toThrow(/replay-only/);
+    } finally {
+      delete process.env.REPLAY_ONLY;
+    }
+  });
+});

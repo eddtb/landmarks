@@ -57,6 +57,12 @@ export function makeBudget(options: {
     todays,
     reset: () => ledger.clear(),
     assert: () => {
+      // Replay-only: development servers set REPLAY_ONLY=1 and serve
+      // recorded caches; a cache miss refuses rather than bills. The
+      // real app never sets it. This is how dev work stays at zero.
+      if (process.env.REPLAY_ONLY === '1') {
+        throw new BudgetExceededError(`${provider} [replay-only dev mode]`, 0, 0);
+      }
       const spent = todays();
       if (spent.dollars >= cap()) {
         throw new BudgetExceededError(provider, spent.dollars, cap());
