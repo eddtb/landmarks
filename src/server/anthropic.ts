@@ -1,3 +1,4 @@
+import { assertBudget, dailyBudgetUsd, recordSpend, todaysSpend } from '@/server/ai-budget';
 import {
   BusynessLevels,
   BusynessPattern,
@@ -110,9 +111,11 @@ function logUsage(label: string, usage: MessagesResponse['usage']) {
   const dollars = input / 1e6 + (output * 5) / 1e6 + searches / 100;
   spend.calls += 1;
   spend.dollars += dollars;
+  recordSpend(dollars);
   console.log(
     `[ai] ${label}: ${input} in / ${output} out / ${searches} searches ≈ $${dollars.toFixed(4)} ` +
-      `(session: ${spend.calls} calls ≈ $${spend.dollars.toFixed(2)})`
+      `(session: ${spend.calls} calls ≈ $${spend.dollars.toFixed(2)}, ` +
+      `today: $${todaysSpend().dollars.toFixed(2)} of $${dailyBudgetUsd().toFixed(2)})`
   );
 }
 
@@ -123,6 +126,9 @@ async function researchWithWebSearch(options: {
   maxSearches: number;
   label: string;
 }): Promise<string> {
+  // The circuit breaker: at the daily cap, refuse BEFORE spending.
+  // Callers already treat a throw as "no result" and degrade quietly.
+  assertBudget();
   const response = await fetch(MessagesEndpoint, {
     method: 'POST',
     headers: {
