@@ -537,32 +537,33 @@ function PlacesBody({
   }
 
   return (
-    <FlatList
-      data={livePlaces}
-      keyExtractor={(place) => place.id}
-      renderItem={({ item }) => <PlaceCard place={item} />}
-      // The list scrolls under the translucent tab bar; the inset keeps
-      // the last card reachable above it
-      contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      showsVerticalScrollIndicator={false}
-      ListHeaderComponent={
-        // A row, not nested Text: the menu anchors are native views.
-        // The sentence is the controls: noun = type, tail = sort.
-        <View style={styles.listMeta}>
-          <TypeMenu places={openPlaces} typeFilter={typeFilter} onTypeChange={onTypeChange} />
-          <ThemedText type="small" themeColor="textSecondary">
-            {' '}·{' '}
-          </ThemedText>
-          <SortMenu sortMode={sortMode} onSortChange={onSortChange} />
-        </View>
-      }
-      ListEmptyComponent={
-        <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-          Nothing here yet — try another section.
+    <>
+      {/* Fixed with the header, not scrolled with the list: controls
+          that change the list shouldn't travel with it. A row, not
+          nested Text — the menu anchors are native views. */}
+      <View style={styles.controlLine}>
+        <TypeMenu places={openPlaces} typeFilter={typeFilter} onTypeChange={onTypeChange} />
+        <ThemedText type="small" themeColor="textSecondary">
+          {' '}·{' '}
         </ThemedText>
-      }
-    />
+        <SortMenu sortMode={sortMode} onSortChange={onSortChange} />
+      </View>
+      <FlatList
+        data={livePlaces}
+        keyExtractor={(place) => place.id}
+        renderItem={({ item }) => <PlaceCard place={item} />}
+        // The list scrolls under the translucent tab bar; the inset keeps
+        // the last card reachable above it
+        contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
+            Nothing here yet — try another section.
+          </ThemedText>
+        }
+      />
+    </>
   );
 }
 
@@ -599,28 +600,30 @@ function HistoryBody({ center }: { center: Coordinates }) {
   }
 
   return (
-    <FlatList
-      data={state.items}
-      keyExtractor={(item) => String(item.pageId)}
-      renderItem={({ item }) => <HistoryCard item={item} />}
-      contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      showsVerticalScrollIndicator={false}
-      ListHeaderComponent={
-        state.items.length > 0 ? (
-          // Attribution rides each card now; the count line matches
-          // the venue tabs' grammar
-          <ThemedText type="small" themeColor="textSecondary" style={styles.listMeta}>
+    <>
+      {state.items.length > 0 && (
+        // Attribution rides each card; the count line matches the
+        // venue tabs' grammar and stays fixed with the header
+        <View style={styles.controlLine}>
+          <ThemedText type="small" themeColor="textSecondary">
             {state.items.length} {state.items.length === 1 ? 'story' : 'stories'}
           </ThemedText>
-        ) : null
-      }
-      ListEmptyComponent={
-        <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-          No recorded history right here — wander a little.
-        </ThemedText>
-      }
-    />
+        </View>
+      )}
+      <FlatList
+        data={state.items}
+        keyExtractor={(item) => String(item.pageId)}
+        renderItem={({ item }) => <HistoryCard item={item} />}
+        contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
+            No recorded history right here — wander a little.
+          </ThemedText>
+        }
+      />
+    </>
   );
 }
 
@@ -676,18 +679,20 @@ const styles = StyleSheet.create({
     // White holds on the accent in both modes
     color: '#FFFFFF',
   },
-  // Spacing contract: the count line and first card sit tight beneath
-  // the header — its bottom padding is the only gap
-  list: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.four,
-    gap: Spacing.three,
-  },
-  listMeta: {
+  // Spacing contract: the control line sits tight beneath the header
+  // (fixed, not scrolled — controls that change the list don't travel
+  // with it) and the first card tight beneath that
+  controlLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingBottom: 0,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+  },
+  list: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.four,
+    gap: Spacing.three,
   },
   empty: {
     textAlign: 'center',
