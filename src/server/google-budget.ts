@@ -44,6 +44,6 @@ export function chargeGoogle(kind: GoogleCallKind) {
   budget.record(dollars);
   const today = budget.todays();
   console.log(
-    `[google] ${kind} ≈ $${dollars.toFixed(3)} (today: $${today.dollars.toFixed(2)} of $${budget.cap().toFixed(2)}, ${today.calls} calls)`
+    `[google] ${kind} ≈ $${dollars.toFixed(3)} — day total across ALL kinds: $${today.dollars.toFixed(2)} of $${budget.cap().toFixed(2)} cap (${today.calls} calls, estimates rounded up; real billing sits inside free allowances)`
   );
 }

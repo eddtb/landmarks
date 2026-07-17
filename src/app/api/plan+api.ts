@@ -1,4 +1,5 @@
 import { placesByCategory } from '@/data/mock-places';
+import { diskBackedMap } from '@/server/ai-cache';
 import { fetchPlanAnnotations } from '@/server/anthropic';
 import { searchNearby } from '@/server/google-places';
 import { computeWalkingRoute } from '@/server/google-routes';
@@ -55,7 +56,8 @@ async function cachedSearch(
   center: Coordinates,
   origin: string
 ): Promise<PlaceWithDistance[]> {
-  globalCache.planListCache ??= new Map();
+  // Disk-backed: dev restarts must not re-bill 8 list queries
+  globalCache.planListCache ??= diskBackedMap('plan-lists');
   const key = `${center.latitude.toFixed(3)},${center.longitude.toFixed(3)}|${category}`;
   const entry = globalCache.planListCache.get(key);
   if (entry && entry.expires > Date.now()) {
