@@ -247,6 +247,14 @@ async function annotate(
       price: stop.priceLevel,
       arrives: shortTime(new Date(stop.arrive)),
       closes: stop.nextCloseTime ? shortTime(new Date(stop.nextCloseTime)) : null,
+      // Build mode's doors need voices too — same single call
+      alternatives: stop.alternates.map((alt) => ({
+        placeId: alt.placeId,
+        name: alt.name,
+        type: alt.primaryLabel,
+        rating: alt.rating,
+        price: alt.priceLevel,
+      })),
     })),
     legs: plan.legs.map((leg, index) => ({
       index,
@@ -261,6 +269,9 @@ async function annotate(
       plan.title = annotations.title || plan.title;
       for (const stop of plan.stops) {
         stop.why = annotations.whys[stop.placeId];
+        for (const alternate of stop.alternates) {
+          alternate.why = annotations.whys[alternate.placeId];
+        }
       }
       for (const [index, note] of Object.entries(annotations.legNotes)) {
         const leg = plan.legs[Number(index)];

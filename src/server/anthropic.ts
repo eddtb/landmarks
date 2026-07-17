@@ -390,7 +390,7 @@ function planAnnotationPrompt(brief: string): string {
     'You are writing the short human lines for a walking-outing plan composed from verified data. ' +
     'You are given the chosen stops IN ORDER with verified facts, the occasion, and conditions. ' +
     'Do NOT state facts (hours, ratings, prices) and NEVER mention clock times or numbers — timing renders separately and your brief may be in a different timezone. Do NOT invent places or claims. ' +
-    'Write: a plan title (max 6 words, evocative, no puns forced), one "why" line per stop ' +
+    'Write: a plan title (max 6 words, evocative, no puns forced), one "why" line per stop AND per listed alternative (every placeId in the brief gets a why) ' +
     '(max 18 words, specific to what makes it right for THIS occasion and moment, grounded ONLY in the provided facts and editorial notes), ' +
     'and optional leg notes keyed by leg index (max 10 words, only when conditions genuinely warrant one — golden hour, rain, a riverside stretch).\n\n' +
     'Respond with ONLY JSON: {"title": "...", "whys": {"<placeId>": "..."}, "legNotes": {"<legIndex>": "..."}}\n\n' +
