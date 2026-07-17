@@ -1,4 +1,4 @@
-import { buildHistoryItems } from '@/server/wikipedia';
+import { buildHistoryItems, isStoryTitle } from '@/server/wikipedia';
 
 const Center = { latitude: 51.5055, longitude: -0.0906 };
 
@@ -53,5 +53,25 @@ describe('buildHistoryItems', () => {
     const clink = items.find((item) => item.pageId === 2);
     expect(clink?.thumbnailUrl).toBeUndefined();
     expect(clink?.extract).toContain('City jurisdiction');
+  });
+});
+
+describe('isStoryTitle (register gate)', () => {
+  // The exact noise measured near Greenwich, 2026-07-17
+  test('gates stations, plain streets, and piers', () => {
+    expect(isStoryTitle('Cutty Sark for Maritime Greenwich DLR station')).toBe(false);
+    expect(isStoryTitle('Greenwich Church Street')).toBe(false);
+    expect(isStoryTitle('King William Walk')).toBe(false);
+    expect(isStoryTitle('Greenwich Pier')).toBe(false);
+  });
+
+  test('keeps the treasure', () => {
+    expect(isStoryTitle('Palace of Placentia')).toBe(true);
+    expect(isStoryTitle('JASON reactor')).toBe(true);
+    expect(isStoryTitle('Greenwich foot tunnel')).toBe(true);
+    expect(isStoryTitle('Statue of Sir Walter Raleigh')).toBe(true);
+    expect(isStoryTitle('Prince Frederick\'s Barge')).toBe(true);
+    // "Walk"/"Street" only gate as the final word of a plain street name
+    expect(isStoryTitle('Walbrook Street Massacre')).toBe(true);
   });
 });

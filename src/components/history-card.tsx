@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { formatDistance } from '@/utils/format';
+import { formatWalkTime, storyHook } from '@/utils/format';
 
 type Props = {
   item: HistoryItem;
@@ -28,11 +28,19 @@ export function HistoryCard({ item }: Props) {
           <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
         )}
         <View style={styles.body}>
-          <ThemedText type="smallBold" numberOfLines={2}>
+          <ThemedText type="headline" numberOfLines={2}>
             {item.title}
           </ThemedText>
+          {/* The hook is the reason to tap — "a nuclear reactor ran
+              here until 1996" — the title alone never says it */}
+          {storyHook(item.extract) && (
+            <ThemedText type="small" numberOfLines={3}>
+              {storyHook(item.extract)}
+            </ThemedText>
+          )}
           <ThemedText type="small" themeColor="textSecondary">
-            History · {formatDistance(item.distanceMeters)}
+            {/* Same walking estimate as demo mode: ~1.33 m/s */}
+            {formatWalkTime(Math.round(item.distanceMeters / 1.33))} · Wikipedia
           </ThemedText>
         </View>
       </Pressable>

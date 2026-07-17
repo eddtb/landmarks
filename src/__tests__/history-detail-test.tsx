@@ -16,14 +16,6 @@ jest.mock('expo-router', () => {
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
-// The detail screens render a Compass, which needs these hooks
-jest.mock('@/hooks/use-location', () => ({
-  useLocation: () => ({ coordinates: { latitude: 51.5055, longitude: -0.0906 } }),
-}));
-jest.mock('@/hooks/use-heading', () => ({
-  useHeading: () => null,
-}));
-
 
 
 describe('<HistoryDetailScreen />', () => {
@@ -41,14 +33,19 @@ describe('<HistoryDetailScreen />', () => {
     ]);
   });
 
-  test('renders the story with distance and Wikipedia link', async () => {
+  test('renders the venue-grammar story screen', async () => {
     mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
     await render(<HistoryDetailScreen />);
 
     expect(screen.getByText('Borough Compter')).toBeOnTheScreen();
-    expect(screen.getByText(/History · 112 m from you/)).toBeOnTheScreen();
+    // 112m at walking pace rounds to the 1-minute floor
+    expect(screen.getByText(/History · 1 min walk · Wikipedia/)).toBeOnTheScreen();
+    expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
+    expect(screen.getByText('Share')).toBeOnTheScreen();
+    expect(screen.getByText('Compass')).toBeOnTheScreen();
+    expect(screen.getByText('Story')).toBeOnTheScreen();
     expect(screen.getByText(/demolished in 1855/)).toBeOnTheScreen();
-    expect(screen.getByText('Read on Wikipedia')).toBeOnTheScreen();
+    expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
   });
 
   test('handles unknown pages gracefully', async () => {

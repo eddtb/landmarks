@@ -106,6 +106,15 @@ answers that screen's question.
    **modal**. Deeper content (all reviews) pushes; tools you dip into
    (compass) present modally.
 
+**History speaks the same grammar.** Stories are curated (stations,
+plain streets, and piers are gated by title pattern — the two-photo
+rule's spirit) and *told*: cards lead with the extract's first sentence
+because "a nuclear reactor ran here until 1996" is the reason to tap,
+with `2 min walk · Wikipedia` as the meta. The story screen is the
+venue screen's shape — large title, violet Go, STORY, attribution —
+and Go mode is destination-agnostic: the route API takes any
+coordinates, vanished palaces included.
+
 ## Cards
 
 Soft grey surface (`backgroundElement`), 14px corners, no borders, no

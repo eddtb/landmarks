@@ -8,6 +8,7 @@ import {
   formatWalkTime,
   opensLabel,
   openUntilLabel,
+  storyHook,
 } from '@/utils/format';
 
 describe('formatDistance', () => {
@@ -121,5 +122,27 @@ describe('formatWalkTime', () => {
     expect(formatWalkTime(73)).toBe('1 min walk');
     expect(formatWalkTime(260)).toBe('4 min walk');
     expect(formatWalkTime(900)).toBe('15 min walk');
+  });
+});
+
+describe('storyHook', () => {
+  test('takes the first sentence of the extract', () => {
+    expect(
+      storyHook(
+        'JASON was a low-power nuclear research reactor. It was installed by the Ministry of Defence.'
+      )
+    ).toBe('JASON was a low-power nuclear research reactor.');
+  });
+
+  test('caps a rambling opening sentence', () => {
+    const rambling = `${'history '.repeat(30)}ends.`;
+    const hook = storyHook(rambling);
+    expect(hook!.length).toBeLessThanOrEqual(160);
+    expect(hook!.endsWith('…')).toBe(true);
+  });
+
+  test('handles missing extracts and ones with no full stop', () => {
+    expect(storyHook(undefined)).toBeUndefined();
+    expect(storyHook('A fragment without a full stop')).toBe('A fragment without a full stop');
   });
 });
