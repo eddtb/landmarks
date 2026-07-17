@@ -62,8 +62,10 @@ Android) with SF Symbols. The browse header keeps its identity — NEARBY
 over the area name with the violet locator dot — and carries the one
 filter as an **All | Open** segmented control opposite the title.
 Spacing contract: the count line and first card sit tight beneath the
-header; its bottom padding is the only gap. Venue screens push over the
-tab bar; deeper content pushes; dip-in tools (compass) present modally.
+header; its bottom padding is the only gap. The count line is **fixed
+with the header, not scrolled with the list** — controls that change
+the list don't travel with it. Venue screens push over the tab bar;
+deeper content pushes; dip-in tools (compass) present modally.
 
 **The count line is the controls.** `31 places ▾ · Nearest ▾` — a
 sentence whose words are the list's controls, each an anchored system
