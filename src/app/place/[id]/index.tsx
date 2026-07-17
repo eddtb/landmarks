@@ -18,7 +18,9 @@ import { placeStateLabel } from '@/components/place-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { addToPlan, planItemFromPlace, removeFromPlan } from '@/data/plan-store';
 import { useBlurb } from '@/hooks/use-blurb';
+import { usePlan } from '@/hooks/use-plan';
 import { useBusyness } from '@/hooks/use-busyness';
 import { usePlaceDetails } from '@/hooks/use-place-details';
 import { useStory } from '@/hooks/use-story';
@@ -81,6 +83,7 @@ export default function PlaceScreen() {
   const blurb = useBlurb(place, storyState.status === 'none' && !place?.description);
   const theme = useTheme();
   const [hoursExpanded, setHoursExpanded] = useState(false);
+  const planned = usePlan().some((item) => item.id === id);
 
   if (!place) {
     if (state.status === 'loading') {
@@ -175,6 +178,18 @@ export default function PlaceScreen() {
                 pressed && { opacity: 0.85 },
               ]}>
               <ThemedText type="smallBold">Compass</ThemedText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => (planned ? removeFromPlan(place.id) : addToPlan(planItemFromPlace(place)))}
+              style={({ pressed }) => [
+                styles.mini,
+                { backgroundColor: theme.accentSoft },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold" themeColor="accent">
+                {planned ? '✓ Planned' : '＋ Plan'}
+              </ThemedText>
             </Pressable>
           </View>
 

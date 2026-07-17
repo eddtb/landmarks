@@ -9,6 +9,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { getCachedHistoryItem } from '@/data/history-client';
+import { addToPlan, dwellMinutesFor, removeFromPlan } from '@/data/plan-store';
+import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { formatWalkTime } from '@/utils/format';
 import { Coordinates } from '@/utils/geo';
@@ -37,6 +39,7 @@ export default function HistoryDetailScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
   const theme = useTheme();
+  const planned = usePlan().some((entry) => entry.id === `story:${pageId}`);
 
   if (!item) {
     return (
@@ -120,6 +123,31 @@ export default function HistoryDetailScreen() {
                 pressed && { opacity: 0.85 },
               ]}>
               <ThemedText type="smallBold">Compass</ThemedText>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                planned
+                  ? removeFromPlan(`story:${item.pageId}`)
+                  : addToPlan({
+                      id: `story:${item.pageId}`,
+                      kind: 'story',
+                      name: item.title,
+                      photoUrl: item.thumbnailUrl,
+                      primaryLabel: 'Story',
+                      coordinates: item.coordinates,
+                      facts: ['Story', 'Wikipedia'],
+                      dwellMinutes: dwellMinutesFor(undefined, 'story'),
+                    })
+              }
+              style={({ pressed }) => [
+                styles.mini,
+                { backgroundColor: theme.accentSoft },
+                pressed && { opacity: 0.85 },
+              ]}>
+              <ThemedText type="smallBold" themeColor="accent">
+                {planned ? '✓ Planned' : '＋ Plan'}
+              </ThemedText>
             </Pressable>
           </View>
 
