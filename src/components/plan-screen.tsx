@@ -1,10 +1,10 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Share, StyleSheet, View } from 'react-native';
-import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ReorderList } from '@/components/reorder-list';
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -196,10 +196,10 @@ function PlanBody({ center }: { center: Coordinates }) {
       { text: 'Cancel', style: 'cancel' },
     ]);
 
-  const renderRow = ({ item, drag, isActive }: RenderItemParams<PlanItem>) => {
-    const row = rows.find((entry) => entry.item.id === item.id);
+  const renderRow = (item: PlanItem, index: number, handle: React.ReactNode) => {
+    const row = rows[index];
     return (
-      <View style={isActive && styles.dragging}>
+      <View>
         {row && (
           <View style={styles.legRow}>
             <ThemedText type="small" themeColor="textSecondary">
@@ -244,16 +244,7 @@ function PlanBody({ center }: { center: Coordinates }) {
                   ✕
                 </ThemedText>
               </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Reorder ${item.name}`}
-                hitSlop={Spacing.two}
-                onLongPress={drag}
-                delayLongPress={120}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  ≡
-                </ThemedText>
-              </Pressable>
+              {handle}
             </View>
             <ThemedText type="small" themeColor="textSecondary">
               {item.facts.join(' · ')}
@@ -284,14 +275,33 @@ function PlanBody({ center }: { center: Coordinates }) {
           {Math.round(totalWalkSeconds / 60)} min walking · ends ~{clockLabel(ends)}
         </ThemedText>
       </View>
-      <DraggableFlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        onDragEnd={({ data }) => reorderPlan(data)}
-        renderItem={renderRow}
-        containerStyle={styles.container}
+      <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
-        ListFooterComponent={
+        showsVerticalScrollIndicator={false}>
+        <ReorderList
+          items={items}
+          keyFor={(item) => item.id}
+          onReorder={reorderPlan}
+          renderRow={renderRow}
+          renderCompactRow={(item) => (
+            <View style={styles.compactRow}>
+              <ThemedText type="smallBold" themeColor="accent" numberOfLines={1} style={styles.time}>
+                {clockLabel(rows[items.indexOf(item)]?.arrive ?? new Date())}
+              </ThemedText>
+              <ThemedText type="smallBold" numberOfLines={1} style={styles.cardName}>
+                {item.name}
+              </ThemedText>
+            </View>
+          )}
+          renderHandle={() => (
+            <View accessibilityLabel="Reorder" style={styles.handle}>
+              <ThemedText type="small" themeColor="textSecondary">
+                ≡
+              </ThemedText>
+            </View>
+          )}
+        />
+        {
           <View style={styles.suggest}>
             <ThemedText type="eyebrow" themeColor="textSecondary">
               After this?
@@ -327,7 +337,7 @@ function PlanBody({ center }: { center: Coordinates }) {
             </Pressable>
           </View>
         }
-      />
+      </ScrollView>
     </View>
   );
 }
@@ -366,7 +376,8 @@ const styles = StyleSheet.create({
   card: { flex: 1, borderRadius: Spacing.three - 2, padding: Spacing.three, gap: Spacing.one },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   cardName: { flex: 1 },
-  dragging: { opacity: 0.8 },
+  compactRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingRight: Spacing.two },
+  handle: { paddingHorizontal: Spacing.one },
   suggest: { paddingTop: Spacing.four, gap: Spacing.two },
   doorList: { gap: Spacing.two, alignSelf: 'stretch' },
   door: { borderRadius: Spacing.three - 2, overflow: 'hidden' },
