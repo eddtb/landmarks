@@ -1,4 +1,17 @@
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
+import { ColorValue, DynamicColorIOS, Platform } from 'react-native';
+
+import { Colors } from '@/constants/theme';
+
+/**
+ * The active tab tints accent violet, not system blue. A dynamic
+ * color lets the iOS glass bar track light/dark natively (no JS
+ * re-render); Android's Material bar takes a plain hex.
+ */
+const AccentTint: ColorValue =
+  Platform.OS === 'ios'
+    ? DynamicColorIOS({ light: Colors.light.accent, dark: Colors.dark.accent })
+    : Colors.light.accent;
 
 /**
  * The five sections as the system tab bar — liquid glass on iOS 26,
@@ -8,7 +21,7 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
  */
 export default function TabsLayout() {
   return (
-    <NativeTabs minimizeBehavior="onScrollDown">
+    <NativeTabs tintColor={AccentTint} minimizeBehavior="onScrollDown">
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Landmarks</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="building.columns" md="account_balance" />
