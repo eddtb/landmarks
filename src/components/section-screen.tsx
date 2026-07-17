@@ -27,8 +27,14 @@ import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlaces } from '@/hooks/use-places';
 import { useTheme } from '@/hooks/use-theme';
-import { PlaceCategory } from '@/types/place';
+import { Place, PlaceCategory } from '@/types/place';
 import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
+import {
+  buildTypeGroups,
+  matchesTypeFilter,
+  TypeFilter,
+  typeNoun,
+} from '@/utils/place-types';
 
 /**
  * The shared body of every tab: location gating, the NEARBY header
@@ -149,8 +155,15 @@ type SortMode = 'nearest' | 'featured';
 
 const SortLabels: Record<SortMode, string> = { nearest: 'Nearest', featured: 'Featured' };
 
+type MenuAction = {
+  id: string;
+  title: string;
+  state?: 'on' | 'off';
+  subactions?: MenuAction[];
+};
+
 type MenuViewProps = {
-  actions: { id: string; title: string; state?: 'on' | 'off' }[];
+  actions: MenuAction[];
   onPressAction: (event: { nativeEvent: { event: string } }) => void;
   testID?: string;
   children?: ReactNode;
@@ -187,6 +200,118 @@ function showSortSheet(onSelect: (mode: SortMode) => void) {
     { text: 'Nearest', onPress: () => onSelect('nearest') },
     { text: 'Featured', onPress: () => onSelect('featured') },
     { text: 'Cancel', style: 'cancel' },
+  ]);
+}
+
+/**
+ * The count line's noun is the type filter: "31 places ▾" opens the
+ * groups present in the loaded results (live counts, never a stale
+ * option); picking one rewrites the sentence — "7 coffee shops ▾".
+ * Groups folding several labels carry a submenu: the group itself,
+ * then each specific label. Counts ride in the title because native
+ * menu items have no trailing-text slot.
+ */
+function TypeMenu({
+  places,
+  typeFilter,
+  onTypeChange,
+}: {
+  places: Place[];
+  typeFilter: TypeFilter;
+  onTypeChange: (filter: TypeFilter) => void;
+}) {
+  const count = places.filter((place) => matchesTypeFilter(place, typeFilter)).length;
+  const label = (
+    <ThemedText type="smallBold" themeColor="accent">
+      {count} {typeNoun(typeFilter, count)} ▾
+    </ThemedText>
+  );
+  const groups = buildTypeGroups(places);
+  const actions: MenuAction[] = [
+    { id: 'all', title: 'All types', state: typeFilter === 'all' ? 'on' : 'off' },
+    ...groups.map((group): MenuAction => {
+      const groupFilter: TypeFilter = `group:${group.group}`;
+      const title = `${sentencePlural(group.group)} · ${group.count}`;
+      if (group.labels.length <= 1) {
+        return { id: groupFilter, title, state: typeFilter === groupFilter ? 'on' : 'off' };
+      }
+      return {
+        id: `submenu:${group.group}`,
+        title,
+        subactions: [
+          {
+            id: groupFilter,
+            title: `All ${typeNoun(groupFilter)}`,
+            state: typeFilter === groupFilter ? 'on' : 'off',
+          },
+          ...group.labels.map((entry): MenuAction => {
+            const labelFilter: TypeFilter = `label:${entry.label}`;
+            return {
+              id: labelFilter,
+              title: `${entry.label} · ${entry.count}`,
+              state: typeFilter === labelFilter ? 'on' : 'off',
+            };
+          }),
+        ],
+      };
+    }),
+  ];
+  const onPress = (event: string) => {
+    if (event === 'all' || event.startsWith('group:') || event.startsWith('label:')) {
+      onTypeChange(event as TypeFilter);
+    }
+  };
+  if (!MenuView) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        hitSlop={Spacing.two}
+        onPress={() => showTypeSheet(groups, onTypeChange)}>
+        {label}
+      </Pressable>
+    );
+  }
+  return (
+    <MenuView
+      testID="type-menu"
+      actions={actions}
+      onPressAction={({ nativeEvent }) => onPress(nativeEvent.event)}>
+      <Pressable accessibilityRole="button" hitSlop={Spacing.two}>
+        {label}
+      </Pressable>
+    </MenuView>
+  );
+}
+
+/** "Pub" -> "Pubs" for menu titles (typeNoun stays lowercase for the sentence). */
+function sentencePlural(group: string): string {
+  const noun = typeNoun(`group:${group}`);
+  return group.slice(0, 1) + noun.slice(1);
+}
+
+/** Fallback picker for clients whose build predates @expo/ui — groups only. */
+function showTypeSheet(
+  groups: ReturnType<typeof buildTypeGroups>,
+  onSelect: (filter: TypeFilter) => void
+) {
+  const options = ['All types', ...groups.map((group) => `${sentencePlural(group.group)} (${group.count})`)];
+  if (Platform.OS === 'ios') {
+    ActionSheetIOS.showActionSheetWithOptions(
+      { options: [...options, 'Cancel'], cancelButtonIndex: options.length },
+      (index) => {
+        if (index === 0) onSelect('all');
+        else if (index > 0 && index <= groups.length) onSelect(`group:${groups[index - 1].group}`);
+      }
+    );
+    return;
+  }
+  Alert.alert('Filter by type', undefined, [
+    { text: 'All types', onPress: () => onSelect('all') },
+    ...groups.map((group) => ({
+      text: `${sentencePlural(group.group)} (${group.count})`,
+      onPress: () => onSelect(`group:${group.group}` as TypeFilter),
+    })),
+    { text: 'Cancel', style: 'cancel' as const },
   ]);
 }
 
@@ -266,6 +391,7 @@ function OpenNowSegmented({ value, onChange }: { value: boolean; onChange: (next
 export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('nearest');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
 
   return (
     <LocationGate>
@@ -282,6 +408,8 @@ export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
               openNowOnly={openNowOnly}
               sortMode={sortMode}
               onSortChange={setSortMode}
+              typeFilter={typeFilter}
+              onTypeChange={setTypeFilter}
             />
           </SafeAreaView>
         </ThemedView>
@@ -311,12 +439,16 @@ function PlacesBody({
   openNowOnly,
   sortMode,
   onSortChange,
+  typeFilter,
+  onTypeChange,
 }: {
   category: PlaceCategory;
   center: Coordinates;
   openNowOnly: boolean;
   sortMode: SortMode;
   onSortChange: (mode: SortMode) => void;
+  typeFilter: TypeFilter;
+  onTypeChange: (filter: TypeFilter) => void;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -326,7 +458,9 @@ function PlacesBody({
   const anchor = useFetchAnchor(center);
   const { state, refresh } = usePlaces(category, anchor);
 
-  const livePlaces = useMemo(() => {
+  // The open filter narrows what the type menu counts; the type menu
+  // narrows what the list shows. Both read as one sentence.
+  const openPlaces = useMemo(() => {
     if (state.status !== 'ready') {
       return [];
     }
@@ -339,6 +473,13 @@ function PlacesBody({
           ...place,
           distanceMeters: distanceMeters(center, place.coordinates),
         }))
+    );
+  }, [state, center, openNowOnly]);
+
+  const livePlaces = useMemo(() => {
+    return (
+      openPlaces
+        .filter((place) => matchesTypeFilter(place, typeFilter))
         // Featured: Google's prominence order, unranked places last,
         // distance as the tiebreak — no refetch, the rank rode in with
         // the list. Nearest: live straight-line, tracking GPS.
@@ -349,7 +490,7 @@ function PlacesBody({
             : a.distanceMeters - b.distanceMeters
         )
     );
-  }, [state, center, openNowOnly, sortMode]);
+  }, [openPlaces, typeFilter, sortMode]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -406,10 +547,12 @@ function PlacesBody({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
       ListHeaderComponent={
-        // A row, not nested Text: the menu anchor is a native view
+        // A row, not nested Text: the menu anchors are native views.
+        // The sentence is the controls: noun = type, tail = sort.
         <View style={styles.listMeta}>
+          <TypeMenu places={openPlaces} typeFilter={typeFilter} onTypeChange={onTypeChange} />
           <ThemedText type="small" themeColor="textSecondary">
-            {livePlaces.length} places ·{' '}
+            {' '}·{' '}
           </ThemedText>
           <SortMenu sortMode={sortMode} onSortChange={onSortChange} />
         </View>
