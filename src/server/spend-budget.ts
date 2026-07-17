@@ -27,6 +27,8 @@ function dayKey(date = new Date()): string {
 export type SpendBudget = {
   /** Throws BudgetExceededError at the cap — call BEFORE spending. */
   assert: () => void;
+  /** Test hook: the module-level ledger hydrates at import, so tests reset contents, not instances. */
+  reset: () => void;
   record: (dollars: number) => void;
   todays: () => DayEntry;
   cap: () => number;
@@ -53,6 +55,7 @@ export function makeBudget(options: {
   return {
     cap,
     todays,
+    reset: () => ledger.clear(),
     assert: () => {
       const spent = todays();
       if (spent.dollars >= cap()) {

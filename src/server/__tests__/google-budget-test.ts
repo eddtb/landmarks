@@ -9,11 +9,13 @@ const { existsSync, rmSync } = require('fs') as {
 
 describe('the Google spend circuit breaker', () => {
   // The debounced disk write can land AFTER afterAll's delete,
-  // poisoning the next run — so clean before, not just after
+  // poisoning the next run — and the module's ledger closure hydrated
+  // at import, so contents must be reset, not just the registry entry
   beforeAll(() => {
+    googleBudget.reset();
     (globalThis as { aiDiskMaps?: Map<string, unknown> }).aiDiskMaps?.delete('google-spend-ledger');
-    if (existsSync('.ai-cache/google-spend-ledger.json')) {
-      rmSync('.ai-cache/google-spend-ledger.json');
+    if (existsSync('.ai-cache-test/google-spend-ledger.json')) {
+      rmSync('.ai-cache-test/google-spend-ledger.json');
     }
   });
 
@@ -21,8 +23,8 @@ describe('the Google spend circuit breaker', () => {
     (globalThis as { aiDiskMaps?: Map<string, unknown> }).aiDiskMaps?.delete(
       'google-spend-ledger'
     );
-    if (existsSync('.ai-cache/google-spend-ledger.json')) {
-      rmSync('.ai-cache/google-spend-ledger.json');
+    if (existsSync('.ai-cache-test/google-spend-ledger.json')) {
+      rmSync('.ai-cache-test/google-spend-ledger.json');
     }
   });
 

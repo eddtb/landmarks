@@ -28,7 +28,9 @@ try {
   fs = null;
 }
 
-const CacheDir = '.ai-cache';
+// Tests point this elsewhere — they must never poison the real dev
+// ledgers (a $5.13 test fixture once tripped the live breaker)
+const CacheDir = process.env.AI_CACHE_DIR ?? '.ai-cache';
 
 const globalCache = globalThis as { aiDiskMaps?: Map<string, Map<string, unknown>> };
 

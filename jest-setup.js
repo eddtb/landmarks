@@ -1,4 +1,6 @@
 /* global jest */
+// Disk caches: tests get their own dir, never the dev ledgers
+process.env.AI_CACHE_DIR = '.ai-cache-test';
 require('react-native-reanimated').setUpTests();
 
 // Official mock: SafeAreaView renders plain, useSafeAreaInsets returns zeros
