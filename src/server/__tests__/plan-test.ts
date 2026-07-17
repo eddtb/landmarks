@@ -61,7 +61,9 @@ describe('slotTemplate', () => {
   test('an hour adapts to the clock', () => {
     expect(slotTemplate('hour', 'solo', new Date('2026-07-21T09:00:00'))[0].kind).toBe('coffee');
     expect(slotTemplate('hour', 'solo', new Date('2026-07-21T14:00:00'))[0].kind).toBe('landmark');
-    expect(slotTemplate('hour', 'solo', EveningStart)[0].kind).toBe('drink');
+    // A solo evening hour is the walk, not the pair activity
+    expect(slotTemplate('hour', 'solo', EveningStart)[0].kind).toBe('landmark');
+    expect(slotTemplate('hour', 'friends', EveningStart)[0].kind).toBe('drink');
   });
 });
 
@@ -97,6 +99,7 @@ describe('solvePlan', () => {
       origin: Origin,
       pools,
       stories: [],
+      rng: () => 0,
     });
     expect(solved).not.toBeNull();
     const kinds = solved!.stops.map((stop) => stop.slotKind);
@@ -121,6 +124,7 @@ describe('solvePlan', () => {
       origin: Origin,
       pools,
       stories: [],
+      rng: () => 0,
     });
     expect(solved!.stops.map((stop) => stop.slotKind)).not.toContain('drink');
   });
@@ -134,6 +138,7 @@ describe('solvePlan', () => {
       pools,
       stories: [],
       rainy: false,
+      rng: () => 0,
     });
     const wet = solvePlan({
       start: EveningStart,
@@ -143,6 +148,7 @@ describe('solvePlan', () => {
       pools,
       stories: [],
       rainy: true,
+      rng: () => 0,
     });
     expect(dry!.stops[0].placeId).toBe('the-park');
     expect(wet!.stops[0].placeId).toBe('naval-college');
@@ -166,6 +172,7 @@ describe('solvePlan', () => {
       origin: Origin,
       pools,
       stories,
+      rng: () => 0,
     });
     const storied = solved!.legs.find((leg) => leg.story);
     expect(storied?.story?.title).toBe('Palace of Placentia');
@@ -180,9 +187,82 @@ describe('solvePlan', () => {
       origin: Origin,
       pools: { ...pools, food: [] },
       stories: [],
+      rng: () => 0,
     });
     expect(solved!.stops.map((stop) => stop.slotKind)).toEqual(['landmark', 'drink']);
     expect(solved!.unfilledSlots).toEqual(['meal']);
+  });
+});
+
+describe('occasion character (the anti-Cutty-Sark rules)', () => {
+  const magnetVsPark = {
+    ...pools,
+    landmark: [
+      place({
+        id: 'tourist-magnet',
+        category: 'landmark',
+        primaryLabel: 'Tourist Attraction',
+        rating: 4.6,
+        ratingCount: 12000,
+        openNow: undefined,
+      }),
+      place({
+        id: 'quiet-park',
+        category: 'landmark',
+        primaryLabel: 'Park',
+        rating: 4.7,
+        ratingCount: 800,
+        openNow: undefined,
+      }),
+    ],
+  };
+
+  test('solo prefers the park walk over the 12k-review magnet', () => {
+    const solved = solvePlan({
+      start: EveningStart,
+      duration: 'evening',
+      company: 'solo',
+      origin: Origin,
+      pools: magnetVsPark,
+      stories: [],
+      rng: () => 0,
+    });
+    expect(solved!.stops[0].placeId).toBe('quiet-park');
+  });
+
+  test('a friends evening does something before the pub', () => {
+    const solved = solvePlan({
+      start: EveningStart,
+      duration: 'evening',
+      company: 'friends',
+      origin: Origin,
+      pools,
+      stories: [],
+      rng: () => 0,
+    });
+    expect(solved!.stops.map((stop) => stop.slotKind)).toEqual(['activity', 'meal', 'drink']);
+  });
+
+  test('the deal varies: different rolls compose different plans', () => {
+    const first = solvePlan({
+      start: EveningStart,
+      duration: 'evening',
+      company: 'solo',
+      origin: Origin,
+      pools: magnetVsPark,
+      stories: [],
+      rng: () => 0,
+    });
+    const second = solvePlan({
+      start: EveningStart,
+      duration: 'evening',
+      company: 'solo',
+      origin: Origin,
+      pools: magnetVsPark,
+      stories: [],
+      rng: () => 0.97,
+    });
+    expect(first!.stops[0].placeId).not.toBe(second!.stops[0].placeId);
   });
 });
 
@@ -195,6 +275,7 @@ describe('rebaseTimes', () => {
       origin: Origin,
       pools,
       stories: [],
+      rng: () => 0,
     })!;
     const relaxed = rebaseTimes(solved, EveningStart, solved.legs.map(() => 300));
     expect(relaxed.valid).toBe(true);

@@ -34,14 +34,18 @@ type Slot = { kind: SlotKind };
 export function slotTemplate(duration: PlanDuration, company: PlanCompany, start: Date): Slot[] {
   const hour = start.getHours();
   const closer: SlotKind = company === 'family' ? 'activity' : 'drink';
+  // Company reshapes the skeleton, not just the venue ranking: a
+  // friends' evening does something before the pub; a solo evening
+  // is the unhurried walk, not the ticketed pair activity
+  const eveningOpener: SlotKind = company === 'friends' ? 'activity' : 'landmark';
 
   if (duration === 'hour') {
     if (hour < 11) return [{ kind: 'coffee' }];
     if (hour < 17) return [{ kind: 'landmark' }];
-    return [{ kind: closer }];
+    return [{ kind: company === 'solo' ? 'landmark' : closer }];
   }
   if (duration === 'evening') {
-    return [{ kind: 'landmark' }, { kind: 'meal' }, { kind: closer }];
+    return [{ kind: eveningOpener }, { kind: 'meal' }, { kind: closer }];
   }
   if (duration === 'halfday') {
     const opener: Slot[] =
@@ -119,15 +123,51 @@ export function openThroughWindow(place: PlaceWithDistance, kind: SlotKind, arri
   return true;
 }
 
-function score(place: PlaceWithDistance, company: PlanCompany, from: Coordinates, rainy: boolean): number {
-  const quality = place.rating * Math.log10((place.ratingCount ?? 0) + 2);
+/**
+ * Occasion affinity: company changes what KIND of place fits a slot,
+ * not just which ranks best. Solo is not a smaller date — it's the
+ * park walk you've never taken, not the ticketed pair activity.
+ */
+const Affinity: Partial<Record<PlanCompany, Partial<Record<SlotKind, Record<string, number>>>>> = {
+  solo: {
+    landmark: { Park: 2.5, Garden: 2.5, 'Botanical Garden': 2.5, 'Historical Landmark': 1 },
+    drink: { Pub: 0.8 },
+  },
+  date: {
+    landmark: { Park: 1.2, 'Historical Landmark': 1 },
+    drink: { 'Wine Bar': 2, 'Cocktail Bar': 2, Bar: 0.8 },
+  },
+  friends: {
+    activity: { 'Bowling Alley': 1.5, Karaoke: 1.5, 'Amusement Center': 1.2, 'Video Arcade': 1.2, 'Comedy Club': 1.5 },
+    drink: { Pub: 1.2, Bar: 0.8 },
+  },
+  family: {
+    landmark: { Park: 1.5, Museum: 1.5 },
+    activity: { 'Comedy Club': -3 },
+  },
+};
+
+function score(
+  place: PlaceWithDistance,
+  kind: SlotKind,
+  company: PlanCompany,
+  from: Coordinates,
+  rainy: boolean
+): number {
+  // Review counts saturate at 1000: past that, more tourists don't
+  // mean better — without the cap every plan converged on the same
+  // mega-venues regardless of occasion
+  const quality = place.rating * Math.log10(Math.min(place.ratingCount ?? 0, 1000) + 2);
   const walkMinutes = distanceMeters(from, place.coordinates) / WalkingPaceMetersPerSecond / 60;
   const distancePenalty = Math.max(0, walkMinutes - 5) * 0.35;
-  const prominenceBonus = place.prominenceRank !== undefined ? 0.8 : 0;
+  const prominenceBonus = place.prominenceRank !== undefined ? 0.3 : 0;
   const rainPenalty = rainy && OutdoorLabels.has(place.primaryLabel ?? '') ? 4 : 0;
+  const affinityBonus = Affinity[company]?.[kind]?.[place.primaryLabel ?? ''] ?? 0;
   const datePriceBonus =
-    company === 'date' && (place.priceLevel === '££' || place.priceLevel === '£££') ? 0.4 : 0;
-  return quality + prominenceBonus + datePriceBonus - distancePenalty - rainPenalty;
+    company === 'date' && kind === 'meal' && (place.priceLevel === '££' || place.priceLevel === '£££')
+      ? 0.4
+      : 0;
+  return quality + prominenceBonus + affinityBonus + datePriceBonus - distancePenalty - rainPenalty;
 }
 
 function estimatedLegSeconds(from: Coordinates, to: Coordinates): number {
@@ -178,6 +218,11 @@ export type SolveInput = {
   pools: CandidatePools;
   stories: HistoryItem[];
   rainy?: boolean;
+  /**
+   * Injectable randomness for the weighted pick — tests pass a
+   * constant; ↻ gets a genuinely different deal.
+   */
+  rng?: () => number;
 };
 
 export type SolvedPlan = {
@@ -187,8 +232,27 @@ export type SolvedPlan = {
   unfilledSlots: SlotKind[];
 };
 
+/**
+ * Weighted pick from the top few: the best answer usually wins, the
+ * second-best sometimes, the fourth occasionally. Argmax gave every
+ * user the identical plan (and made ↻ recompose the same one).
+ */
+function samplePick<T>(ranked: { item: T; score: number }[], rng: () => number): T {
+  const top = ranked.slice(0, 4);
+  const weights = top.map(({ score: s }, index) => Math.exp((s - top[0].score) / 1.2) / (index + 1));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let roll = rng() * total;
+  for (let i = 0; i < top.length; i++) {
+    roll -= weights[i];
+    if (roll <= 0) {
+      return top[i].item;
+    }
+  }
+  return top[0].item;
+}
+
 export function solvePlan(input: SolveInput): SolvedPlan | null {
-  const { start, duration, company, origin, pools, stories, rainy = false } = input;
+  const { start, duration, company, origin, pools, stories, rainy = false, rng = Math.random } = input;
   const slots = slotTemplate(duration, company, start);
 
   const used = new Set<string>();
@@ -208,20 +272,26 @@ export function solvePlan(input: SolveInput): SolvedPlan | null {
         const legSeconds = estimatedLegSeconds(position, place.coordinates);
         const arrive = new Date(clock.getTime() + legSeconds * 1000);
         const depart = new Date(arrive.getTime() + dwellMs);
-        return { place, legSeconds, arrive, depart };
+        return {
+          place,
+          legSeconds,
+          arrive,
+          depart,
+          score: score(place, slot.kind, company, position, rainy),
+        };
       })
       .filter(({ place, arrive, depart }) => openThroughWindow(place, slot.kind, arrive, depart))
-      .sort(
-        (a, b) =>
-          score(b.place, company, position, rainy) - score(a.place, company, position, rainy)
-      );
+      .sort((a, b) => b.score - a.score);
 
-    const chosen = viable[0];
-    if (!chosen) {
+    if (viable.length === 0) {
       // Thin neighbourhood: skip the slot, say so — never pad
       unfilledSlots.push(slot.kind);
       continue;
     }
+    const chosen = samplePick(
+      viable.map((entry) => ({ item: entry, score: entry.score })),
+      rng
+    );
 
     // Leg i connects position i-1 (the origin for i=0) to stop i
     legs.push({
@@ -244,7 +314,10 @@ export function solvePlan(input: SolveInput): SolvedPlan | null {
       depart: chosen.depart.toISOString(),
       nextCloseTime: chosen.place.nextCloseTime,
       facts: factsFor(chosen.place),
-      alternates: viable.slice(1, 3).map(({ place }) => toAlternate(place)),
+      alternates: viable
+        .filter((entry) => entry.place.id !== chosen.place.id)
+        .slice(0, 2)
+        .map(({ place }) => toAlternate(place)),
     });
 
     position = chosen.place.coordinates;
