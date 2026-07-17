@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { ComponentType, ReactNode, useCallback, useMemo, useState } from 'react';
 import {
   ActionSheetIOS,
@@ -393,6 +393,15 @@ export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
   const [openNowOnly, setOpenNowOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('nearest');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  // Native tabs mount every screen at launch — without this gate one
+  // app open fetched all four categories at once (8 billed queries)
+  const focused = useIsFocused();
+  const [armed, setArmed] = useState(false);
+  // Adjust-during-render (the React-endorsed pattern): arm on first
+  // focus and stay armed — no effect, no cascading render
+  if (focused && !armed) {
+    setArmed(true);
+  }
 
   return (
     <LocationGate>
@@ -403,6 +412,7 @@ export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
               {...gate}
               control={<OpenNowSegmented value={openNowOnly} onChange={setOpenNowOnly} />}
             />
+            {armed && (
             <PlacesBody
               category={category}
               center={gate.center}
@@ -412,6 +422,7 @@ export function PlaceSectionScreen({ category }: { category: PlaceCategory }) {
               typeFilter={typeFilter}
               onTypeChange={setTypeFilter}
             />
+            )}
           </SafeAreaView>
         </ThemedView>
       )}
