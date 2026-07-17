@@ -1,4 +1,9 @@
-import { parseBlurb, parseBusynessPattern, parseWhatsOnEvents } from '@/server/anthropic';
+import {
+  parseBlurb,
+  parseBusynessPattern,
+  parsePlanAnnotations,
+  parseWhatsOnEvents,
+} from '@/server/anthropic';
 
 describe('parseWhatsOnEvents', () => {
   test('parses a fenced JSON array of events', () => {
@@ -131,3 +136,27 @@ describe('parseBusynessPattern', () => {
   });
 });
 
+
+describe('parsePlanAnnotations', () => {
+  test('parses title, whys, and leg notes around narration', () => {
+    const parsed = parsePlanAnnotations(
+      'Here is the JSON you asked for:\n{"title": "Golden hour to last orders", "whys": {"a1": "Catch the river light before dinner."}, "legNotes": {"1": "clear evening, worth the river path"}}\nHope that helps!'
+    );
+    expect(parsed?.title).toBe('Golden hour to last orders');
+    expect(parsed?.whys.a1).toBe('Catch the river light before dinner.');
+    expect(parsed?.legNotes['1']).toBe('clear evening, worth the river path');
+  });
+
+  test('rejects shapes without a title or whys', () => {
+    expect(parsePlanAnnotations('{"whys": {}}')).toBeNull();
+    expect(parsePlanAnnotations('no json at all')).toBeNull();
+  });
+
+  test('strips cite tags and clamps runaway lines', () => {
+    const parsed = parsePlanAnnotations(
+      `{"title": "T", "whys": {"a1": "<cite index=1>A fine pub</cite> ${'x'.repeat(200)}"}}`
+    );
+    expect(parsed?.whys.a1?.startsWith('A fine pub')).toBe(true);
+    expect(parsed!.whys.a1!.length).toBeLessThanOrEqual(140);
+  });
+});
