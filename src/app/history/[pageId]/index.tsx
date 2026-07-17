@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Alert, Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 
 import { ExternalLink } from '@/components/external-link';
+import { OverflowMenu } from '@/components/overflow-menu';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -54,21 +55,16 @@ export default function HistoryDetailScreen() {
         options={{
           title: item.title,
           headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="More actions"
-              hitSlop={Spacing.two}
-              onPress={() =>
-                Alert.alert(item.title, undefined, [
-                  {
-                    text: 'Open in Maps',
-                    onPress: () => Linking.openURL(mapsWalkingUrl(item.coordinates)),
-                  },
-                  { text: 'Cancel', style: 'cancel' },
-                ])
-              }>
-              <ThemedText type="headline">⋯</ThemedText>
-            </Pressable>
+            <OverflowMenu
+              actions={[
+                { id: 'share', title: 'Share' },
+                { id: 'maps', title: 'Open in Maps' },
+              ]}
+              onAction={(id) => {
+                if (id === 'share') Share.share({ message: `${item.title} — ${item.url}` });
+                if (id === 'maps') Linking.openURL(mapsWalkingUrl(item.coordinates));
+              }}
+            />
           ),
         }}
       />
@@ -109,16 +105,6 @@ export default function HistoryDetailScreen() {
               <ThemedText type="smallBold" style={styles.goText}>
                 Go · {formatWalkTime(walkSeconds)}
               </ThemedText>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => Share.share({ message: `${item.title} — ${item.url}` })}
-              style={({ pressed }) => [
-                styles.mini,
-                { backgroundColor: theme.backgroundElement },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold">Share</ThemedText>
             </Pressable>
             <Pressable
               accessibilityRole="button"

@@ -3,7 +3,6 @@ import { Link, router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -14,6 +13,7 @@ import {
 
 import { ExternalLink } from '@/components/external-link';
 import { PhotoGallery } from '@/components/photo-gallery';
+import { OverflowMenu } from '@/components/overflow-menu';
 import { placeStateLabel } from '@/components/place-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -34,29 +34,29 @@ function todayIndex(): number {
 }
 
 /** The header ⋯ menu — everything useful that didn't earn a button. */
-export function overflowActions(
+export function overflowActions(place: Place, details: PlaceDetails | undefined) {
+  return [
+    { id: 'share', title: 'Share' },
+    { id: 'maps', title: 'Open in Maps' },
+    ...(details?.phone ? [{ id: 'call', title: `Call ${details.phone}` }] : []),
+  ];
+}
+
+function runOverflowAction(
+  id: string,
   place: Place,
   details: PlaceDetails | undefined,
   walkingUri: string | undefined
 ) {
-  return [
-    {
-      text: 'Open in Maps',
-      onPress: () =>
-        Linking.openURL(
-          walkingUri ?? details?.mapsUri ?? mapsSearchUrl(place.name, place.coordinates)
-        ),
-    },
-    ...(details?.phone
-      ? [
-          {
-            text: `Call ${details.phone}`,
-            onPress: () => Linking.openURL(`tel:${details.phone}`),
-          },
-        ]
-      : []),
-    { text: 'Cancel', style: 'cancel' as const },
-  ];
+  if (id === 'share') {
+    Share.share({
+      message: `${place.name} — ${details?.mapsUri ?? place.website ?? mapsSearchUrl(place.name, place.coordinates)}`,
+    });
+  } else if (id === 'maps') {
+    Linking.openURL(walkingUri ?? details?.mapsUri ?? mapsSearchUrl(place.name, place.coordinates));
+  } else if (id === 'call' && details?.phone) {
+    Linking.openURL(`tel:${details.phone}`);
+  }
 }
 
 export default function PlaceScreen() {
@@ -112,15 +112,10 @@ export default function PlaceScreen() {
         options={{
           title: place.name,
           headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="More actions"
-              hitSlop={Spacing.two}
-              onPress={() =>
-                Alert.alert(place.name, undefined, overflowActions(place, details, walkingUri))
-              }>
-              <ThemedText type="headline">⋯</ThemedText>
-            </Pressable>
+            <OverflowMenu
+              actions={overflowActions(place, details)}
+              onAction={(id) => runOverflowAction(id, place, details, walkingUri)}
+            />
           ),
         }}
       />
@@ -168,20 +163,6 @@ export default function PlaceScreen() {
               <ThemedText type="smallBold" style={styles.goText}>
                 {walkSeconds !== undefined ? `Go · ${formatWalkTime(walkSeconds)}` : 'Go'}
               </ThemedText>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                Share.share({
-                  message: `${place.name} — ${details?.mapsUri ?? place.website ?? mapsSearchUrl(place.name, place.coordinates)}`,
-                })
-              }
-              style={({ pressed }) => [
-                styles.mini,
-                { backgroundColor: theme.backgroundElement },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold">Share</ThemedText>
             </Pressable>
             <Pressable
               accessibilityRole="button"
