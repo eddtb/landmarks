@@ -12,6 +12,7 @@ import {
   formatRating,
   formatWalkTime,
   opensLabel,
+  liveOpenNow,
   openUntilLabel,
 } from '@/utils/format';
 
@@ -24,6 +25,7 @@ type Props = {
  * the venue screen is where you'd ask.
  */
 export function placeStateLabel(place: Place): string | null {
+  place = { ...place, openNow: liveOpenNow(place) };
   if (place.openNow === false) {
     return (
       (place.nextOpenTime ? opensLabel(place.nextOpenTime, new Date()) : null) ?? 'Closed'
@@ -46,6 +48,7 @@ export function placeStateLabel(place: Place): string | null {
  * (and dims). Nothing else.
  */
 export function cardStateLabel(place: Place): string | null {
+  place = { ...place, openNow: liveOpenNow(place) };
   if (place.openNow === false) {
     return (
       (place.nextOpenTime ? opensLabel(place.nextOpenTime, new Date()) : null) ?? 'Closed'
@@ -75,7 +78,7 @@ function metaLine(place: PlaceWithDistance): string {
 
 export function PlaceCard({ place }: Props) {
   const theme = useTheme();
-  const closed = place.openNow === false;
+  const closed = liveOpenNow(place) === false;
 
   return (
     // router.push, not Link asChild: asChild silently drops the
