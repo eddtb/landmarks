@@ -289,3 +289,69 @@ export async function fetchBusynessPattern(options: {
   });
   return parseBusynessPattern(text);
 }
+
+/** Claude's half of the Plan engine: title + why-lines. Facts stay ours. */
+export type PlanAnnotations = {
+  title: string;
+  whys: Record<string, string>;
+  legNotes: Record<string, string>;
+};
+
+export function parsePlanAnnotations(text: string): PlanAnnotations | null {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  const candidate = parsed as { title?: unknown; whys?: unknown; legNotes?: unknown };
+  if (typeof candidate.title !== 'string' || typeof candidate.whys !== 'object' || !candidate.whys) {
+    return null;
+  }
+  const whys: Record<string, string> = {};
+  for (const [placeId, why] of Object.entries(candidate.whys as Record<string, unknown>)) {
+    if (typeof why === 'string' && why.trim().length > 0) {
+      whys[placeId] = why.replace(/<\/?cite[^>]*>/g, '').trim().slice(0, 140);
+    }
+  }
+  const legNotes: Record<string, string> = {};
+  if (candidate.legNotes && typeof candidate.legNotes === 'object') {
+    for (const [index, note] of Object.entries(candidate.legNotes as Record<string, unknown>)) {
+      if (typeof note === 'string' && note.trim().length > 0) {
+        legNotes[index] = note.trim().slice(0, 90);
+      }
+    }
+  }
+  return { title: candidate.title.trim().slice(0, 60), whys, legNotes };
+}
+
+function planAnnotationPrompt(brief: string): string {
+  return (
+    'You are writing the short human lines for a walking-outing plan composed from verified data. ' +
+    'You are given the chosen stops IN ORDER with verified facts, the occasion, and conditions. ' +
+    'Do NOT state facts (hours, ratings, prices) and NEVER mention clock times or numbers — timing renders separately and your brief may be in a different timezone. Do NOT invent places or claims. ' +
+    'Write: a plan title (max 6 words, evocative, no puns forced), one "why" line per stop ' +
+    '(max 18 words, specific to what makes it right for THIS occasion and moment, grounded ONLY in the provided facts and editorial notes), ' +
+    'and optional leg notes keyed by leg index (max 10 words, only when conditions genuinely warrant one — golden hour, rain, a riverside stretch).\n\n' +
+    'Respond with ONLY JSON: {"title": "...", "whys": {"<placeId>": "..."}, "legNotes": {"<legIndex>": "..."}}\n\n' +
+    brief
+  );
+}
+
+export async function fetchPlanAnnotations(options: {
+  apiKey: string;
+  brief: string;
+}): Promise<PlanAnnotations | null> {
+  const text = await researchWithWebSearch({
+    apiKey: options.apiKey,
+    prompt: planAnnotationPrompt(options.brief),
+    maxTokens: 900,
+    maxSearches: 0,
+  });
+  return parsePlanAnnotations(text);
+}
