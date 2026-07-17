@@ -38,7 +38,7 @@ export function closesSoonLabel(nextCloseTime: string, now: Date): string | null
 }
 
 /** 17:30 -> "5:30pm", 9:00 -> "9am" — device-local, minutes only when odd. */
-function clockLabel(date: Date): string {
+export function clockLabel(date: Date): string {
   const hour12 = date.getHours() % 12 || 12;
   const suffix = date.getHours() < 12 ? 'am' : 'pm';
   const minutes = date.getMinutes();

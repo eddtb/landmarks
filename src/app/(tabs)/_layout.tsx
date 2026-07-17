@@ -38,9 +38,11 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Activities</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="ticket" md="local_activity" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="history">
-        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="book" md="menu_book" />
+      {/* History left the bar for the Landmarks banner — real estate
+          follows frequency, and Plan is the weekly habit */}
+      <NativeTabs.Trigger name="plan">
+        <NativeTabs.Trigger.Label>Plan</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="sparkles" md="auto_awesome" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );
