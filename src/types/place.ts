@@ -67,11 +67,6 @@ export type PlaceDetails = Place & {
   kitchenWeekdayHours?: string[];
   phone?: string;
   mapsUri?: string;
-  /**
-   * Google-verified venue facts, display-ready ("Outdoor seating",
-   * "Dogs welcome"). Only TRUE facts appear — absence is not a claim.
-   */
-  amenities?: string[];
   /** All photos, proxied — photoUrl remains the first one. */
   photoUrls: string[];
 };

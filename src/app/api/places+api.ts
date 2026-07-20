@@ -1,12 +1,9 @@
 import { placesByCategory } from '@/data/mock-places';
-import { diskBackedMap } from '@/server/ai-cache';
+import { getCachedList, setCachedList } from '@/server/list-cache';
 import { searchNearby } from '@/server/google-places';
 import { PlaceCategory } from '@/types/place';
 
 const Categories: PlaceCategory[] = ['landmark', 'food', 'drink', 'activity'];
-
-type ListEntry = { places: unknown[]; expires: number };
-const listCache = diskBackedMap<ListEntry>('places-lists');
 
 /**
  * GET /api/places?lat=51.5&lng=-0.09&category=landmark
@@ -47,10 +44,9 @@ export async function GET(request: Request) {
   // real fetch (a cached "refresh" is a placebo button). Passive loads
   // still read the hour cache.
   const fresh = url.searchParams.get('fresh') === '1';
-  const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}|${category}`;
-  const cached = fresh ? undefined : listCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) {
-    return Response.json({ places: cached.places, cached: true });
+  const cached = fresh ? null : getCachedList(center, category);
+  if (cached) {
+    return Response.json({ places: cached, cached: true });
   }
 
   try {
@@ -60,7 +56,7 @@ export async function GET(request: Request) {
       center,
       origin: url.origin,
     });
-    listCache.set(cacheKey, { places, expires: Date.now() + 60 * 60 * 1000 });
+    setCachedList(center, category, places);
     return Response.json({ places });
   } catch (error) {
     console.error('Nearby search failed:', error);

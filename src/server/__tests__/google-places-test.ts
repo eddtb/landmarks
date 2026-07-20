@@ -1,7 +1,6 @@
 import {
   applyRoutingSummaries,
   categoryFromTypes,
-  mapAmenities,
   passesQualityGate,
   mapGooglePlace,
   mapGooglePlaceDetails,
@@ -180,25 +179,6 @@ describe('mapGooglePlaceDetails (rich detail mapping)', () => {
   });
 });
 
-describe('mapAmenities', () => {
-  test('maps only true facts to labels — a false is not a chip', () => {
-    expect(
-      mapAmenities({
-        id: 'x',
-        outdoorSeating: true,
-        allowsDogs: true,
-        liveMusic: false,
-        goodForChildren: false,
-        reservable: false,
-        accessibilityOptions: { wheelchairAccessibleEntrance: true },
-      })
-    ).toEqual(['Outdoor seating', 'Dogs welcome', 'Step-free entrance']);
-  });
-
-  test('no amenity data, no list', () => {
-    expect(mapAmenities({ id: 'x' })).toBeUndefined();
-  });
-});
 
 describe('categoryFromTypes', () => {
   test('classifies by our section priorities', () => {

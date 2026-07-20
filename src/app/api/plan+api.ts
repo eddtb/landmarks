@@ -1,5 +1,5 @@
 import { placesByCategory } from '@/data/mock-places';
-import { diskBackedMap } from '@/server/ai-cache';
+import { getCachedList, setCachedList } from '@/server/list-cache';
 import { fetchPlanAnnotations } from '@/server/anthropic';
 import { searchNearby } from '@/server/google-places';
 import { computeWalkingRoute } from '@/server/google-routes';
@@ -26,18 +26,15 @@ const Durations: PlanDuration[] = ['hour', 'evening', 'halfday', 'fullday'];
 const Companies: PlanCompany[] = ['solo', 'date', 'friends', 'family'];
 
 type PlanCacheEntry = { plan: Plan; expires: number };
-type ListCacheEntry = { places: PlaceWithDistance[]; expires: number };
 
 const globalCache = globalThis as {
   planCache?: Map<string, PlanCacheEntry>;
-  planListCache?: Map<string, ListCacheEntry>;
 };
 
 const PlanTtlMs = 2 * 60 * 60 * 1000;
 // An hour, not ten minutes: the suggestion rail refetches after
 // every plan edit, and a cold refetch is 8 top-tier queries — the
 // 10-min TTL made a day of plan-testing trip the $5 breaker
-const ListTtlMs = 60 * 60 * 1000;
 
 const DurationMinutes: Record<PlanDuration, number> = {
   hour: 75,
@@ -59,15 +56,13 @@ async function cachedSearch(
   center: Coordinates,
   origin: string
 ): Promise<PlaceWithDistance[]> {
-  // Disk-backed: dev restarts must not re-bill 8 list queries
-  globalCache.planListCache ??= diskBackedMap('plan-lists');
-  const key = `${center.latitude.toFixed(3)},${center.longitude.toFixed(3)}|${category}`;
-  const entry = globalCache.planListCache.get(key);
-  if (entry && entry.expires > Date.now()) {
-    return entry.places;
+  // Shared with the browse route: the rail rides data browsing paid for
+  const cached = getCachedList(center, category);
+  if (cached) {
+    return cached;
   }
   const places = await searchNearby({ apiKey, category, center, origin });
-  globalCache.planListCache.set(key, { places, expires: Date.now() + ListTtlMs });
+  setCachedList(center, category, places);
   return places;
 }
 
