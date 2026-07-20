@@ -1,12 +1,14 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { findCommonsPhoto, StoryPhoto } from '@/server/commons';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
  * Geograph photographs essentially every hundred-metre square of
- * Britain, CC BY-SA. One area query per history request; the photos
- * dress the stories that Wikipedia left unillustrated. Requires the
- * free GEOGRAPH_API_KEY; without it, stories simply keep no photo.
+ * Britain, CC BY-SA. Requires the free GEOGRAPH_API_KEY — and a
+ * missing key is an ERROR, not an empty result: a keyless process
+ * once cached 'no photo' verdicts for a week (the null poisoned the
+ * cache long after the key arrived).
  */
 
 const Endpoint = 'https://api.geograph.org.uk/syndicator.php';
@@ -53,7 +55,7 @@ export function buildPhotos(items: SyndicatorItem[]): GeographPhoto[] {
 export async function fetchAreaPhotos(center: Coordinates, perpage = 10): Promise<GeographPhoto[]> {
   const key = process.env.GEOGRAPH_API_KEY;
   if (!key) {
-    return [];
+    throw new Error('GEOGRAPH_API_KEY missing — restart the dev server after adding it');
   }
   const params = new URLSearchParams({
     key,
@@ -91,20 +93,21 @@ export function pickPhotoFor(
 }
 
 /**
- * Dress each unillustrated story with a photo taken near THAT story —
- * one syndicator query per story, not one per user position: photos
- * near the user cluster within a couple hundred metres and leave every
- * further story bare (measured: 1 of 40 dressed). Cached per story for
- * a week; the cap bounds a cold area's first request, and the misses
- * warm up on the next one.
+ * Dress each unillustrated story with a photo of/near THAT story:
+ * Wikimedia Commons first (title-matched — often a photo OF the thing,
+ * plaques included), Geograph's everywhere-grid as the fallback. One
+ * set of lookups per story, not per user position. Cached per story
+ * for a week; the cap bounds a cold area's first request, and the
+ * misses warm up on the next one.
  */
 const PhotoTtlMs = 7 * 24 * 60 * 60 * 1000;
-const photoCache = diskBackedMap<{ photo: GeographPhoto | null; at: number }>('geograph-photos');
+const photoCache = diskBackedMap<{ photo: StoryPhoto | null; at: number }>('story-photos');
 const MaxLookupsPerRequest = 15;
 
 export async function dressWithPhotos(
   items: HistoryItem[],
-  fetchPhotos: typeof fetchAreaPhotos = fetchAreaPhotos
+  fetchPhotos: typeof fetchAreaPhotos = fetchAreaPhotos,
+  fetchCommons: typeof findCommonsPhoto = findCommonsPhoto
 ): Promise<HistoryItem[]> {
   let lookups = 0;
   return Promise.all(
@@ -120,11 +123,15 @@ export async function dressWithPhotos(
         }
         lookups += 1;
         try {
-          const photos = await fetchPhotos(item.coordinates);
-          cached = { photo: pickPhotoFor(item, photos), at: Date.now() };
+          const commons = await fetchCommons(item.title, item.coordinates).catch(() => null);
+          const photo =
+            commons ?? pickPhotoFor(item, await fetchPhotos(item.coordinates)) ?? null;
+          cached = { photo, at: Date.now() };
           photoCache.set(key, cached);
         } catch {
-          return item; // failures aren't cached — next request retries
+          // Failures AND missing-key runs are not cached — a verdict of
+          // "no photo exists" may only come from a source that answered
+          return item;
         }
       }
       if (!cached.photo) {
