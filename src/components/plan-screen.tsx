@@ -4,13 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ReorderList } from '@/components/reorder-list';
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { fetchPlan } from '@/data/plan-client';
-import { addToPlan, clearPlan, PlanItem, removeFromPlan, reorderPlan } from '@/data/plan-store';
+import { addToPlan, clearPlan, movePlanItem, PlanItem, removeFromPlan } from '@/data/plan-store';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { Plan, PlanStop } from '@/types/plan';
@@ -196,7 +195,7 @@ function PlanBody({ center }: { center: Coordinates }) {
       { text: 'Cancel', style: 'cancel' },
     ]);
 
-  const renderRow = (item: PlanItem, index: number, handle: React.ReactNode) => {
+  const renderRow = (item: PlanItem, index: number) => {
     const row = rows[index];
     return (
       <View>
@@ -244,7 +243,29 @@ function PlanBody({ center }: { center: Coordinates }) {
                   ✕
                 </ThemedText>
               </Pressable>
-              {handle}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Move ${item.name} up`}
+                disabled={index === 0}
+                hitSlop={Spacing.two}
+                onPress={() => movePlanItem(index, -1)}>
+                <ThemedText type="small" themeColor="textSecondary" style={index === 0 && styles.arrowOff}>
+                  ↑
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Move ${item.name} down`}
+                disabled={index === items.length - 1}
+                hitSlop={Spacing.two}
+                onPress={() => movePlanItem(index, 1)}>
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  style={index === items.length - 1 && styles.arrowOff}>
+                  ↓
+                </ThemedText>
+              </Pressable>
             </View>
             <ThemedText type="small" themeColor="textSecondary">
               {item.facts.join(' · ')}
@@ -278,22 +299,9 @@ function PlanBody({ center }: { center: Coordinates }) {
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
         showsVerticalScrollIndicator={false}>
-        <ReorderList
-          items={items}
-          keyFor={(item) => item.id}
-          onReorder={reorderPlan}
-          renderRow={renderRow}
-          renderCompactRow={(item) => (
-            <View style={styles.compactRow}>
-              <ThemedText type="smallBold" themeColor="accent" numberOfLines={1} style={styles.time}>
-                {clockLabel(rows[items.indexOf(item)]?.arrive ?? new Date())}
-              </ThemedText>
-              <ThemedText type="smallBold" numberOfLines={1} style={styles.cardName}>
-                {item.name}
-              </ThemedText>
-            </View>
-          )}
-        />
+        {items.map((item, index) => (
+          <View key={item.id}>{renderRow(item, index)}</View>
+        ))}
         {
           <View style={styles.suggest}>
             <ThemedText type="eyebrow" themeColor="textSecondary">
@@ -369,8 +377,7 @@ const styles = StyleSheet.create({
   card: { flex: 1, borderRadius: Spacing.three - 2, padding: Spacing.three, gap: Spacing.one },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   cardName: { flex: 1 },
-  compactRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingRight: Spacing.two },
-  handle: { paddingHorizontal: Spacing.one },
+  arrowOff: { opacity: 0.3 },
   suggest: { paddingTop: Spacing.four, gap: Spacing.two },
   doorList: { gap: Spacing.two, alignSelf: 'stretch' },
   door: { borderRadius: Spacing.three - 2, overflow: 'hidden' },
