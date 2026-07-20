@@ -92,7 +92,12 @@ export async function fetchListedBuildings(
     spatialRel: 'esriSpatialRelIntersects',
     outFields: 'Name,Grade,ListEntry',
     returnGeometry: 'true',
-    resultRecordCount: '50',
+    // No spatial ordering exists server-side, and dense areas hold far
+    // more listed buildings than any small cap — a low cap returns an
+    // ARBITRARY subset (measured: it dropped the Grade I Cutty Sark
+    // while keeping Grade II houses). Fetch the area, sort by distance
+    // ourselves; the merge cap keeps the list small.
+    resultRecordCount: '500',
     f: 'json',
   });
   const response = await fetch(`${NhleBase}/0/query?${params}`);
@@ -194,6 +199,10 @@ export function mergeHistorySources(
 ): HistoryItem[] {
   const enriched = wikipedia.map((item) => ({ ...item }));
 
+  // Any grade may enrich a story's badge, but only the notable grades
+  // (I and II*, ~8% of the register) earn standalone cards — a feed of
+  // anonymous Grade II terraces is the station-articles problem again
+  const notableGrade = /Grade (I|II\*)$/;
   const standaloneListed = listed.filter((building) => {
     const match = enriched.find((story) => samePlace(story, building, 100));
     if (match) {
@@ -201,7 +210,7 @@ export function mergeHistorySources(
       match.source = `${match.source} · ${grade} listed`;
       return false;
     }
-    return true;
+    return notableGrade.test(building.source);
   });
 
   const standalonePlaques = plaques.filter((plaque) => {
