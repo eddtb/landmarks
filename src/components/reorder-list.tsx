@@ -2,7 +2,6 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -88,10 +87,13 @@ export function ReorderList<T>({
       Array.from({ length: items.length }, (_, index) =>
         Gesture.Pan()
           .activateAfterLongPress(200)
+          // JS thread, not worklets: our math is trivial, and worklet
+          // serialization of React refs corrupts them (field crash)
+          .runOnJS(true)
           .onStart(() => {
             translationY.value = 0;
             hoverIndex.value = index;
-            runOnJS(setDragIndex)(index);
+            setDragIndex(index);
           })
           .onUpdate((event) => {
             translationY.value = event.translationY;
@@ -99,11 +101,7 @@ export function ReorderList<T>({
             hoverIndex.value = Math.max(0, Math.min(itemsRef.current.length - 1, target));
           })
           .onEnd((event) => {
-            const offsetRows = Math.round(event.translationY / CompactRowHeight);
-            runOnJS((from: number, offset: number) => commitRef.current(from, offset))(
-              index,
-              offsetRows
-            );
+            commitRef.current(index, Math.round(event.translationY / CompactRowHeight));
           })
           .onFinalize(() => {
             translationY.value = 0;
