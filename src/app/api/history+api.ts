@@ -1,3 +1,4 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { dressWithPhotos } from '@/server/geograph';
 import {
   enrichStandaloneListed,
@@ -6,19 +7,33 @@ import {
   mergeHistorySources,
 } from '@/server/heritage';
 import { findNearbyHistory } from '@/server/wikipedia';
+import { HistoryItem } from '@/types/history';
 
 /**
- * GET /api/history?lat=51.5&lng=-0.09
+ * GET /api/history?lat=51.5&lng=-0.09[&fresh=1]
  *
  * The stories of where you stand: Wikipedia is the backbone, Historic
  * England and Open Plaques enrich or extend it, Geograph dresses the
- * unillustrated. All upstreams keyless or free-keyed; a missing
- * heritage source degrades to fewer stories, never to an error.
+ * unillustrated. All upstreams keyless or free-keyed; a missing or
+ * slow heritage source degrades to fewer stories, never to an error.
+ *
+ * The composed feed is cached per ~100m area bucket for an hour —
+ * TTLs govern re-asking about the SAME spot, movement always busts
+ * (the standing location-first rule). Pull-to-refresh sends fresh=1
+ * and bypasses the read.
  */
+const ListTtlMs = 60 * 60 * 1000;
+const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists');
+
+function bucketKey(lat: number, lng: number): string {
+  return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const latParam = url.searchParams.get('lat');
   const lngParam = url.searchParams.get('lng');
+  const fresh = url.searchParams.get('fresh') === '1';
 
   const lat = latParam ? Number(latParam) : NaN;
   const lng = lngParam ? Number(lngParam) : NaN;
@@ -27,6 +42,14 @@ export async function GET(request: Request) {
     return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
   }
   const center = { latitude: lat, longitude: lng };
+
+  const key = bucketKey(lat, lng);
+  if (!fresh) {
+    const cached = listCache.get(key);
+    if (cached && Date.now() - cached.at < ListTtlMs) {
+      return Response.json({ items: cached.items });
+    }
+  }
 
   try {
     const [wikipedia, listed, plaques] = await Promise.allSettled([
@@ -57,6 +80,7 @@ export async function GET(request: Request) {
     const told = await enrichStandaloneListed(merged);
     // Photos looked up near each STORY (cached per story), not the user
     const items = await dressWithPhotos(told.slice(0, 40));
+    listCache.set(key, { items, at: Date.now() });
     return Response.json({ items });
   } catch (error) {
     console.error('History lookup failed:', error);
