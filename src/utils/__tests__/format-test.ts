@@ -10,6 +10,7 @@ import {
   liveOpenNow,
   openUntilLabel,
   storyHook,
+  storyParagraphs,
 } from '@/utils/format';
 
 describe('formatDistance', () => {
@@ -145,6 +146,31 @@ describe('storyHook', () => {
   test('handles missing extracts and ones with no full stop', () => {
     expect(storyHook(undefined)).toBeUndefined();
     expect(storyHook('A fragment without a full stop')).toBe('A fragment without a full stop');
+  });
+
+  test('strips the pronunciation parenthetical from the hook', () => {
+    expect(storyHook('Cutty Sark (/ˌkʌti ˈsɑːrk/) is a British clipper ship. Built in 1869.')).toBe(
+      'Cutty Sark is a British clipper ship.'
+    );
+  });
+});
+
+describe('storyParagraphs', () => {
+  test('splits on newlines and trims', () => {
+    expect(
+      storyParagraphs(
+        'The Greenwich Foot Tunnel crosses beneath the Thames.\nThe southern entrance is by the Cutty Sark.\n'
+      )
+    ).toEqual([
+      'The Greenwich Foot Tunnel crosses beneath the Thames.',
+      'The southern entrance is by the Cutty Sark.',
+    ]);
+  });
+
+  test('strips IPA parentheticals but keeps ordinary ones like dates', () => {
+    expect(
+      storyParagraphs('Cutty Sark (/ˌkʌti ˈsɑːrk/) is a ship. Mary I was born there (1516).')
+    ).toEqual(['Cutty Sark is a ship. Mary I was born there (1516).']);
   });
 });
 

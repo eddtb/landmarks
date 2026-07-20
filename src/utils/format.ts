@@ -123,6 +123,20 @@ export function formatRatingCount(count: number): string {
 }
 
 /**
+ * Wikipedia intro extracts arrive as one block: paragraphs separated by
+ * bare newlines, sometimes opening with a pronunciation parenthetical —
+ * "Cutty Sark (/ˌkʌti ˈsɑːrk/) is…" — that reads as clutter on screen
+ * and worse out loud. Split, strip, trim.
+ */
+export function storyParagraphs(extract: string): string[] {
+  return extract
+    .replace(/\s*\((?:[^)]*\/){2}[^)]*\)/g, '') // parentheticals with /IPA/ inside
+    .split(/\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+/**
  * The history card's hook: the extract's first sentence, because
  * "a nuclear reactor ran here until 1996" is the reason to tap and
  * the title alone never says it. Capped so a rambling opening
@@ -132,8 +146,9 @@ export function storyHook(extract: string | undefined): string | undefined {
   if (!extract) {
     return undefined;
   }
-  const match = extract.match(/^.*?\.(?=\s|$)/);
-  const sentence = (match?.[0] ?? extract).trim();
+  const clean = storyParagraphs(extract)[0] ?? '';
+  const match = clean.match(/^.*?\.(?=\s|$)/);
+  const sentence = (match?.[0] ?? clean).trim();
   if (sentence.length <= 160) {
     return sentence;
   }

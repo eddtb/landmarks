@@ -1,6 +1,7 @@
 import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
+import { storyParagraphs } from '@/utils/format';
 
 /** Anything with a story to tell: HistoryItem and WalkStop both fit. */
 export type TellingSource = {
@@ -26,7 +27,8 @@ export async function fetchTelling(item: TellingSource): Promise<string> {
     body: JSON.stringify({
       pageId: item.pageId,
       title: item.title,
-      extract: item.extract ?? '',
+      // IPA parentheticals are worst read aloud — clean before the writer sees them
+      extract: storyParagraphs(item.extract ?? '').join('\n'),
       source: item.source,
     }),
   });

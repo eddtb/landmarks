@@ -47,8 +47,8 @@ scale, never from a second face.
 | `largeTitle` | 28/34 · 800 · -0.5 tracking | Story names on their own screen; the walk's title |
 | `subtitle` | 32/44 · 600 | The compass dial's big number |
 | `headline` | 16/22 · 700 | Card names |
-| `default` | 16/24 · 500 | Longer body text |
-| `small` | 14/20 · 500 | Meta lines, extracts, tellings |
+| `default` | 16/24 · 500 | Longer body text: the story paragraphs |
+| `small` | 14/20 · 500 | Meta lines, hooks, tellings |
 | `smallBold` | 14/20 · 700 | Buttons, emphasis within small |
 | `eyebrow` | 11/14 · 800 · +1.4 tracking · uppercase | Section labels: NEARBY · STORY · AFTER THIS? · WALKS |
 | `linkPrimary` | 14 · accent colour | Inline links |
