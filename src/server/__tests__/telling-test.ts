@@ -1,8 +1,15 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { getTelling, tellingPrompt } from '@/server/telling';
 
 jest.mock('@/server/anthropic', () => ({
   research: jest.fn(),
 }));
+
+// The disk cache outlives the process BY DESIGN — which includes the
+// last test run's debounced write. Start from a clean slate.
+beforeAll(() => {
+  diskBackedMap('tellings').clear();
+});
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { research } = require('@/server/anthropic') as { research: jest.Mock };

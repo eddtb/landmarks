@@ -6,26 +6,9 @@ import { Spacing } from '@/constants/theme';
 import { fetchTelling } from '@/data/telling-client';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
+import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
 
-/**
- * The telling, spoken. expo-speech is a native module: clients built
- * before it existed keep a read-only telling (same session-fallback
- * pattern as AsyncStorage in the walk store).
- */
-const Speech = (() => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('expo-speech') as {
-      speak: (
-        text: string,
-        options?: { onDone?: () => void; onStopped?: () => void; onError?: () => void }
-      ) => void;
-      stop: () => Promise<void>;
-    };
-  } catch {
-    return null;
-  }
-})();
+/** The telling, spoken — or read, on clients without the native module. */
 
 type Status = 'idle' | 'writing' | 'ready' | 'speaking' | 'error';
 
@@ -37,38 +20,34 @@ export function TellingSection({ item }: { item: HistoryItem }) {
   // Leaving the screen must silence it
   useEffect(() => {
     return () => {
-      void Speech?.stop();
+      void stopSpeech();
     };
   }, []);
 
-  const speak = (text: string) => {
-    if (!Speech) {
+  const speak = async (text: string) => {
+    if (!speechAvailable) {
       setStatus('ready');
       return;
     }
     setStatus('speaking');
-    Speech.speak(text, {
-      onDone: () => setStatus('ready'),
-      onStopped: () => setStatus('ready'),
-      onError: () => setStatus('ready'),
-    });
+    await speakAsync(text);
+    setStatus('ready');
   };
 
   const onPress = async () => {
     if (status === 'speaking') {
-      await Speech?.stop();
-      setStatus('ready');
+      await stopSpeech();
       return;
     }
     if (telling) {
-      speak(telling);
+      void speak(telling);
       return;
     }
     setStatus('writing');
     try {
       const text = await fetchTelling(item);
       setTelling(text);
-      speak(text);
+      void speak(text);
     } catch {
       setStatus('error');
     }
@@ -81,7 +60,7 @@ export function TellingSection({ item }: { item: HistoryItem }) {
         ? '◼ Stop'
         : status === 'error'
           ? 'Couldn’t write the telling — try again'
-          : telling && Speech
+          : telling && speechAvailable
             ? '🔊 Listen again'
             : '🔊 Listen · about a minute';
 
@@ -89,7 +68,7 @@ export function TellingSection({ item }: { item: HistoryItem }) {
     <>
       <Pressable
         accessibilityRole="button"
-        disabled={status === 'writing' || (telling !== null && !Speech)}
+        disabled={status === 'writing' || (telling !== null && !speechAvailable)}
         onPress={onPress}
         style={({ pressed }) => [
           styles.button,
