@@ -12,7 +12,6 @@ import { Coordinates } from '@/utils/geo';
 
 export type PlanItem = {
   id: string;
-  kind: 'place' | 'story';
   name: string;
   photoUrl?: string;
   primaryLabel?: string;
@@ -132,9 +131,8 @@ export function isPlanned(id: string): boolean {
   return items.some((item) => item.id === id);
 }
 
-/** Dwell by what the place is — the solver's table, client-side. */
-export function dwellMinutesFor(primaryLabel: string | undefined, kind: 'place' | 'story'): number {
-  if (kind === 'story') return 15;
+/** Dwell by what the place is — kept for future opt-in timing. */
+export function dwellMinutesFor(primaryLabel: string | undefined): number {
   const label = primaryLabel ?? '';
   if (/Coffee|Cafe|Bakery|Dessert|Ice Cream/.test(label)) return 40;
   if (/Restaurant|Steak|Grill/.test(label)) return 90;
@@ -146,7 +144,6 @@ export function dwellMinutesFor(primaryLabel: string | undefined, kind: 'place' 
 export function planItemFromPlace(place: Place): PlanItem {
   return {
     id: place.id,
-    kind: 'place',
     name: place.name,
     photoUrl: place.photoUrl,
     primaryLabel: place.primaryLabel,
@@ -157,6 +154,6 @@ export function planItemFromPlace(place: Place): PlanItem {
       place.rating ? `★ ${place.rating.toFixed(1)}` : undefined,
       place.priceLevel,
     ].filter((fact): fact is string => !!fact),
-    dwellMinutes: dwellMinutesFor(place.primaryLabel, 'place'),
+    dwellMinutes: dwellMinutesFor(place.primaryLabel),
   };
 }

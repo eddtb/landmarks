@@ -60,7 +60,6 @@ function doorsFromPlan(plan: Plan, excludeIds: Set<string>): Door[] {
 function doorToItem(door: Door): PlanItem {
   return {
     id: door.placeId,
-    kind: 'place',
     name: door.name,
     photoUrl: door.photoUrl,
     primaryLabel: door.primaryLabel,
@@ -213,7 +212,6 @@ function PlanBody({ center }: { center: Coordinates }) {
                 type="smallBold"
                 themeColor="accent"
                 onPress={() =>
-                  item.kind === 'place' &&
                   router.push({ pathname: '/place/[id]/go', params: { id: item.id } })
                 }>
                 Go ›
@@ -224,14 +222,7 @@ function PlanBody({ center }: { center: Coordinates }) {
         <View style={styles.stopRow}>
           <Pressable
             accessibilityRole="button"
-            onPress={() =>
-              item.kind === 'place'
-                ? router.push({ pathname: '/place/[id]', params: { id: item.id } })
-                : router.push({
-                    pathname: '/history/[pageId]',
-                    params: { pageId: item.id.replace('story:', '') },
-                  })
-            }
+            onPress={() => router.push({ pathname: '/place/[id]', params: { id: item.id } })}
             style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
             <View style={styles.cardHead}>
               <ThemedText type="headline" numberOfLines={1} style={styles.cardName}>
