@@ -21,3 +21,19 @@ routes degrade to the disk caches in `.ai-cache/` (recorded real
 responses; gitignored per Google ToS — do not commit or delete).
 Live-billed calls happen only via Edd's app, or an explicitly
 costed probe he approves first. Unit tests are mocked; CI is keyless.
+
+
+# Billed call-site audit (keep this table true)
+
+Every billed call passes chargeGoogle()/the AI budgets — these are ALL
+of them. Any new billed call-site must be added here WITH its cache.
+
+| Call (kind)        | Cache                         | Residual exposure |
+|--------------------|-------------------------------|-------------------|
+| nearbySearch       | places-lists 1h + prominence-lists 24h (per 100m bucket) | new ground while walking (by design) |
+| placeDetails       | place-details 24h (per place) | first tap per venue per day |
+| photoNames         | photo-names 12h               | token refresh, ~1p |
+| photoMedia         | device image cache (stable URLs) | dev-client reinstall re-bills photos once |
+| route              | plan cache 2h; Go mode uncached BY DESIGN (live position) | ~1p per Go open |
+| streetView         | uncached (rare no-photo fallback) | trickle, pennies |
+| Gemini (all)       | whats-on 14d / busyness 30d / blurb 30d / plan 2h | fresh=1 recompose is a deliberate user action |
