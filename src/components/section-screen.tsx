@@ -184,6 +184,9 @@ export function HistoryBody({ center }: { center: Coordinates }) {
         data={state.items}
         keyExtractor={(item) => String(item.pageId)}
         renderItem={({ item }) => <HistoryCard item={item} />}
+        // The deep feed can run to ~150 stories — render the first
+        // screenful fast and let virtualisation handle the rest
+        initialNumToRender={8}
         contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}

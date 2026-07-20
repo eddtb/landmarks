@@ -47,7 +47,12 @@ export async function GET(request: Request) {
   if (!fresh) {
     const cached = listCache.get(key);
     if (cached && Date.now() - cached.at < ListTtlMs) {
-      return Response.json({ items: cached.items });
+      // Re-dress from the photo cache only (zero lookups): background
+      // lookups that finished since the list was cached land here
+      const items = await dressWithPhotos(cached.items, undefined, undefined, 0, 0);
+      // …and quietly warm the still-bare tail for the next request
+      void dressWithPhotos(cached.items).catch(() => {});
+      return Response.json({ items });
     }
   }
 
@@ -78,8 +83,10 @@ export async function GET(request: Request) {
       200
     );
     const told = await enrichStandaloneListed(merged);
-    // Photos looked up near each STORY (cached per story), not the user
-    const items = await dressWithPhotos(told.slice(0, 40));
+    // The deep feed: everything within the walk, not a top-40 — the list
+    // virtualises client-side, and photo lookups stay capped per request
+    // (the deep tail warms up across requests), so length ≠ load time
+    const items = await dressWithPhotos(told.slice(0, 150));
     listCache.set(key, { items, at: Date.now() });
     return Response.json({ items });
   } catch (error) {

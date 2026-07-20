@@ -71,6 +71,19 @@ describe('dressWithPhotos', () => {
     expect(geograph).not.toHaveBeenCalled();
   });
 
+  test('the response never waits past the deadline; the lookup still lands in the cache', async () => {
+    const slow = jest.fn(
+      () => new Promise<typeof photos>((resolve) => setTimeout(() => resolve(photos), 40))
+    );
+    const [bare] = await dressWithPhotos([story({ pageId: 60 })], slow, noCommons, 5);
+    expect(bare.thumbnailUrl).toBeUndefined(); // deadline won the race
+
+    await new Promise((resolve) => setTimeout(resolve, 60)); // background lookup completes
+    const [dressed] = await dressWithPhotos([story({ pageId: 60 })], slow, noCommons, 5);
+    expect(dressed.thumbnailUrl).toContain('936190_fc8d5315.jpg'); // served from cache
+    expect(slow).toHaveBeenCalledTimes(1);
+  });
+
   test('a Commons failure falls through to Geograph, not to bare', async () => {
     const geograph = jest.fn(async () => photos);
     const commons = jest.fn(async () => { throw new Error('down'); });
