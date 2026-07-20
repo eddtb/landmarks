@@ -10,6 +10,9 @@ export type HistoryItem = {
   extract?: string;
   thumbnailUrl?: string;
   url: string;
-  /** Where the story came from: "Wikipedia" now; heritage sources join in PR-E. */
+  /** Where the story came from: "Wikipedia", "Historic England · Grade II",
+   * "Open Plaques" — or an enriched blend like "Wikipedia · Grade I listed". */
   source: string;
+  /** CC BY-SA attribution when the photo is Geograph's, not Wikipedia's. */
+  thumbnailCredit?: string;
 };
