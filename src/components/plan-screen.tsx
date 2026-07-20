@@ -293,13 +293,6 @@ function PlanBody({ center }: { center: Coordinates }) {
               </ThemedText>
             </View>
           )}
-          renderHandle={() => (
-            <View accessibilityLabel="Reorder" style={styles.handle}>
-              <ThemedText type="small" themeColor="textSecondary">
-                ≡
-              </ThemedText>
-            </View>
-          )}
         />
         {
           <View style={styles.suggest}>
