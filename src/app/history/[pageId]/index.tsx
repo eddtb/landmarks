@@ -5,6 +5,7 @@ import { Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-
 
 import { ExternalLink } from '@/components/external-link';
 import { OverflowMenu } from '@/components/overflow-menu';
+import { StoryFolds } from '@/components/story-folds';
 import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -142,6 +143,7 @@ export default function HistoryDetailScreen() {
                   {paragraph}
                 </ThemedText>
               ))}
+              <StoryFolds item={item} />
               <ExternalLink href={item.url as `https://${string}`}>
                 <ThemedText type="small" themeColor="accent">
                   From {item.source}
