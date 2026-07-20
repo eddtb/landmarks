@@ -84,6 +84,11 @@ export default function HistoryDetailScreen() {
             cachePolicy="memory-disk"
           />
         )}
+        {item.thumbnailCredit && (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.credit}>
+            {item.thumbnailCredit}
+          </ThemedText>
+        )}
         <View style={styles.body}>
           <View>
             <ThemedText type="largeTitle">{item.title}</ThemedText>
@@ -164,6 +169,11 @@ const styles = StyleSheet.create({
   photo: {
     width: '100%',
     aspectRatio: 16 / 9,
+  },
+  credit: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
+    fontSize: 11,
   },
   body: {
     padding: Spacing.four,
