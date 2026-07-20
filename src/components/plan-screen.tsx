@@ -13,7 +13,7 @@ import { addToPlan, clearPlan, movePlanItem, PlanItem, removeFromPlan } from '@/
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { Plan, PlanStop } from '@/types/plan';
-import { clockLabel, formatWalkTime } from '@/utils/format';
+import { formatWalkTime } from '@/utils/format';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
@@ -71,20 +71,22 @@ function doorToItem(door: Door): PlanItem {
   };
 }
 
-/** Times are derived, never stored: now → leg → dwell → leg → … */
+/**
+ * Legs only: the walking between stops is geometry (true); how long
+ * anyone lingers is intent (unknowable — Google has typical-visit
+ * data in its consumer app but has never exposed it in the API, so
+ * by the honesty rule the plan shows no clocks and guesses no dwell).
+ */
 function computeTimeline(items: PlanItem[], origin: Coordinates) {
-  let clock = Date.now();
   let position = origin;
   let totalWalkSeconds = 0;
   const rows = items.map((item) => {
     const legSeconds = Math.round(distanceMeters(position, item.coordinates) / WalkingPace);
     totalWalkSeconds += legSeconds;
-    const arrive = new Date(clock + legSeconds * 1000);
-    clock = arrive.getTime() + item.dwellMinutes * 60000;
     position = item.coordinates;
-    return { item, legSeconds, arrive };
+    return { item, legSeconds };
   });
-  return { rows, totalWalkSeconds, ends: new Date(clock) };
+  return { rows, totalWalkSeconds };
 }
 
 export function PlanScreen() {
@@ -186,11 +188,11 @@ function PlanBody({ center }: { center: Coordinates }) {
     );
   }
 
-  const { rows, totalWalkSeconds, ends } = computeTimeline(items, center);
+  const { rows, totalWalkSeconds } = computeTimeline(items, center);
 
   const onShare = () =>
     Share.share({
-      message: rows.map(({ item, arrive }) => `${clockLabel(arrive)} — ${item.name}`).join('\n'),
+      message: rows.map(({ item }, index) => `${index + 1}. ${item.name}`).join('\n'),
     });
 
   const onClear = () =>
@@ -220,9 +222,6 @@ function PlanBody({ center }: { center: Coordinates }) {
           </View>
         )}
         <View style={styles.stopRow}>
-          <ThemedText type="smallBold" themeColor="accent" numberOfLines={1} style={styles.time}>
-            {row ? clockLabel(row.arrive) : ''}
-          </ThemedText>
           <Pressable
             accessibilityRole="button"
             onPress={() =>
@@ -297,7 +296,7 @@ function PlanBody({ center }: { center: Coordinates }) {
         </View>
         <ThemedText type="small" themeColor="textSecondary">
           {items.length} {items.length === 1 ? 'stop' : 'stops'} ·{' '}
-          {Math.round(totalWalkSeconds / 60)} min walking · ends ~{clockLabel(ends)}
+          {Math.round(totalWalkSeconds / 60)} min walking
         </ThemedText>
       </View>
       <ScrollView
@@ -375,9 +374,8 @@ const styles = StyleSheet.create({
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   dot: { width: 9, height: 9, borderRadius: 5 },
   list: { paddingHorizontal: Spacing.four, paddingTop: Spacing.two },
-  legRow: { paddingLeft: 66 + Spacing.two, paddingVertical: Spacing.one },
+  legRow: { paddingLeft: Spacing.two, paddingVertical: Spacing.one },
   stopRow: { flexDirection: 'row', gap: Spacing.two, alignItems: 'flex-start' },
-  time: { width: 66, paddingTop: Spacing.three, fontVariant: ['tabular-nums'] },
   card: { flex: 1, borderRadius: Spacing.three - 2, padding: Spacing.three, gap: Spacing.one },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   cardName: { flex: 1 },
