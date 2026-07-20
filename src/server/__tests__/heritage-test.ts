@@ -95,11 +95,19 @@ describe('mergeHistorySources', () => {
     ...overrides,
   });
 
-  test('a listed building at the same place enriches the story badge, once', () => {
+  test('many register records at one place become ONE badge — the best grade', () => {
     const listed = buildListedBuildingItems(
       [
         {
+          attributes: { Name: 'ROYAL OBSERVATORY', Grade: 'II', ListEntry: 98 },
+          geometry: { points: [[-0.0015, 51.4779]] as [number, number][] },
+        },
+        {
           attributes: { Name: 'ROYAL OBSERVATORY', Grade: 'I', ListEntry: 99 },
+          geometry: { points: [[-0.0015, 51.4779]] as [number, number][] },
+        },
+        {
+          attributes: { Name: 'ROYAL OBSERVATORY GATES', Grade: 'II', ListEntry: 100 },
           geometry: { points: [[-0.0015, 51.4779]] as [number, number][] },
         },
       ],
@@ -127,6 +135,28 @@ describe('mergeHistorySources', () => {
       expect.arrayContaining(['Wikipedia', 'Historic England · Grade II*', 'Open Plaques'])
     );
     expect(merged).toHaveLength(3);
+  });
+
+  test('a plaque within 30m merges into the story whatever its wording', () => {
+    const tunnel = story({
+      pageId: 9,
+      title: 'Greenwich foot tunnel',
+      coordinates: { latitude: 51.4779, longitude: -0.0015 },
+    });
+    const plaqueOnIt = buildPlaqueItems(
+      [
+        {
+          id: 77,
+          latitude: 51.4779,
+          longitude: -0.0015,
+          inscription: 'This tunnel constructed by the London County Council was opened in 1902',
+        },
+      ],
+      Center
+    );
+    const merged = mergeHistorySources([tunnel], [], plaqueOnIt);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].source).toBe('Wikipedia · plaque');
   });
 
   test('an unmatched Grade II record enriches nothing and earns no card', () => {
