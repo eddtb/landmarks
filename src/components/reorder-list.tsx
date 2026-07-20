@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -8,13 +8,22 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { ThemedText } from '@/components/themed-text';
+import { Spacing } from '@/constants/theme';
+
 /**
  * Hand-rolled drag-reorder on the primitives we already own
- * (reanimated + gesture-handler) — no library. The trick that keeps
- * it simple: while a drag is active, every row renders a COMPACT
- * fixed-height form, so index math is `offset / rowHeight` and
- * auto-scroll is unnecessary at plan sizes (2–8 items). Rows
- * re-expand on release.
+ * (reanimated + gesture-handler) — no library. While a drag is
+ * active, every row renders a COMPACT fixed-height form, so index
+ * math is offset/rowHeight and auto-scroll is unnecessary at plan
+ * sizes. Rows re-expand on release.
+ *
+ * Hard-learned structure (field bug: "items minimise and are
+ * unmovable"): the GestureDetector must wrap a node that NEVER
+ * unmounts. The compact/full swap happens INSIDE the detector, and
+ * gesture objects are memoized so the drag-start re-render doesn't
+ * reconfigure an active gesture. Long-press anywhere on a row (the
+ * ≡ is the visual affordance) starts the drag.
  */
 
 export const CompactRowHeight = 52;
@@ -30,117 +39,154 @@ export function moveItem<T>(items: T[], from: number, to: number): T[] {
   return next;
 }
 
-function clampIndex(value: number, length: number): number {
-  'worklet';
-  return Math.max(0, Math.min(length - 1, value));
-}
-
 export function ReorderList<T>({
   items,
   keyFor,
   renderRow,
   renderCompactRow,
-  renderHandle,
   onReorder,
 }: {
   items: T[];
   keyFor: (item: T) => string;
-  /** The full row, including its leg/decorations. */
+  /** The full row; `handle` is the ≡ affordance to place in it. */
   renderRow: (item: T, index: number, handle: ReactNode) => ReactNode;
   /** The fixed-height row shown while any drag is active. */
   renderCompactRow: (item: T) => ReactNode;
-  /** The ≡ affordance; the pan gesture rides it. */
-  renderHandle: () => ReactNode;
   onReorder: (next: T[]) => void;
 }) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const translationY = useSharedValue(0);
-  const hoverShift = useSharedValue(0);
+  const hoverIndex = useSharedValue(0);
+
+  // Callbacks read through refs so the memoized gestures never go
+  // stale — and never get recreated mid-drag (recreation cancels an
+  // active gesture)
+  const itemsRef = useRef(items);
+  const onReorderRef = useRef(onReorder);
+  useEffect(() => {
+    itemsRef.current = items;
+    onReorderRef.current = onReorder;
+  });
 
   const commit = (from: number, offsetRows: number) => {
-    const to = Math.max(0, Math.min(items.length - 1, from + offsetRows));
+    const current = itemsRef.current;
+    const to = Math.max(0, Math.min(current.length - 1, from + offsetRows));
     setDragIndex(null);
     if (to !== from) {
-      onReorder(moveItem(items, from, to));
+      onReorderRef.current(moveItem(current, from, to));
     }
   };
-
-  const rows = items.map((item, index) => {
-    const gesture = Gesture.Pan()
-      .activateAfterLongPress(150)
-      .onStart(() => {
-        translationY.value = 0;
-        hoverShift.value = 0;
-        runOnJS(setDragIndex)(index);
-      })
-      .onUpdate((event) => {
-        translationY.value = event.translationY;
-        hoverShift.value = clampIndex(
-          index + Math.round(event.translationY / CompactRowHeight),
-          items.length
-        );
-      })
-      .onEnd((event) => {
-        runOnJS(commit)(index, Math.round(event.translationY / CompactRowHeight));
-      })
-      .onFinalize(() => {
-        translationY.value = 0;
-      });
-
-    const handle = <GestureDetector gesture={gesture}>{renderHandle() as never}</GestureDetector>;
-    return { item, index, handle };
+  const commitRef = useRef(commit);
+  useEffect(() => {
+    commitRef.current = commit;
   });
+
+  /* eslint-disable react-hooks/refs -- ref reads inside these
+     callbacks run at gesture-event time, never during render */
+  const gestures = useMemo(
+    () =>
+      Array.from({ length: items.length }, (_, index) =>
+        Gesture.Pan()
+          .activateAfterLongPress(200)
+          .onStart(() => {
+            translationY.value = 0;
+            hoverIndex.value = index;
+            runOnJS(setDragIndex)(index);
+          })
+          .onUpdate((event) => {
+            translationY.value = event.translationY;
+            const target = index + Math.round(event.translationY / CompactRowHeight);
+            hoverIndex.value = Math.max(0, Math.min(itemsRef.current.length - 1, target));
+          })
+          .onEnd((event) => {
+            const offsetRows = Math.round(event.translationY / CompactRowHeight);
+            runOnJS((from: number, offset: number) => commitRef.current(from, offset))(
+              index,
+              offsetRows
+            );
+          })
+          .onFinalize(() => {
+            translationY.value = 0;
+          })
+      ),
+    // Recreate only when the row count changes — never on drag state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items.length]
+  );
+  /* eslint-enable react-hooks/refs */
+
+  const handle = (
+    <View accessibilityLabel="Reorder" style={styles.handle}>
+      <ThemedText type="small" themeColor="textSecondary">
+        ≡
+      </ThemedText>
+    </View>
+  );
 
   return (
     <View>
-      {rows.map(({ item, index, handle }) =>
-        dragIndex === null ? (
-          <View key={keyFor(item)}>{renderRow(item, index, handle)}</View>
-        ) : (
-          <CompactRow
-            key={keyFor(item)}
-            index={index}
-            dragIndex={dragIndex}
-            translationY={translationY}
-            hoverShift={hoverShift}>
-            {renderCompactRow(item)}
-          </CompactRow>
-        )
-      )}
+      {items.map((item, index) => (
+        <ReorderRow
+          key={keyFor(item)}
+          index={index}
+          dragIndex={dragIndex}
+          translationY={translationY}
+          hoverIndex={hoverIndex}
+          gesture={gestures[index]}>
+          {dragIndex === null ? (
+            renderRow(item, index, handle)
+          ) : (
+            <View style={styles.compact}>{renderCompactRow(item)}</View>
+          )}
+        </ReorderRow>
+      ))}
     </View>
   );
 }
 
-function CompactRow({
+function ReorderRow({
   index,
   dragIndex,
   translationY,
-  hoverShift,
+  hoverIndex,
+  gesture,
   children,
 }: {
   index: number;
-  dragIndex: number;
+  dragIndex: number | null;
   translationY: { value: number };
-  hoverShift: { value: number };
+  hoverIndex: { value: number };
+  gesture: ReturnType<typeof Gesture.Pan>;
   children: ReactNode;
 }) {
   const animatedStyle = useAnimatedStyle(() => {
+    if (dragIndex === null) {
+      return { transform: [{ translateY: 0 }], zIndex: 1, opacity: 1 };
+    }
     if (index === dragIndex) {
       return { transform: [{ translateY: translationY.value }], zIndex: 2, opacity: 0.92 };
     }
     // Rows between origin and hover slot make room for the traveller
-    const hover = hoverShift.value;
+    const hover = hoverIndex.value;
     let shift = 0;
     if (index > dragIndex && index <= hover) {
       shift = -CompactRowHeight;
     } else if (index < dragIndex && index >= hover) {
       shift = CompactRowHeight;
     }
-    return { transform: [{ translateY: withTiming(shift, { duration: 120 }) }], zIndex: 1 };
-  });
+    return {
+      transform: [{ translateY: withTiming(shift, { duration: 120 }) }],
+      zIndex: 1,
+      opacity: 1,
+    };
+  }, [dragIndex, index]);
 
+  // The detector wraps a node that exists in BOTH modes — the swap
+  // happens inside it, so an active gesture is never unmounted
   return (
-    <Animated.View style={[styles.compact, animatedStyle]}>{children}</Animated.View>
+    <GestureDetector gesture={gesture}>
+      <Animated.View style={animatedStyle}>{children}</Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -148,5 +194,8 @@ const styles = StyleSheet.create({
   compact: {
     height: CompactRowHeight,
     justifyContent: 'center',
+  },
+  handle: {
+    paddingHorizontal: Spacing.one,
   },
 });
