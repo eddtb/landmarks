@@ -29,6 +29,9 @@ export async function fetchNearbyHistory(
     lat: String(center.latitude),
     lng: String(center.longitude),
   });
+  if (options?.forceRefresh) {
+    params.set('fresh', '1'); // a deliberate pull must bypass the server's bucket cache too
+  }
 
   const response = await fetch(apiUrl(`/api/history?${params}`));
   if (!response.ok) {

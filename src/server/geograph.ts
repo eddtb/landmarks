@@ -61,7 +61,7 @@ export async function fetchAreaPhotos(center: Coordinates, perpage = 10): Promis
     format: 'JSON',
     perpage: String(perpage),
   });
-  const response = await fetch(`${Endpoint}?${params}`);
+  const response = await fetch(`${Endpoint}?${params}`, { signal: AbortSignal.timeout(3000) });
   if (!response.ok) {
     throw new Error(`Geograph query failed with status ${response.status}`);
   }

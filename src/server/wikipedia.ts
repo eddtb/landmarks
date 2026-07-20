@@ -105,7 +105,7 @@ export async function findStory(
     'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
     `&gscoord=${coordinates.latitude}%7C${coordinates.longitude}&gsradius=250&gslimit=10`;
 
-  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent } });
+  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
   if (!geoResponse.ok) {
     throw new Error(`Wikipedia geosearch failed with status ${geoResponse.status}`);
   }
@@ -118,7 +118,7 @@ export async function findStory(
   }
 
   const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-  const summaryResponse = await fetch(summaryUrl, { headers: { 'User-Agent': UserAgent } });
+  const summaryResponse = await fetch(summaryUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(5000) });
   if (!summaryResponse.ok) {
     return null;
   }
@@ -213,7 +213,7 @@ export async function findNearbyHistory(
     'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
     `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=50`;
 
-  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent } });
+  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
   if (!geoResponse.ok) {
     throw new Error(`Wikipedia geosearch failed with status ${geoResponse.status}`);
   }
@@ -237,7 +237,7 @@ export async function findNearbyHistory(
         `&pageids=${chunk.join('|')}` +
         '&prop=pageimages%7Cextracts%7Cinfo&exintro=1&explaintext=1&exlimit=max' +
         '&pithumbsize=800&pilimit=max&inprop=url';
-      const batchResponse = await fetch(batchUrl, { headers: { 'User-Agent': UserAgent } });
+      const batchResponse = await fetch(batchUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
       if (!batchResponse.ok) {
         throw new Error(`Wikipedia batch query failed with status ${batchResponse.status}`);
       }

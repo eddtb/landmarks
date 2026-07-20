@@ -102,7 +102,7 @@ export async function fetchListedBuildings(
     resultRecordCount: '500',
     f: 'json',
   });
-  const response = await fetch(`${NhleBase}/0/query?${params}`);
+  const response = await fetch(`${NhleBase}/0/query?${params}`, { signal: AbortSignal.timeout(5000) });
   if (!response.ok) {
     throw new Error(`NHLE query failed with status ${response.status}`);
   }
@@ -158,7 +158,8 @@ export async function fetchPlaques(center: Coordinates, radius = 1000): Promise<
   const url =
     'https://openplaques.org/plaques.json' +
     `?box=[${box.north},${box.west}],[${box.south},${box.east}]`;
-  const response = await fetch(url);
+  // One sick upstream must never hang the feed (measured: 20s+) — degrade to fewer stories
+  const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
   if (!response.ok) {
     throw new Error(`Open Plaques query failed with status ${response.status}`);
   }
