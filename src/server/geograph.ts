@@ -1,3 +1,4 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
@@ -49,7 +50,7 @@ export function buildPhotos(items: SyndicatorItem[]): GeographPhoto[] {
   });
 }
 
-export async function fetchAreaPhotos(center: Coordinates): Promise<GeographPhoto[]> {
+export async function fetchAreaPhotos(center: Coordinates, perpage = 10): Promise<GeographPhoto[]> {
   const key = process.env.GEOGRAPH_API_KEY;
   if (!key) {
     return [];
@@ -58,7 +59,7 @@ export async function fetchAreaPhotos(center: Coordinates): Promise<GeographPhot
     key,
     location: `${center.latitude},${center.longitude}`,
     format: 'JSON',
-    perpage: '50',
+    perpage: String(perpage),
   });
   const response = await fetch(`${Endpoint}?${params}`);
   if (!response.ok) {
@@ -68,37 +69,68 @@ export async function fetchAreaPhotos(center: Coordinates): Promise<GeographPhot
   return buildPhotos(body.items ?? []);
 }
 
-/**
- * Give each unillustrated story the nearest unused photo within range.
- * Pure: returns new items, never mutates.
- */
-export function assignPhotos(
-  items: HistoryItem[],
+/** Pure: the nearest photo within range, or null. */
+export function pickPhotoFor(
+  item: HistoryItem,
   photos: GeographPhoto[],
   maxMeters = 150
-): HistoryItem[] {
-  const unused = [...photos];
-  return items.map((item) => {
-    if (item.thumbnailUrl) {
-      return item;
+): GeographPhoto | null {
+  let best: GeographPhoto | null = null;
+  let bestDistance = maxMeters;
+  for (const photo of photos) {
+    const distance = distanceMeters(item.coordinates, {
+      latitude: photo.latitude,
+      longitude: photo.longitude,
+    });
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = photo;
     }
-    let bestIndex = -1;
-    let bestDistance = maxMeters;
-    for (let index = 0; index < unused.length; index++) {
-      const photo = unused[index];
-      const distance = distanceMeters(item.coordinates, {
-        latitude: photo.latitude,
-        longitude: photo.longitude,
-      });
-      if (distance <= bestDistance) {
-        bestDistance = distance;
-        bestIndex = index;
+  }
+  return best;
+}
+
+/**
+ * Dress each unillustrated story with a photo taken near THAT story —
+ * one syndicator query per story, not one per user position: photos
+ * near the user cluster within a couple hundred metres and leave every
+ * further story bare (measured: 1 of 40 dressed). Cached per story for
+ * a week; the cap bounds a cold area's first request, and the misses
+ * warm up on the next one.
+ */
+const PhotoTtlMs = 7 * 24 * 60 * 60 * 1000;
+const photoCache = diskBackedMap<{ photo: GeographPhoto | null; at: number }>('geograph-photos');
+const MaxLookupsPerRequest = 15;
+
+export async function dressWithPhotos(
+  items: HistoryItem[],
+  fetchPhotos: typeof fetchAreaPhotos = fetchAreaPhotos
+): Promise<HistoryItem[]> {
+  let lookups = 0;
+  return Promise.all(
+    items.map(async (item) => {
+      if (item.thumbnailUrl) {
+        return item;
       }
-    }
-    if (bestIndex === -1) {
-      return item;
-    }
-    const [photo] = unused.splice(bestIndex, 1);
-    return { ...item, thumbnailUrl: photo.imageUrl, thumbnailCredit: photo.credit };
-  });
+      const key = String(item.pageId);
+      let cached = photoCache.get(key);
+      if (!cached || Date.now() - cached.at > PhotoTtlMs) {
+        if (lookups >= MaxLookupsPerRequest) {
+          return item; // stays bare this request; warms up next time
+        }
+        lookups += 1;
+        try {
+          const photos = await fetchPhotos(item.coordinates);
+          cached = { photo: pickPhotoFor(item, photos), at: Date.now() };
+          photoCache.set(key, cached);
+        } catch {
+          return item; // failures aren't cached — next request retries
+        }
+      }
+      if (!cached.photo) {
+        return item;
+      }
+      return { ...item, thumbnailUrl: cached.photo.imageUrl, thumbnailCredit: cached.photo.credit };
+    })
+  );
 }

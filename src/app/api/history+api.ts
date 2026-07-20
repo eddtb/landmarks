@@ -1,4 +1,4 @@
-import { assignPhotos, fetchAreaPhotos } from '@/server/geograph';
+import { dressWithPhotos } from '@/server/geograph';
 import {
   enrichStandaloneListed,
   fetchListedBuildings,
@@ -29,18 +29,17 @@ export async function GET(request: Request) {
   const center = { latitude: lat, longitude: lng };
 
   try {
-    const [wikipedia, listed, plaques, photos] = await Promise.allSettled([
+    const [wikipedia, listed, plaques] = await Promise.allSettled([
       findNearbyHistory(center),
       fetchListedBuildings(center),
       fetchPlaques(center),
-      fetchAreaPhotos(center),
     ]);
 
     // Wikipedia is the backbone — without it there is no screen
     if (wikipedia.status === 'rejected') {
       throw wikipedia.reason;
     }
-    for (const settled of [listed, plaques, photos]) {
+    for (const settled of [listed, plaques]) {
       if (settled.status === 'rejected') {
         console.warn('History source degraded:', settled.reason);
       }
@@ -56,10 +55,8 @@ export async function GET(request: Request) {
       200
     );
     const told = await enrichStandaloneListed(merged);
-    const items = assignPhotos(
-      told.slice(0, 40),
-      photos.status === 'fulfilled' ? photos.value : []
-    );
+    // Photos looked up near each STORY (cached per story), not the user
+    const items = await dressWithPhotos(told.slice(0, 40));
     return Response.json({ items });
   } catch (error) {
     console.error('History lookup failed:', error);
