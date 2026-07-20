@@ -111,11 +111,11 @@ describe('mergeHistorySources', () => {
     expect(merged[0].source).toBe('Wikipedia · Grade I listed');
   });
 
-  test('a distant or unrelated record stands as its own story', () => {
+  test('a distant or unrelated NOTABLE record stands as its own story', () => {
     const listed = buildListedBuildingItems(
       [
         {
-          attributes: { Name: 'SAXONIA WIRE COMPANY OFFICE', Grade: 'II', ListEntry: 7 },
+          attributes: { Name: 'SAXONIA WIRE COMPANY OFFICE', Grade: 'II*', ListEntry: 7 },
           geometry: { points: [[-0.0117, 51.4803]] as [number, number][] },
         },
       ],
@@ -124,16 +124,31 @@ describe('mergeHistorySources', () => {
     const merged = mergeHistorySources([story({})], listed, buildPlaqueItems(plaques, Center));
 
     expect(merged.map((item) => item.source)).toEqual(
-      expect.arrayContaining(['Wikipedia', 'Historic England · Grade II', 'Open Plaques'])
+      expect.arrayContaining(['Wikipedia', 'Historic England · Grade II*', 'Open Plaques'])
     );
     expect(merged).toHaveLength(3);
+  });
+
+  test('an unmatched Grade II record enriches nothing and earns no card', () => {
+    const listed = buildListedBuildingItems(
+      [
+        {
+          attributes: { Name: '37 AND 37A KING WILLIAM WALK', Grade: 'II', ListEntry: 8 },
+          geometry: { points: [[-0.0117, 51.4803]] as [number, number][] },
+        },
+      ],
+      Center
+    );
+    const merged = mergeHistorySources([story({})], listed, []);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].source).toBe('Wikipedia');
   });
 
   test('sorts everything by distance and never mutates the inputs', () => {
     const wiki = [story({ distanceMeters: 500 })];
     const merged = mergeHistorySources(
       wiki,
-      [story({ pageId: 2, title: 'Nearer Thing', distanceMeters: 5, source: 'Historic England · Grade II' })],
+      [story({ pageId: 2, title: 'Nearer Thing', distanceMeters: 5, source: 'Historic England · Grade I' })],
       []
     );
     expect(merged[0].title).toBe('Nearer Thing');
