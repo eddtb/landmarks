@@ -103,6 +103,25 @@ export function reorderPlan(next: PlanItem[]) {
   emit();
 }
 
+/** Pure and unit-tested: the reorder itself. */
+export function moveItem<T>(list: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) {
+    return list;
+  }
+  const next = [...list];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+/** ↑/↓ semantics: shift one slot, clamped at the ends. */
+export function movePlanItem(index: number, direction: -1 | 1) {
+  const next = moveItem(items, index, index + direction);
+  if (next !== items) {
+    reorderPlan(next);
+  }
+}
+
 export function clearPlan() {
   items = [];
   persist();
