@@ -206,12 +206,12 @@ export async function findNearbyHistory(
   center: Coordinates,
   radius = 1500
 ): Promise<HistoryItem[]> {
-  // 50, not 20: dense areas rank the treasure low — measured from
-  // Greenwich centre, Queen's House sat 27th and the Old Royal Naval
-  // College 24th, beyond a top-20's reach entirely
+  // 100, not 20: dense areas rank the treasure low — measured from
+  // Greenwich centre, Queen's House sat 27th, beyond a top-20's reach
+  // entirely — and the deep feed shows everything within the walk
   const geoUrl =
     'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
-    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=50`;
+    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=100`;
 
   const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
   if (!geoResponse.ok) {

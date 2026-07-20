@@ -107,9 +107,18 @@ const MaxLookupsPerRequest = 15;
 export async function dressWithPhotos(
   items: HistoryItem[],
   fetchPhotos: typeof fetchAreaPhotos = fetchAreaPhotos,
-  fetchCommons: typeof findCommonsPhoto = findCommonsPhoto
+  fetchCommons: typeof findCommonsPhoto = findCommonsPhoto,
+  deadlineMs = 1500,
+  maxLookups = MaxLookupsPerRequest
 ): Promise<HistoryItem[]> {
   let lookups = 0;
+  // Photos are decoration, not structure: the response never waits past
+  // the deadline. Lookups that lose the race keep running and write the
+  // cache anyway — the story appears dressed on the next request.
+  const deadline = new Promise<undefined>((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), deadlineMs);
+    (timer as { unref?: () => void }).unref?.();
+  });
   return Promise.all(
     items.map(async (item) => {
       if (item.thumbnailUrl) {
@@ -118,20 +127,27 @@ export async function dressWithPhotos(
       const key = String(item.pageId);
       let cached = photoCache.get(key);
       if (!cached || Date.now() - cached.at > PhotoTtlMs) {
-        if (lookups >= MaxLookupsPerRequest) {
+        if (lookups >= maxLookups) {
           return item; // stays bare this request; warms up next time
         }
         lookups += 1;
-        try {
-          const commons = await fetchCommons(item.title, item.coordinates).catch(() => null);
-          const photo =
-            commons ?? pickPhotoFor(item, await fetchPhotos(item.coordinates)) ?? null;
-          cached = { photo, at: Date.now() };
-          photoCache.set(key, cached);
-        } catch {
-          // Failures AND missing-key runs are not cached — a verdict of
-          // "no photo exists" may only come from a source that answered
-          return item;
+        const lookup = (async () => {
+          try {
+            const commons = await fetchCommons(item.title, item.coordinates).catch(() => null);
+            const photo =
+              commons ?? pickPhotoFor(item, await fetchPhotos(item.coordinates)) ?? null;
+            const entry = { photo, at: Date.now() };
+            photoCache.set(key, entry);
+            return entry;
+          } catch {
+            // Failures AND missing-key runs are not cached — a verdict of
+            // "no photo exists" may only come from a source that answered
+            return undefined;
+          }
+        })();
+        cached = await Promise.race([lookup, deadline]);
+        if (!cached) {
+          return item; // deadline or failure — the lookup finishes in the background
         }
       }
       if (!cached.photo) {
