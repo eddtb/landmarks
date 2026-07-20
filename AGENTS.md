@@ -14,26 +14,25 @@ complement the versioned-docs rule above; they don't replace it.
 
 # Paid APIs: replay-only development
 
-Development and testing NEVER bill. Any dev server started for
-probing/verification runs with `REPLAY_ONLY=1` — billed calls
-(Google, Anthropic, Gemini) refuse at the budget choke point and
-routes degrade to the disk caches in `.ai-cache/` (recorded real
-responses; gitignored per Google ToS — do not commit or delete).
-Live-billed calls happen only via Edd's app, or an explicitly
-costed probe he approves first. Unit tests are mocked; CI is keyless.
+Development and testing NEVER bill — and since the Storyteller pivot
+(PR #117) nothing in the codebase CAN bill: Google is gone, Anthropic
+is a dormant fallback behind an explicit `AI_PROVIDER=anthropic` flip.
+The discipline stays anyway. Dev servers started for probing run with
+`REPLAY_ONLY=1` — AI calls refuse at the budget choke point and routes
+degrade to the disk caches in `.ai-cache/` (recorded responses;
+gitignored — do not commit or delete). Unit tests are mocked; CI is
+keyless. Note: REPLAY_ONLY also refuses FREE Gemini calls, so a dev
+server on that flag cannot write new tellings — only replay cached ones.
 
 
-# Billed call-site audit (keep this table true)
+# AI call-site audit (keep this table true)
 
-Every billed call passes chargeGoogle()/the AI budgets — these are ALL
-of them. Any new billed call-site must be added here WITH its cache.
+Every AI call passes a budget breaker — these are ALL of them. Any new
+AI call-site must be added here WITH its cache. Data upstreams
+(Wikipedia, Historic England, Open Plaques, Geograph) are keyless or
+free-keyed and unmetered — they don't belong in this table.
 
-| Call (kind)        | Cache                         | Residual exposure |
-|--------------------|-------------------------------|-------------------|
-| nearbySearch       | places-lists 1h + prominence-lists 24h (per 100m bucket) | new ground while walking (by design) |
-| placeDetails       | place-details 24h (per place) | first tap per venue per day |
-| photoNames         | photo-names 12h               | token refresh, ~1p |
-| photoMedia         | device image cache (stable URLs) | dev-client reinstall re-bills photos once |
-| route              | plan cache 2h; Go mode uncached BY DESIGN (live position) | ~1p per Go open |
-| streetView         | uncached (rare no-photo fallback) | trickle, pennies |
-| Gemini (all)       | whats-on 14d / busyness 30d / blurb 30d / plan 2h | fresh=1 recompose is a deliberate user action |
+| Call (kind)          | Cache                    | Cost |
+|----------------------|--------------------------|------|
+| Gemini telling (ungrounded) | tellings 30d (per story) + device session cache | free tier, 300-calls/day breaker |
+| Anthropic (dormant fallback) | n/a — only via explicit AI_PROVIDER=anthropic | paid; assertBudget breaker; boot log asks "is this intended?" |

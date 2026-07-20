@@ -1,56 +1,42 @@
-# Welcome to your Expo app 👋
+# Venture
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**The history of where you stand.** Open the app and it shows the
+stories around you — the vanished palace, the blue plaque, the Grade I
+church — and speaks them aloud, about a minute each, as you walk.
 
-## Get started
+Built with Expo SDK 56 (expo-router, API routes, expo-speech) as a
+learning project in CI/CD, testing, and AI-assisted workflows — and,
+after a costly first act as a Google-Places venue browser, in **zero-
+marginal-cost architecture**: every upstream is free, every AI call is
+free-tier and breaker-fenced, and the caches are designed to outlive
+the process.
 
-1. Install dependencies
+## What it does
 
-   ```bash
-   npm install
-   ```
+- **Nearby** — stories within a walk, merged one-place-one-card from
+  Wikipedia, Historic England's National Heritage List, and Open
+  Plaques, with Geograph photographs (CC BY-SA, credited) for the
+  stories nobody illustrated.
+- **The telling** — press 🔊 Listen and the phone speaks a ~one-minute
+  narration, written once per story by Gemini's free tier from the
+  source text alone, cached 30 days. Hook first, no invention, sources
+  linked beside it.
+- **Walks** — build a walking tour with ＋ Walk, reorder with ↑↓, and
+  **▶ Play the walk**: the tellings in sequence, an audio tour of
+  ground you're actually covering.
+- **Compass** — a bearing-and-distance modal that works for buildings
+  that no longer exist.
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Development
 
 ```bash
-npm run reset-project
+npm install
+REPLAY_ONLY=1 npx expo start   # dev servers can't spend money — see AGENTS.md
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Runs in a dev build (expo-speech and AsyncStorage are native modules);
+`npm test` / `npm run lint` / `npx tsc --noEmit` mirror CI, which is
+keyless — unit tests are mocked, live parses are recorded fixtures.
 
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Docs: [product spec](docs/PRODUCT.md) · [design system](docs/DESIGN.md)
+· [agent/cost rules](AGENTS.md)
