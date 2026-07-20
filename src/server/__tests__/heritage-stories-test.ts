@@ -51,17 +51,30 @@ describe('enrichStandaloneListed', () => {
     expect(findStory).toHaveBeenCalledTimes(1);
   });
 
-  test('no matching article, non-register cards, and lookup failures pass through', async () => {
+  test('several register records resolving to one article yield one card, nearest first', async () => {
+    findStory.mockResolvedValue({
+      story: 'The National Maritime Museum is a maritime museum in Greenwich.',
+      title: 'National Maritime Museum',
+      url: 'https://en.wikipedia.org/wiki/National_Maritime_Museum',
+    });
+    const west = { ...registerCard, pageId: 2_000_000_001, distanceMeters: 200 };
+    const east = { ...registerCard, pageId: 2_000_000_002, distanceMeters: 350 };
+
+    const result = await enrichStandaloneListed([west, east]);
+    expect(result).toHaveLength(1);
+    expect(result[0].distanceMeters).toBe(200);
+  });
+
+  test('story or no card: articleless register entries and failures are dropped', async () => {
     findStory.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('down'));
     const wiki = { ...registerCard, pageId: 5, source: 'Wikipedia' };
 
     const first = await enrichStandaloneListed([registerCard, wiki]);
-    expect(first[0].source).toBe('Historic England · Grade I'); // null match cached, card kept
-    expect(first[1]).toBe(wiki); // not a register card — untouched, no lookup
+    expect(first).toEqual([wiki]); // no article → no card; wiki card untouched
 
     diskBackedMap('nhle-stories').clear();
-    const [afterFailure] = await enrichStandaloneListed([registerCard]);
-    expect(afterFailure.source).toBe('Historic England · Grade I'); // failure ≠ cached
-    expect(findStory).toHaveBeenCalledTimes(2);
+    const afterFailure = await enrichStandaloneListed([registerCard]);
+    expect(afterFailure).toEqual([]); // dropped, but failure ≠ cached…
+    expect(findStory).toHaveBeenCalledTimes(2); // …so the lookup retried
   });
 });

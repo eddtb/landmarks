@@ -206,9 +206,12 @@ export async function findNearbyHistory(
   center: Coordinates,
   radius = 1500
 ): Promise<HistoryItem[]> {
+  // 50, not 20: dense areas rank the treasure low — measured from
+  // Greenwich centre, Queen's House sat 27th and the Old Royal Naval
+  // College 24th, beyond a top-20's reach entirely
   const geoUrl =
     'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
-    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=20`;
+    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=50`;
 
   const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent } });
   if (!geoResponse.ok) {
@@ -220,18 +223,30 @@ export async function findNearbyHistory(
     return [];
   }
 
-  const pageIds = entries.map((entry) => entry.pageid).join('|');
-  const batchUrl =
-    'https://en.wikipedia.org/w/api.php?action=query&format=json' +
-    `&pageids=${pageIds}` +
-    '&prop=pageimages%7Cextracts%7Cinfo&exintro=1&explaintext=1&exlimit=max' +
-    '&pithumbsize=800&pilimit=max&inprop=url';
-
-  const batchResponse = await fetch(batchUrl, { headers: { 'User-Agent': UserAgent } });
-  if (!batchResponse.ok) {
-    throw new Error(`Wikipedia batch query failed with status ${batchResponse.status}`);
+  // TextExtracts serves at most 20 intro extracts per request, so the
+  // batch goes out in chunks of 20, in parallel
+  const pageIdChunks: number[][] = [];
+  for (let start = 0; start < entries.length; start += 20) {
+    pageIdChunks.push(entries.slice(start, start + 20).map((entry) => entry.pageid));
   }
-  const batch = (await batchResponse.json()) as { query?: { pages?: Record<string, BatchPage> } };
+  const pages: Record<string, BatchPage> = {};
+  await Promise.all(
+    pageIdChunks.map(async (chunk) => {
+      const batchUrl =
+        'https://en.wikipedia.org/w/api.php?action=query&format=json' +
+        `&pageids=${chunk.join('|')}` +
+        '&prop=pageimages%7Cextracts%7Cinfo&exintro=1&explaintext=1&exlimit=max' +
+        '&pithumbsize=800&pilimit=max&inprop=url';
+      const batchResponse = await fetch(batchUrl, { headers: { 'User-Agent': UserAgent } });
+      if (!batchResponse.ok) {
+        throw new Error(`Wikipedia batch query failed with status ${batchResponse.status}`);
+      }
+      const batch = (await batchResponse.json()) as {
+        query?: { pages?: Record<string, BatchPage> };
+      };
+      Object.assign(pages, batch.query?.pages ?? {});
+    })
+  );
 
-  return buildHistoryItems(entries, batch.query?.pages ?? {}, center);
+  return buildHistoryItems(entries, pages, center);
 }

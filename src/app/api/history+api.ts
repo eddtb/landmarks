@@ -46,15 +46,20 @@ export async function GET(request: Request) {
       }
     }
 
+    // Merge generously, THEN drop the story-less register cards, THEN
+    // cap — so a dropped gate-pier backfills with a real story instead
+    // of shrinking the feed
     const merged = mergeHistorySources(
       wikipedia.value,
       listed.status === 'fulfilled' ? listed.value : [],
-      plaques.status === 'fulfilled' ? plaques.value : []
+      plaques.status === 'fulfilled' ? plaques.value : [],
+      200
     );
-    // Standalone register cards get their own article looked up at the
-    // BUILDING's coordinates — before photos, so a wiki image wins
     const told = await enrichStandaloneListed(merged);
-    const items = assignPhotos(told, photos.status === 'fulfilled' ? photos.value : []);
+    const items = assignPhotos(
+      told.slice(0, 40),
+      photos.status === 'fulfilled' ? photos.value : []
+    );
     return Response.json({ items });
   } catch (error) {
     console.error('History lookup failed:', error);

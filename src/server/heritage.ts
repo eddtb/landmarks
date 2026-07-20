@@ -201,6 +201,12 @@ export function mergeHistorySources(
 ): HistoryItem[] {
   const enriched = wikipedia.map((item) => ({ ...item }));
 
+  // A cathedral matches a dozen register records; the badge must read
+  // "Grade I listed" once, not the whole dozen — keep only the best
+  const gradeRank: Record<string, number> = { 'Grade I': 3, 'Grade II*': 2, 'Grade II': 1 };
+  const bestGrade = new Map<HistoryItem, string>();
+  const plaqued = new Set<HistoryItem>();
+
   // Any grade may enrich a story's badge, but only the notable grades
   // (I and II*, ~8% of the register) earn standalone cards — a feed of
   // anonymous Grade II terraces is the station-articles problem again
@@ -208,21 +214,42 @@ export function mergeHistorySources(
   const standaloneListed = listed.filter((building) => {
     const match = enriched.find((story) => samePlace(story, building, 100));
     if (match) {
-      const grade = building.source.split(' · ')[1] ?? 'listed';
-      match.source = `${match.source} · ${grade} listed`;
+      const grade = building.source.split(' · ')[1] ?? 'Grade II';
+      const current = bestGrade.get(match);
+      if (!current || (gradeRank[grade] ?? 0) > (gradeRank[current] ?? 0)) {
+        bestGrade.set(match, grade);
+      }
       return false;
     }
     return notableGrade.test(building.source);
   });
 
   const standalonePlaques = plaques.filter((plaque) => {
-    const match = enriched.find((story) => samePlace(story, plaque, 75));
+    // A plaque within arm's reach of a story is ON that thing, whatever
+    // its inscription's wording ("This tunnel constructed by…" shares no
+    // name tokens with "Greenwich foot tunnel"); further out, the name
+    // must agree
+    const match = enriched.find(
+      (story) =>
+        distanceMeters(story.coordinates, plaque.coordinates) <= 30 ||
+        samePlace(story, plaque, 75)
+    );
     if (match) {
-      match.source = `${match.source} · plaque`;
+      plaqued.add(match);
       return false;
     }
     return true;
   });
+
+  for (const story of enriched) {
+    const grade = bestGrade.get(story);
+    if (grade) {
+      story.source = `${story.source} · ${grade} listed`;
+    }
+    if (plaqued.has(story)) {
+      story.source = `${story.source} · plaque`;
+    }
+  }
 
   return [...enriched, ...standaloneListed, ...standalonePlaques]
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
@@ -241,7 +268,7 @@ const StoryTtlMs = 7 * 24 * 60 * 60 * 1000;
 const storyCache = diskBackedMap<{ story: StoryResult | null; at: number }>('nhle-stories');
 
 export async function enrichStandaloneListed(items: HistoryItem[]): Promise<HistoryItem[]> {
-  return Promise.all(
+  const resolved = await Promise.all(
     items.map(async (item) => {
       if (!item.source.startsWith('Historic England')) {
         return item;
@@ -253,11 +280,13 @@ export async function enrichStandaloneListed(items: HistoryItem[]): Promise<Hist
           cached = { story: await findStory(item.title, item.coordinates), at: Date.now() };
           storyCache.set(key, cached);
         } catch {
-          return item; // lookup failures are not cached — next request retries
+          return null; // not cached — next request retries the lookup
         }
       }
       if (!cached.story) {
-        return item;
+        // Story or no card: a register line with nothing to tell is a
+        // record, not a story — its only job is badging (Edd's call)
+        return null;
       }
       const grade = item.source.split(' · ')[1] ?? 'listed';
       return {
@@ -271,4 +300,18 @@ export async function enrichStandaloneListed(items: HistoryItem[]): Promise<Hist
       };
     })
   );
+  // A big site holds several register records (measured: the National
+  // Maritime Museum), and each can resolve to the SAME article — one
+  // card per article URL, nearest wins
+  const seenUrls = new Set<string>();
+  return resolved.filter((item): item is HistoryItem => {
+    if (item === null) {
+      return false;
+    }
+    if (seenUrls.has(item.url)) {
+      return false;
+    }
+    seenUrls.add(item.url);
+    return true;
+  });
 }
