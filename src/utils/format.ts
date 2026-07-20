@@ -122,6 +122,19 @@ export function formatRatingCount(count: number): string {
   return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}k`;
 }
 
+/** "https://en.wikipedia.org/wiki/Cutty_Sark" → "Cutty Sark", or null. */
+export function wikiTitleFromUrl(url: string): string | null {
+  const match = url.match(/wikipedia\.org\/wiki\/([^#?]+)/);
+  if (!match) {
+    return null;
+  }
+  try {
+    return decodeURIComponent(match[1]).replace(/_/g, ' ');
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Wikipedia intro extracts arrive as one block: paragraphs separated by
  * bare newlines, sometimes opening with a pronunciation parenthetical —

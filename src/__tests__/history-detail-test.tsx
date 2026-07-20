@@ -16,6 +16,17 @@ jest.mock('expo-router', () => {
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
+jest.mock('@/data/article-client', () => ({
+  fetchArticle: jest.fn(async () => ({
+    minutes: 3,
+    chapters: [
+      { title: '', paragraphs: ['The intro, already shown as the extract.'] },
+      { title: 'Construction', paragraphs: ['Built by the Borough in 1791.', 'Rebuilt twice.'] },
+      { title: 'Demolition', paragraphs: ['Torn down for the railway in 1855.'] },
+    ],
+  })),
+}));
+
 
 
 describe('<HistoryDetailScreen />', () => {
@@ -47,6 +58,13 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText(/Listen · about a minute/)).toBeOnTheScreen();
     expect(screen.getByText(/demolished in 1855/)).toBeOnTheScreen();
     expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
+
+    // The folds (direction B): first chapter open, the rest peeking;
+    // the intro chapter never repeats as a fold
+    expect(await screen.findByText(/The full story · 3 min read/)).toBeOnTheScreen();
+    expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
+    expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen(); // the peek
+    expect(screen.queryByText('The intro, already shown as the extract.')).not.toBeOnTheScreen();
   });
 
   test('handles unknown pages gracefully', async () => {
