@@ -20,7 +20,6 @@ jest.mock('expo-location', () => ({
 
 const yak: PlanItem = {
   id: 'yak-1',
-  kind: 'place',
   name: 'Little Yak',
   photoUrl: 'https://example.com/yak.jpg',
   primaryLabel: 'Restaurant',

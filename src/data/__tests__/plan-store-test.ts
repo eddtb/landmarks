@@ -3,7 +3,6 @@ import { addToPlan, clearPlan, getPlanItems, moveItem, movePlanItem, PlanItem } 
 function item(id: string): PlanItem {
   return {
     id,
-    kind: 'place',
     name: id,
     coordinates: { latitude: 0, longitude: 0 },
     facts: [],
