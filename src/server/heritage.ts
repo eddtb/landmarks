@@ -1,3 +1,5 @@
+import { diskBackedMap } from '@/server/ai-cache';
+import { findStory, StoryResult } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
@@ -225,4 +227,48 @@ export function mergeHistorySources(
   return [...enriched, ...standaloneListed, ...standalonePlaques]
     .sort((a, b) => a.distanceMeters - b.distanceMeters)
     .slice(0, cap);
+}
+
+/**
+ * A standalone register card is thin — one line, no photo — but the
+ * building often has its own Wikipedia article that simply didn't make
+ * the user's 20-nearest (measured: the Cutty Sark, from anywhere but
+ * right beside it). Ask at the BUILDING's coordinates instead; a match
+ * upgrades the card to the full story. Cached per list entry — the
+ * article for a listed building doesn't move when the user does.
+ */
+const StoryTtlMs = 7 * 24 * 60 * 60 * 1000;
+const storyCache = diskBackedMap<{ story: StoryResult | null; at: number }>('nhle-stories');
+
+export async function enrichStandaloneListed(items: HistoryItem[]): Promise<HistoryItem[]> {
+  return Promise.all(
+    items.map(async (item) => {
+      if (!item.source.startsWith('Historic England')) {
+        return item;
+      }
+      const key = String(item.pageId);
+      let cached = storyCache.get(key);
+      if (!cached || Date.now() - cached.at > StoryTtlMs) {
+        try {
+          cached = { story: await findStory(item.title, item.coordinates), at: Date.now() };
+          storyCache.set(key, cached);
+        } catch {
+          return item; // lookup failures are not cached — next request retries
+        }
+      }
+      if (!cached.story) {
+        return item;
+      }
+      const grade = item.source.split(' · ')[1] ?? 'listed';
+      return {
+        ...item,
+        extract: cached.story.story,
+        url: cached.story.url,
+        thumbnailUrl: item.thumbnailUrl ?? cached.story.thumbnailUrl,
+        // Same badge shape as a direct merge — the reader can't tell
+        // which side of the join found the story first
+        source: `Wikipedia · ${grade} listed`,
+      };
+    })
+  );
 }

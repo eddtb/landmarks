@@ -15,6 +15,7 @@ export type StoryResult = {
   story: string;
   title: string;
   url: string;
+  thumbnailUrl?: string;
 };
 
 function normalize(text: string): string {
@@ -92,6 +93,7 @@ type SummaryResponse = {
   type?: string;
   title?: string;
   extract?: string;
+  thumbnail?: { source?: string };
   content_urls?: { desktop?: { page?: string } };
 };
 
@@ -131,6 +133,7 @@ export async function findStory(
     story: summary.extract,
     title: summary.title,
     url: summary.content_urls?.desktop?.page ?? `https://en.wikipedia.org/wiki/${title}`,
+    thumbnailUrl: summary.thumbnail?.source,
   };
 }
 

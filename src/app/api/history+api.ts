@@ -1,5 +1,10 @@
 import { assignPhotos, fetchAreaPhotos } from '@/server/geograph';
-import { fetchListedBuildings, fetchPlaques, mergeHistorySources } from '@/server/heritage';
+import {
+  enrichStandaloneListed,
+  fetchListedBuildings,
+  fetchPlaques,
+  mergeHistorySources,
+} from '@/server/heritage';
 import { findNearbyHistory } from '@/server/wikipedia';
 
 /**
@@ -46,7 +51,10 @@ export async function GET(request: Request) {
       listed.status === 'fulfilled' ? listed.value : [],
       plaques.status === 'fulfilled' ? plaques.value : []
     );
-    const items = assignPhotos(merged, photos.status === 'fulfilled' ? photos.value : []);
+    // Standalone register cards get their own article looked up at the
+    // BUILDING's coordinates — before photos, so a wiki image wins
+    const told = await enrichStandaloneListed(merged);
+    const items = assignPhotos(told, photos.status === 'fulfilled' ? photos.value : []);
     return Response.json({ items });
   } catch (error) {
     console.error('History lookup failed:', error);
