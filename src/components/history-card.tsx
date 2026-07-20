@@ -39,8 +39,10 @@ export function HistoryCard({ item }: Props) {
             </ThemedText>
           )}
           <ThemedText type="small" themeColor="textSecondary">
-            {/* Same walking estimate as demo mode: ~1.33 m/s */}
-            {formatWalkTime(Math.round(item.distanceMeters / 1.33))} · Wikipedia
+            {/* Same walking estimate as demo mode: ~1.33 m/s; 🔊 marks a
+                story with enough source text to earn a spoken telling */}
+            {formatWalkTime(Math.round(item.distanceMeters / 1.33))} · {item.source}
+            {item.extract ? ' · 🔊' : ''}
           </ThemedText>
         </View>
       </Pressable>

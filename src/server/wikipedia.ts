@@ -188,6 +188,7 @@ export function buildHistoryItems(
         extract: page?.extract || undefined,
         thumbnailUrl: page?.thumbnail?.source,
         url: page?.fullurl ?? `https://en.wikipedia.org/?curid=${entry.pageid}`,
+        source: 'Wikipedia',
       };
     })
     .sort((a, b) => a.distanceMeters - b.distanceMeters);

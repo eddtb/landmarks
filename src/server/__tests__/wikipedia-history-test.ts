@@ -35,6 +35,7 @@ describe('buildHistoryItems', () => {
       extract: 'A small prison in Southwark...',
       thumbnailUrl: 'https://upload.wikimedia.org/compter.jpg',
       url: 'https://en.wikipedia.org/wiki/Borough_Compter',
+      source: 'Wikipedia',
     });
   });
 
