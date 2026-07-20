@@ -129,7 +129,7 @@ export function walkStopFromStory(item: HistoryItem): WalkStop {
     title: item.title,
     thumbnailUrl: item.thumbnailUrl,
     coordinates: item.coordinates,
-    source: 'Wikipedia',
+    source: item.source,
     hook: item.extract?.match(/^.*?\.(?=\s|$)/)?.[0],
   };
 }

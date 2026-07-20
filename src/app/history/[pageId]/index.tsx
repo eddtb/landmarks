@@ -5,6 +5,7 @@ import { Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-
 
 import { ExternalLink } from '@/components/external-link';
 import { OverflowMenu } from '@/components/overflow-menu';
+import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -87,7 +88,7 @@ export default function HistoryDetailScreen() {
           <View>
             <ThemedText type="largeTitle">{item.title}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.meta}>
-              History · {formatWalkTime(walkSeconds)} · Wikipedia
+              History · {formatWalkTime(walkSeconds)} · {item.source}
             </ThemedText>
           </View>
 
@@ -128,10 +129,11 @@ export default function HistoryDetailScreen() {
               <ThemedText type="eyebrow" themeColor="textSecondary">
                 Story
               </ThemedText>
+              <TellingSection item={item} />
               <ThemedText type="small">{item.extract}</ThemedText>
               <ExternalLink href={item.url as `https://${string}`}>
                 <ThemedText type="small" themeColor="accent">
-                  From Wikipedia
+                  From {item.source}
                 </ThemedText>
               </ExternalLink>
             </View>

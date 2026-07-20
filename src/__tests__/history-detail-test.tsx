@@ -29,6 +29,7 @@ describe('<HistoryDetailScreen />', () => {
         extract: 'A small compter or prison in Southwark, demolished in 1855.',
         thumbnailUrl: 'https://upload.wikimedia.org/compter.jpg',
         url: 'https://en.wikipedia.org/wiki/Borough_Compter',
+        source: 'Wikipedia',
       },
     ]);
   });
@@ -43,6 +44,7 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText(/Compass · 1 min walk/)).toBeOnTheScreen();
     expect(screen.getByText('＋ Walk')).toBeOnTheScreen();
     expect(screen.getByText('Story')).toBeOnTheScreen();
+    expect(screen.getByText(/Listen · about a minute/)).toBeOnTheScreen();
     expect(screen.getByText(/demolished in 1855/)).toBeOnTheScreen();
     expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
   });

@@ -10,4 +10,6 @@ export type HistoryItem = {
   extract?: string;
   thumbnailUrl?: string;
   url: string;
+  /** Where the story came from: "Wikipedia" now; heritage sources join in PR-E. */
+  source: string;
 };
