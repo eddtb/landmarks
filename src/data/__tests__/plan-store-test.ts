@@ -5,6 +5,7 @@ import {
   moveItem,
   moveWalkStop,
   WalkStop,
+  walkStopFromStory,
 } from '@/data/plan-store';
 
 function stop(pageId: number): WalkStop {
@@ -48,5 +49,23 @@ describe('the walk store', () => {
     moveWalkStop(0, -1);
     moveWalkStop(2, 1);
     expect(getWalkStops().map((s) => s.pageId)).toEqual([2, 1, 3]);
+  });
+});
+
+describe('walkStopFromStory', () => {
+  test('carries the extract so the walk can be told, and cuts the hook at the first sentence', () => {
+    const walkStop = walkStopFromStory({
+      pageId: 7,
+      title: 'Palace of Placentia',
+      coordinates: { latitude: 51.48, longitude: 0 },
+      distanceMeters: 100,
+      extract: 'Built in 1443. Demolished in the 17th century.',
+      url: 'https://en.wikipedia.org/wiki/Palace_of_Placentia',
+      source: 'Wikipedia',
+    });
+
+    expect(walkStop.extract).toBe('Built in 1443. Demolished in the 17th century.');
+    expect(walkStop.hook).toBe('Built in 1443.');
+    expect(walkStop.source).toBe('Wikipedia');
   });
 });

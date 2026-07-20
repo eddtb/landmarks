@@ -16,6 +16,8 @@ export type WalkStop = {
   /** e.g. "Wikipedia" — richer source badges arrive with the heritage layer. */
   source: string;
   hook?: string;
+  /** Source text for the spoken telling; stops without it are named, not told. */
+  extract?: string;
 };
 
 type Listener = () => void;
@@ -131,5 +133,6 @@ export function walkStopFromStory(item: HistoryItem): WalkStop {
     coordinates: item.coordinates,
     source: item.source,
     hook: item.extract?.match(/^.*?\.(?=\s|$)/)?.[0],
+    extract: item.extract,
   };
 }

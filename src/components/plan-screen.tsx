@@ -18,6 +18,7 @@ import {
 import { useHistory } from '@/hooks/use-history';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
+import { useWalkPlayer } from '@/hooks/use-walk-player';
 import { formatWalkTime } from '@/utils/format';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
@@ -61,6 +62,7 @@ function WalkBody({ center }: { center: Coordinates }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const stops = usePlan();
+  const { playingIndex, play, stop: stopPlaying } = useWalkPlayer(stops);
   const { state } = useHistory(stops[stops.length - 1]?.coordinates ?? center);
 
   const doors =
@@ -120,6 +122,20 @@ function WalkBody({ center }: { center: Coordinates }) {
           {stops.length} {stops.length === 1 ? 'stop' : 'stops'} ·{' '}
           {Math.round(totalSeconds / 60)} min walking
         </ThemedText>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => (playingIndex === null ? void play() : void stopPlaying())}
+          style={({ pressed }) => [
+            styles.play,
+            { backgroundColor: theme.accent },
+            pressed && { opacity: 0.85 },
+          ]}>
+          <ThemedText type="smallBold" style={styles.playText}>
+            {playingIndex === null
+              ? '▶ Play the walk'
+              : `◼ Stop · playing ${playingIndex + 1} of ${stops.length}`}
+          </ThemedText>
+        </Pressable>
       </View>
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
@@ -259,6 +275,16 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   dot: { width: 9, height: 9, borderRadius: 5 },
+  play: {
+    marginTop: Spacing.two,
+    alignItems: 'center',
+    paddingVertical: Spacing.two + Spacing.half,
+    borderRadius: Spacing.three - Spacing.one,
+  },
+  playText: {
+    // White holds on the accent in both modes
+    color: '#FFFFFF',
+  },
   list: { paddingHorizontal: Spacing.four, paddingTop: Spacing.two },
   legRow: { paddingLeft: Spacing.two, paddingVertical: Spacing.one },
   card: { borderRadius: Spacing.three - 2, padding: Spacing.three, gap: Spacing.one },
