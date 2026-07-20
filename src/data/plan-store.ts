@@ -1,4 +1,5 @@
 import { HistoryItem } from '@/types/history';
+import { storyHook } from '@/utils/format';
 import { Coordinates } from '@/utils/geo';
 
 /**
@@ -132,7 +133,7 @@ export function walkStopFromStory(item: HistoryItem): WalkStop {
     thumbnailUrl: item.thumbnailUrl,
     coordinates: item.coordinates,
     source: item.source,
-    hook: item.extract?.match(/^.*?\.(?=\s|$)/)?.[0],
+    hook: storyHook(item.extract),
     extract: item.extract,
   };
 }

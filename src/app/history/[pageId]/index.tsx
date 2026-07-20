@@ -13,7 +13,7 @@ import { getCachedHistoryItem } from '@/data/history-client';
 import { addToWalk, removeFromWalk, walkStopFromStory } from '@/data/plan-store';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
-import { formatWalkTime } from '@/utils/format';
+import { formatWalkTime, storyParagraphs } from '@/utils/format';
 import { Coordinates } from '@/utils/geo';
 
 /** Same demo-mode walking estimate as everywhere else: ~1.33 m/s. */
@@ -135,7 +135,13 @@ export default function HistoryDetailScreen() {
                 Story
               </ThemedText>
               <TellingSection item={item} />
-              <ThemedText type="small">{item.extract}</ThemedText>
+              {/* Reading type (16/24), real paragraphs — an extract is a
+                  story body, not a meta line */}
+              {storyParagraphs(item.extract).map((paragraph, index) => (
+                <ThemedText key={index} type="default">
+                  {paragraph}
+                </ThemedText>
+              ))}
               <ExternalLink href={item.url as `https://${string}`}>
                 <ThemedText type="small" themeColor="accent">
                   From {item.source}
