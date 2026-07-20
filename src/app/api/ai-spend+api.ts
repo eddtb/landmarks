@@ -1,24 +1,20 @@
 import { anthropicBudget } from '@/server/ai-budget';
-import { googleBudget } from '@/server/google-budget';
+import { geminiBudget } from '@/server/gemini';
 
-/**
- * GET /api/ai-spend — the whole paid-API bill, readable any time
- * without opening a provider console. Estimates priced at list
- * rates, rounded up; ledgers persist across restarts.
- */
+/** GET /api/ai-spend — the whole AI bill, readable any time. */
 export function GET() {
   const anthropic = anthropicBudget.todays();
-  const google = googleBudget.todays();
+  const gemini = geminiBudget.todays();
   return Response.json({
+    gemini: {
+      today: { calls: gemini.dollars, callCount: gemini.calls },
+      dailyFreeCallCap: geminiBudget.cap(),
+      lastWeek: geminiBudget.recent(),
+    },
     anthropic: {
       today: { dollars: Number(anthropic.dollars.toFixed(4)), calls: anthropic.calls },
       dailyBudgetUsd: anthropicBudget.cap(),
       lastWeek: anthropicBudget.recent(),
-    },
-    google: {
-      today: { dollars: Number(google.dollars.toFixed(4)), calls: google.calls },
-      dailyBudgetUsd: googleBudget.cap(),
-      lastWeek: googleBudget.recent(),
     },
   });
 }

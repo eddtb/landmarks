@@ -1,25 +1,21 @@
-import { Place } from '@/types/place';
+import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 /**
- * The plan: the app's first persistent user state. Anchor-first —
- * items arrive via ＋Plan and the suggestion rail, never generated
- * whole. Persists until explicitly cleared. AsyncStorage is a native
- * module, so it's require-guarded: clients built before it exists
- * keep a session-only plan and upgrade to persistence with the next
- * dev build.
+ * The walk: the app's persistent user state. Anchor-first — stories
+ * arrive via ＋Walk and the suggestion doors, never generated whole.
+ * Persists until explicitly cleared. AsyncStorage is require-guarded:
+ * clients built before it exists keep a session-only walk.
  */
 
-export type PlanItem = {
-  id: string;
-  name: string;
-  photoUrl?: string;
-  primaryLabel?: string;
+export type WalkStop = {
+  pageId: number;
+  title: string;
+  thumbnailUrl?: string;
   coordinates: Coordinates;
-  rating?: number;
-  facts: string[];
-  /** Minutes this stop holds you — drives the computed timeline. */
-  dwellMinutes: number;
+  /** e.g. "Wikipedia" — richer source badges arrive with the heritage layer. */
+  source: string;
+  hook?: string;
 };
 
 type Listener = () => void;
@@ -38,9 +34,9 @@ const storage: Storage | null = (() => {
   }
 })();
 
-const StorageKey = 'venture.plan.v1';
+const StorageKey = 'venture.walk.v1';
 
-let items: PlanItem[] = [];
+let stops: WalkStop[] = [];
 let hydrated = false;
 const listeners = new Set<Listener>();
 
@@ -53,16 +49,16 @@ async function hydrate() {
   try {
     const raw = await storage.getItem(StorageKey);
     if (raw) {
-      items = JSON.parse(raw) as PlanItem[];
+      stops = JSON.parse(raw) as WalkStop[];
       emit();
     }
   } catch {
-    // A fresh plan beats a crashed one
+    // A fresh walk beats a crashed one
   }
 }
 
 function persist() {
-  storage?.setItem(StorageKey, JSON.stringify(items)).catch(() => {});
+  storage?.setItem(StorageKey, JSON.stringify(stops)).catch(() => {});
 }
 
 function emit() {
@@ -71,35 +67,39 @@ function emit() {
   }
 }
 
-export function getPlanItems(): PlanItem[] {
-  return items;
+export function getWalkStops(): WalkStop[] {
+  return stops;
 }
 
-export function subscribeToPlan(listener: Listener): () => void {
+export function subscribeToWalk(listener: Listener): () => void {
   listeners.add(listener);
   void hydrate();
   return () => listeners.delete(listener);
 }
 
-export function addToPlan(item: PlanItem) {
-  if (items.some((existing) => existing.id === item.id)) {
+export function addToWalk(stop: WalkStop) {
+  if (stops.some((existing) => existing.pageId === stop.pageId)) {
     return;
   }
-  items = [...items, item];
+  stops = [...stops, stop];
   persist();
   emit();
 }
 
-export function removeFromPlan(id: string) {
-  items = items.filter((item) => item.id !== id);
+export function removeFromWalk(pageId: number) {
+  stops = stops.filter((stop) => stop.pageId !== pageId);
   persist();
   emit();
 }
 
-export function reorderPlan(next: PlanItem[]) {
-  items = next;
+export function clearWalk() {
+  stops = [];
   persist();
   emit();
+}
+
+export function isOnWalk(pageId: number): boolean {
+  return stops.some((stop) => stop.pageId === pageId);
 }
 
 /** Pure and unit-tested: the reorder itself. */
@@ -114,46 +114,22 @@ export function moveItem<T>(list: T[], from: number, to: number): T[] {
 }
 
 /** ↑/↓ semantics: shift one slot, clamped at the ends. */
-export function movePlanItem(index: number, direction: -1 | 1) {
-  const next = moveItem(items, index, index + direction);
-  if (next !== items) {
-    reorderPlan(next);
+export function moveWalkStop(index: number, direction: -1 | 1) {
+  const next = moveItem(stops, index, index + direction);
+  if (next !== stops) {
+    stops = next;
+    persist();
+    emit();
   }
 }
 
-export function clearPlan() {
-  items = [];
-  persist();
-  emit();
-}
-
-export function isPlanned(id: string): boolean {
-  return items.some((item) => item.id === id);
-}
-
-/** Dwell by what the place is — kept for future opt-in timing. */
-export function dwellMinutesFor(primaryLabel: string | undefined): number {
-  const label = primaryLabel ?? '';
-  if (/Coffee|Cafe|Bakery|Dessert|Ice Cream/.test(label)) return 40;
-  if (/Restaurant|Steak|Grill/.test(label)) return 90;
-  if (/Pub|Bar/.test(label)) return 70;
-  if (/Bowling|Karaoke|Arcade|Amusement|Comedy|Cinema|Movie/.test(label)) return 75;
-  return 45;
-}
-
-export function planItemFromPlace(place: Place): PlanItem {
+export function walkStopFromStory(item: HistoryItem): WalkStop {
   return {
-    id: place.id,
-    name: place.name,
-    photoUrl: place.photoUrl,
-    primaryLabel: place.primaryLabel,
-    coordinates: place.coordinates,
-    rating: place.rating,
-    facts: [
-      place.primaryLabel,
-      place.rating ? `★ ${place.rating.toFixed(1)}` : undefined,
-      place.priceLevel,
-    ].filter((fact): fact is string => !!fact),
-    dwellMinutes: dwellMinutesFor(place.primaryLabel),
+    pageId: item.pageId,
+    title: item.title,
+    thumbnailUrl: item.thumbnailUrl,
+    coordinates: item.coordinates,
+    source: 'Wikipedia',
+    hook: item.extract?.match(/^.*?\.(?=\s|$)/)?.[0],
   };
 }

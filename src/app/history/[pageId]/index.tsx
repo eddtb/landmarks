@@ -9,6 +9,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { getCachedHistoryItem } from '@/data/history-client';
+import { addToWalk, removeFromWalk, walkStopFromStory } from '@/data/plan-store';
+import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { formatWalkTime } from '@/utils/format';
 import { Coordinates } from '@/utils/geo';
@@ -37,6 +39,7 @@ export default function HistoryDetailScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
   const theme = useTheme();
+  const onWalk = usePlan().some((stop) => stop.pageId === Number(pageId));
 
   if (!item) {
     return (
@@ -93,7 +96,7 @@ export default function HistoryDetailScreen() {
               accessibilityRole="button"
               onPress={() =>
                 router.push({
-                  pathname: '/history/[pageId]/go',
+                  pathname: '/history/[pageId]/compass',
                   params: { pageId: String(item.pageId) },
                 })
               }
@@ -103,23 +106,20 @@ export default function HistoryDetailScreen() {
                 pressed && { opacity: 0.85 },
               ]}>
               <ThemedText type="smallBold" style={styles.goText}>
-                Go · {formatWalkTime(walkSeconds)}
+                Compass · {formatWalkTime(walkSeconds)}
               </ThemedText>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              onPress={() =>
-                router.push({
-                  pathname: '/history/[pageId]/compass',
-                  params: { pageId: String(item.pageId) },
-                })
-              }
+              onPress={() => (onWalk ? removeFromWalk(item.pageId) : addToWalk(walkStopFromStory(item)))}
               style={({ pressed }) => [
                 styles.mini,
-                { backgroundColor: theme.backgroundElement },
+                { backgroundColor: theme.accentSoft },
                 pressed && { opacity: 0.85 },
               ]}>
-              <ThemedText type="smallBold">Compass</ThemedText>
+              <ThemedText type="smallBold" themeColor="accent">
+                {onWalk ? '✓ On walk' : '＋ Walk'}
+              </ThemedText>
             </Pressable>
           </View>
 

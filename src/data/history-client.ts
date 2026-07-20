@@ -1,6 +1,6 @@
 import { fetch } from 'expo/fetch';
 
-import { apiUrl } from '@/data/places-client';
+import { apiUrl } from '@/data/api';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 

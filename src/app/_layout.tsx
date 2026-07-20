@@ -17,24 +17,9 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
-          name="place/[id]/index"
-          options={{ title: '', headerBackTitle: 'Nearby' }}
-        />
-        <Stack.Screen name="place/[id]/go" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="place/[id]/compass"
-          options={{ presentation: 'modal', headerShown: false }}
-        />
-        <Stack.Screen
-          name="place/[id]/reviews"
-          options={{ title: 'Reviews', headerBackTitle: 'Back' }}
-        />
-        <Stack.Screen name="stories" options={{ title: 'Stories', headerBackTitle: 'Nearby' }} />
-        <Stack.Screen
           name="history/[pageId]/index"
           options={{ title: '', headerBackTitle: 'Stories' }}
         />
-        <Stack.Screen name="history/[pageId]/go" options={{ headerShown: false }} />
         <Stack.Screen
           name="history/[pageId]/compass"
           options={{ presentation: 'modal', headerShown: false }}

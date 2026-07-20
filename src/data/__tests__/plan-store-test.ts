@@ -1,12 +1,18 @@
-import { addToPlan, clearPlan, getPlanItems, moveItem, movePlanItem, PlanItem } from '@/data/plan-store';
+import {
+  addToWalk,
+  clearWalk,
+  getWalkStops,
+  moveItem,
+  moveWalkStop,
+  WalkStop,
+} from '@/data/plan-store';
 
-function item(id: string): PlanItem {
+function stop(pageId: number): WalkStop {
   return {
-    id,
-    name: id,
+    pageId,
+    title: `Story ${pageId}`,
     coordinates: { latitude: 0, longitude: 0 },
-    facts: [],
-    dwellMinutes: 60,
+    source: 'Wikipedia',
   };
 }
 
@@ -25,24 +31,22 @@ describe('moveItem', () => {
   });
 });
 
-describe('movePlanItem (the ↑↓ buttons)', () => {
+describe('the walk store', () => {
   beforeEach(() => {
-    clearPlan();
-    addToPlan(item('first'));
-    addToPlan(item('second'));
-    addToPlan(item('third'));
+    clearWalk();
+    addToWalk(stop(1));
+    addToWalk(stop(2));
+    addToWalk(stop(3));
   });
 
-  test('shifts one slot each way', () => {
-    movePlanItem(1, -1);
-    expect(getPlanItems().map((entry) => entry.id)).toEqual(['second', 'first', 'third']);
-    movePlanItem(1, 1);
-    expect(getPlanItems().map((entry) => entry.id)).toEqual(['second', 'third', 'first']);
-  });
+  test('adds once per story, reorders with clamping', () => {
+    addToWalk(stop(2));
+    expect(getWalkStops()).toHaveLength(3);
 
-  test('clamps at the ends', () => {
-    movePlanItem(0, -1);
-    movePlanItem(2, 1);
-    expect(getPlanItems().map((entry) => entry.id)).toEqual(['first', 'second', 'third']);
+    moveWalkStop(1, -1);
+    expect(getWalkStops().map((s) => s.pageId)).toEqual([2, 1, 3]);
+    moveWalkStop(0, -1);
+    moveWalkStop(2, 1);
+    expect(getWalkStops().map((s) => s.pageId)).toEqual([2, 1, 3]);
   });
 });
