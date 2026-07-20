@@ -120,6 +120,27 @@ function logUsage(label: string, usage: MessagesResponse['usage']) {
   );
 }
 
+/**
+ * Boot-time provider announcement (once per process): a dev server
+ * started before GEMINI_API_KEY existed in .env.local silently fell
+ * back to paid Anthropic — this line makes the active provider
+ * impossible to miss in the logs.
+ */
+function announceProviderOnce() {
+  const flag = globalThis as { aiProviderAnnounced?: boolean };
+  if (flag.aiProviderAnnounced) {
+    return;
+  }
+  flag.aiProviderAnnounced = true;
+  const provider =
+    process.env.GEMINI_API_KEY && process.env.AI_PROVIDER !== 'anthropic'
+      ? 'gemini (free tier)'
+      : process.env.ANTHROPIC_API_KEY
+        ? 'ANTHROPIC — PAID, is this intended?'
+        : 'none (AI features disabled)';
+  console.log(`[ai] provider: ${provider}`);
+}
+
 async function researchWithWebSearch(options: {
   apiKey: string;
   prompt: string;
@@ -127,6 +148,7 @@ async function researchWithWebSearch(options: {
   maxSearches: number;
   label: string;
 }): Promise<string> {
+  announceProviderOnce();
   // Provider routing: Gemini's free tier is the default home for
   // every feature (grounded search replaces web search); Anthropic
   // remains one env flip away (AI_PROVIDER=anthropic) as fallback.
