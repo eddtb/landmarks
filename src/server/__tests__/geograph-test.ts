@@ -1,4 +1,11 @@
-import { assignPhotos, buildPhotos, fullSizeUrl } from '@/server/geograph';
+import { diskBackedMap } from '@/server/ai-cache';
+import {
+  buildPhotos,
+  dressWithPhotos,
+  fullSizeUrl,
+  GeographPhoto,
+  pickPhotoFor,
+} from '@/server/geograph';
 import { HistoryItem } from '@/types/history';
 
 // Recorded from the live syndicator response, 2026-07-20
@@ -24,6 +31,10 @@ const story = (overrides: Partial<HistoryItem>): HistoryItem => ({
   ...overrides,
 });
 
+beforeEach(() => {
+  diskBackedMap('geograph-photos').clear(); // the disk cache outlives runs BY DESIGN
+});
+
 describe('buildPhotos', () => {
   test('full-size URL is the thumb without its dimensions suffix (verified live: 200)', () => {
     const photos = buildPhotos(syndicatorItems);
@@ -37,27 +48,57 @@ describe('buildPhotos', () => {
   });
 });
 
-describe('assignPhotos', () => {
+describe('pickPhotoFor', () => {
   const photos = buildPhotos(syndicatorItems);
 
-  test('dresses the unillustrated story nearby, with attribution', () => {
-    const [dressed] = assignPhotos([story({})], photos);
-    expect(dressed.thumbnailUrl).toContain('936190_fc8d5315.jpg');
-    expect(dressed.thumbnailCredit).toContain('Alan Swain');
+  test('nearest within range wins; out of range is null', () => {
+    expect(pickPhotoFor(story({}), photos)?.credit).toContain('Alan Swain');
+    const far = story({ coordinates: { latitude: 51.6, longitude: -0.0015 } });
+    expect(pickPhotoFor(far, photos)).toBeNull();
   });
+});
 
-  test('never replaces an existing photo, never reuses one, respects range', () => {
+describe('dressWithPhotos', () => {
+  const photos = buildPhotos(syndicatorItems);
+
+  test('queries near each bare STORY, keeps existing photos, caches per story', async () => {
+    const fetcher = jest.fn(async () => photos);
     const items = [
       story({ pageId: 1, thumbnailUrl: 'https://wiki/own.jpg' }),
       story({ pageId: 2 }),
-      story({ pageId: 3 }), // photo already taken by pageId 2
-      story({ pageId: 4, coordinates: { latitude: 51.6, longitude: -0.0015 } }), // ~13km away
     ];
-    const dressed = assignPhotos(items, photos);
+
+    const dressed = await dressWithPhotos(items, fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(1); // only the bare story
+    expect(fetcher).toHaveBeenCalledWith(items[1].coordinates);
     expect(dressed[0].thumbnailUrl).toBe('https://wiki/own.jpg');
     expect(dressed[0].thumbnailCredit).toBeUndefined();
+    expect(dressed[1].thumbnailUrl).toContain('936190_fc8d5315.jpg');
     expect(dressed[1].thumbnailCredit).toContain('Geograph');
-    expect(dressed[2].thumbnailUrl).toBeUndefined();
-    expect(dressed[3].thumbnailUrl).toBeUndefined();
+
+    await dressWithPhotos(items, fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(1); // second request: all from cache
+  });
+
+  test('no photo nearby is cached too; failures are not', async () => {
+    const noPhotos = jest.fn(async () => [] as GeographPhoto[]);
+    await dressWithPhotos([story({ pageId: 3 })], noPhotos);
+    await dressWithPhotos([story({ pageId: 3 })], noPhotos);
+    expect(noPhotos).toHaveBeenCalledTimes(1); // null result cached
+
+    const failing = jest.fn(async () => {
+      throw new Error('down');
+    });
+    const [bare] = await dressWithPhotos([story({ pageId: 4 })], failing);
+    expect(bare.thumbnailUrl).toBeUndefined();
+    await dressWithPhotos([story({ pageId: 4 })], failing);
+    expect(failing).toHaveBeenCalledTimes(2); // failure retried
+  });
+
+  test('caps uncached lookups per request', async () => {
+    const fetcher = jest.fn(async () => [] as GeographPhoto[]);
+    const many = Array.from({ length: 20 }, (_, index) => story({ pageId: 100 + index }));
+    await dressWithPhotos(many, fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(15);
   });
 });
