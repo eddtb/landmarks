@@ -1,100 +1,55 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { fetchPlan } from '@/data/plan-client';
-import { addToPlan, clearPlan, movePlanItem, PlanItem, removeFromPlan } from '@/data/plan-store';
+import {
+  addToWalk,
+  clearWalk,
+  moveWalkStop,
+  removeFromWalk,
+  WalkStop,
+  walkStopFromStory,
+} from '@/data/plan-store';
+import { useHistory } from '@/hooks/use-history';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
-import { Plan, PlanStop } from '@/types/plan';
 import { formatWalkTime } from '@/utils/format';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /**
- * The Plan tab, anchor-first: YOU supply the stops (＋Plan anywhere,
- * or the suggestion rail's doors); the app supplies order-keeping —
- * computed times, walking legs, and "what fits after this". Persists
- * until cleared. Generation survives only as the empty state's
- * "Suggest a first stop".
+ * Walks: the anchor-first plan, re-aimed at stories. You supply the
+ * stops (＋Walk on any story, or the doors below); the app supplies
+ * order-keeping — real distances, your order, nothing invented. No
+ * clocks, no dwell (Edd's rules). Persists until cleared. Doors are
+ * client-side: nearby stories not yet on the walk — zero API calls.
  */
 
 const WalkingPace = 1.33;
 
-type Door = {
-  placeId: string;
-  name: string;
-  photoUrl: string;
-  primaryLabel?: string;
-  rating?: number;
-  why?: string;
-  facts: string[];
-  coordinates: Coordinates;
-};
-
-function doorsFromPlan(plan: Plan, excludeIds: Set<string>): Door[] {
-  const stop: PlanStop | undefined = plan.stops[0];
-  if (!stop) {
-    return [];
-  }
-  return [stop, ...stop.alternates]
-    .map((entry) => ({
-      placeId: entry.placeId,
-      name: entry.name,
-      photoUrl: entry.photoUrl,
-      primaryLabel: entry.primaryLabel,
-      rating: entry.rating,
-      why: entry.why,
-      facts: entry.facts,
-      coordinates: entry.coordinates,
-    }))
-    .filter((door) => !excludeIds.has(door.placeId))
-    .slice(0, 3);
-}
-
-function doorToItem(door: Door): PlanItem {
-  return {
-    id: door.placeId,
-    name: door.name,
-    photoUrl: door.photoUrl,
-    primaryLabel: door.primaryLabel,
-    coordinates: door.coordinates,
-    rating: door.rating,
-    facts: door.facts,
-    dwellMinutes: /Restaurant/.test(door.primaryLabel ?? '') ? 90 : 60,
-  };
-}
-
-/**
- * Legs only: the walking between stops is geometry (true); how long
- * anyone lingers is intent (unknowable — Google has typical-visit
- * data in its consumer app but has never exposed it in the API, so
- * by the honesty rule the plan shows no clocks and guesses no dwell).
- */
-function computeTimeline(items: PlanItem[], origin: Coordinates) {
+function legsFor(stops: WalkStop[], origin: Coordinates) {
   let position = origin;
-  let totalWalkSeconds = 0;
-  const rows = items.map((item) => {
-    const legSeconds = Math.round(distanceMeters(position, item.coordinates) / WalkingPace);
-    totalWalkSeconds += legSeconds;
-    position = item.coordinates;
-    return { item, legSeconds };
+  let totalSeconds = 0;
+  const legs = stops.map((stop) => {
+    const seconds = Math.round(distanceMeters(position, stop.coordinates) / WalkingPace);
+    totalSeconds += seconds;
+    position = stop.coordinates;
+    return seconds;
   });
-  return { rows, totalWalkSeconds };
+  return { legs, totalSeconds };
 }
 
-export function PlanScreen() {
+export function WalkScreen() {
   return (
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <PlanBody center={gate.center} />
+            <WalkBody center={gate.center} />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -102,179 +57,55 @@ export function PlanScreen() {
   );
 }
 
-function PlanBody({ center }: { center: Coordinates }) {
+function WalkBody({ center }: { center: Coordinates }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const items = usePlan();
-  const [doors, setDoors] = useState<Door[] | 'loading' | null>(null);
+  const stops = usePlan();
+  const { state } = useHistory(stops[stops.length - 1]?.coordinates ?? center);
 
-  const lastItem = items[items.length - 1];
-  const suggestFrom = lastItem?.coordinates ?? center;
-  // Order-independent: reordering mid-plan must not refire the rail
-  const excludeKey = items.map((item) => item.id).sort().join(',');
+  const doors =
+    state.status === 'ready'
+      ? state.items.filter((item) => !stops.some((stop) => stop.pageId === item.pageId)).slice(0, 3)
+      : [];
 
-  // The rail: one engine call from wherever the plan leaves you
-  const loadDoors = useCallback(async () => {
-    // Deferred past the sync phase — React Compiler lint forbids
-    // synchronous setState inside effects (house pattern)
-    await Promise.resolve();
-    // Stale-while-revalidate: keep the current doors visible while
-    // fresh ones load — blanking to a spinner flashed the screen
-    setDoors((current) => (Array.isArray(current) && current.length > 0 ? current : 'loading'));
-    try {
-      const plan = await fetchPlan({ center: suggestFrom, duration: 'hour', company: 'solo' });
-      setDoors(doorsFromPlan(plan, new Set(excludeKey.split(','))));
-    } catch {
-      setDoors(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestFrom.latitude, suggestFrom.longitude, excludeKey]);
-
-  const lastItemId = lastItem?.id;
-  useEffect(() => {
-    if (!lastItemId) {
-      return;
-    }
-    // Async-IIFE with cancellation — the house effect pattern
-    let cancelled = false;
-    (async () => {
-      await Promise.resolve();
-      if (!cancelled) {
-        await loadDoors();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [lastItemId, loadDoors]);
-
-  if (items.length === 0) {
+  if (stops.length === 0) {
     return (
-      <View style={styles.empty}>
+      <ScrollView
+        contentContainerStyle={[styles.empty, { paddingBottom: Spacing.four + insets.bottom }]}
+        showsVerticalScrollIndicator={false}>
         <ThemedText type="eyebrow" themeColor="textSecondary">
-          Plan
+          Walks
         </ThemedText>
         <ThemedText type="largeTitle" style={styles.emptyTitle}>
-          Nothing planned yet
+          No walk yet
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={styles.emptyBody}>
-          Tap ＋ Plan on any place or story to start — Venture suggests what fits after, and the
-          plan stays here until you clear it.
+          Tap ＋ Walk on any story to start one — or begin with a stop near you. The walk stays
+          here until you clear it.
         </ThemedText>
-        {doors === 'loading' ? (
-          <ActivityIndicator />
-        ) : Array.isArray(doors) && doors.length > 0 ? (
-          <View style={styles.doorList}>
-            {doors.map((door) => (
-              <DoorCard key={door.placeId} door={door} onAdd={() => addToPlan(doorToItem(door))} />
-            ))}
-          </View>
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            onPress={loadDoors}
-            style={({ pressed }) => [
-              styles.cta,
-              { backgroundColor: theme.accent },
-              pressed && { opacity: 0.85 },
-            ]}>
-            <ThemedText type="smallBold" style={styles.ctaText}>
-              Suggest a first stop
-            </ThemedText>
-          </Pressable>
-        )}
-      </View>
+        {doors.map((item) => (
+          <DoorCard key={item.pageId} stop={walkStopFromStory(item)} />
+        ))}
+      </ScrollView>
     );
   }
 
-  const { rows, totalWalkSeconds } = computeTimeline(items, center);
+  const { legs, totalSeconds } = legsFor(stops, center);
 
   const onShare = () =>
-    Share.share({
-      message: rows.map(({ item }, index) => `${index + 1}. ${item.name}`).join('\n'),
-    });
+    Share.share({ message: stops.map((stop, index) => `${index + 1}. ${stop.title}`).join('\n') });
 
   const onClear = () =>
-    Alert.alert('Clear the plan?', undefined, [
-      { text: 'Clear', style: 'destructive', onPress: clearPlan },
+    Alert.alert('Clear the walk?', undefined, [
+      { text: 'Clear', style: 'destructive', onPress: clearWalk },
       { text: 'Cancel', style: 'cancel' },
     ]);
-
-  const renderRow = (item: PlanItem, index: number) => {
-    const row = rows[index];
-    return (
-      <View>
-        {row && (
-          <View style={styles.legRow}>
-            <ThemedText type="small" themeColor="textSecondary">
-              {formatWalkTime(row.legSeconds)}{' '}
-              <ThemedText
-                type="smallBold"
-                themeColor="accent"
-                onPress={() =>
-                  router.push({ pathname: '/place/[id]/go', params: { id: item.id } })
-                }>
-                Go ›
-              </ThemedText>
-            </ThemedText>
-          </View>
-        )}
-        <View style={styles.stopRow}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push({ pathname: '/place/[id]', params: { id: item.id } })}
-            style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-            <View style={styles.cardHead}>
-              <ThemedText type="headline" numberOfLines={1} style={styles.cardName}>
-                {item.name}
-              </ThemedText>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${item.name}`}
-                hitSlop={Spacing.two}
-                onPress={() => removeFromPlan(item.id)}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  ✕
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Move ${item.name} up`}
-                disabled={index === 0}
-                hitSlop={Spacing.two}
-                onPress={() => movePlanItem(index, -1)}>
-                <ThemedText type="small" themeColor="textSecondary" style={index === 0 && styles.arrowOff}>
-                  ↑
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Move ${item.name} down`}
-                disabled={index === items.length - 1}
-                hitSlop={Spacing.two}
-                onPress={() => movePlanItem(index, 1)}>
-                <ThemedText
-                  type="small"
-                  themeColor="textSecondary"
-                  style={index === items.length - 1 && styles.arrowOff}>
-                  ↓
-                </ThemedText>
-              </Pressable>
-            </View>
-            <ThemedText type="small" themeColor="textSecondary">
-              {item.facts.join(' · ')}
-            </ThemedText>
-          </Pressable>
-        </View>
-      </View>
-    );
-  };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <ThemedText type="eyebrow" themeColor="textSecondary">
-          Plan
+          Walks
         </ThemedText>
         <View style={styles.titleRow}>
           <View style={styles.titleGroup}>
@@ -286,72 +117,136 @@ function PlanBody({ center }: { center: Coordinates }) {
           </ThemedText>
         </View>
         <ThemedText type="small" themeColor="textSecondary">
-          {items.length} {items.length === 1 ? 'stop' : 'stops'} ·{' '}
-          {Math.round(totalWalkSeconds / 60)} min walking
+          {stops.length} {stops.length === 1 ? 'stop' : 'stops'} ·{' '}
+          {Math.round(totalSeconds / 60)} min walking
         </ThemedText>
       </View>
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
         showsVerticalScrollIndicator={false}>
-        {items.map((item, index) => (
-          <View key={item.id}>{renderRow(item, index)}</View>
-        ))}
-        {
-          <View style={styles.suggest}>
-            <ThemedText type="eyebrow" themeColor="textSecondary">
-              After this?
-            </ThemedText>
-            {doors === 'loading' ? (
-              <ActivityIndicator style={styles.doorSpinner} />
-            ) : Array.isArray(doors) && doors.length > 0 ? (
-              <View style={styles.doorList}>
-                {doors.map((door) => (
-                  <DoorCard
-                    key={door.placeId}
-                    door={door}
-                    onAdd={() => addToPlan(doorToItem(door))}
-                  />
-                ))}
-              </View>
-            ) : (
+        {stops.map((stop, index) => (
+          <View key={stop.pageId}>
+            <View style={styles.legRow}>
               <ThemedText type="small" themeColor="textSecondary">
-                Nothing to suggest right now.
+                {formatWalkTime(legs[index])}{' '}
+                <ThemedText
+                  type="smallBold"
+                  themeColor="accent"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/history/[pageId]/compass',
+                      params: { pageId: String(stop.pageId) },
+                    })
+                  }>
+                  Compass ›
+                </ThemedText>
               </ThemedText>
-            )}
+            </View>
             <Pressable
               accessibilityRole="button"
-              onPress={onShare}
-              style={({ pressed }) => [
-                styles.share,
-                { backgroundColor: theme.accentSoft },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold" themeColor="accent">
-                Share plan
+              onPress={() =>
+                router.push({
+                  pathname: '/history/[pageId]',
+                  params: { pageId: String(stop.pageId) },
+                })
+              }
+              style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+              <View style={styles.cardHead}>
+                <ThemedText type="headline" numberOfLines={1} style={styles.cardName}>
+                  {stop.title}
+                </ThemedText>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Move ${stop.title} up`}
+                  disabled={index === 0}
+                  hitSlop={Spacing.two}
+                  onPress={() => moveWalkStop(index, -1)}>
+                  <ThemedText
+                    type="small"
+                    themeColor="textSecondary"
+                    style={index === 0 && styles.arrowOff}>
+                    ↑
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Move ${stop.title} down`}
+                  disabled={index === stops.length - 1}
+                  hitSlop={Spacing.two}
+                  onPress={() => moveWalkStop(index, 1)}>
+                  <ThemedText
+                    type="small"
+                    themeColor="textSecondary"
+                    style={index === stops.length - 1 && styles.arrowOff}>
+                    ↓
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${stop.title}`}
+                  hitSlop={Spacing.two}
+                  onPress={() => removeFromWalk(stop.pageId)}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    ✕
+                  </ThemedText>
+                </Pressable>
+              </View>
+              <ThemedText type="small" themeColor="textSecondary">
+                {stop.source}
               </ThemedText>
             </Pressable>
           </View>
-        }
+        ))}
+
+        <View style={styles.suggest}>
+          <ThemedText type="eyebrow" themeColor="textSecondary">
+            After this?
+          </ThemedText>
+          {doors.length > 0 ? (
+            doors.map((item) => <DoorCard key={item.pageId} stop={walkStopFromStory(item)} />)
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary">
+              Nothing more to suggest right here.
+            </ThemedText>
+          )}
+          <Pressable
+            accessibilityRole="button"
+            onPress={onShare}
+            style={({ pressed }) => [
+              styles.share,
+              { backgroundColor: theme.accentSoft },
+              pressed && { opacity: 0.85 },
+            ]}>
+            <ThemedText type="smallBold" themeColor="accent">
+              Share walk
+            </ThemedText>
+          </Pressable>
+        </View>
       </ScrollView>
     </View>
   );
 }
 
-function DoorCard({ door, onAdd }: { door: Door; onAdd: () => void }) {
+function DoorCard({ stop }: { stop: WalkStop }) {
   const theme = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={onAdd}
+      onPress={() => addToWalk(stop)}
       style={[styles.door, { backgroundColor: theme.backgroundElement }]}>
-      <Image source={{ uri: door.photoUrl }} style={styles.doorPhoto} contentFit="cover" cachePolicy="memory-disk" />
+      {stop.thumbnailUrl && (
+        <Image
+          source={{ uri: stop.thumbnailUrl }}
+          style={styles.doorPhoto}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+        />
+      )}
       <View style={styles.doorBody}>
-        <ThemedText type="smallBold">{door.name}</ThemedText>
-        {door.why && <ThemedText type="small">{door.why}</ThemedText>}
+        <ThemedText type="smallBold">{stop.title}</ThemedText>
+        {stop.hook && <ThemedText type="small">{stop.hook}</ThemedText>}
         <ThemedText type="small" themeColor="textSecondary">
-          {[door.primaryLabel, ...door.facts.filter((fact) => fact !== door.primaryLabel)]
-            .filter(Boolean)
-            .join(' · ')}
+          {stop.source}
         </ThemedText>
       </View>
     </Pressable>
@@ -366,30 +261,21 @@ const styles = StyleSheet.create({
   dot: { width: 9, height: 9, borderRadius: 5 },
   list: { paddingHorizontal: Spacing.four, paddingTop: Spacing.two },
   legRow: { paddingLeft: Spacing.two, paddingVertical: Spacing.one },
-  stopRow: { flexDirection: 'row', gap: Spacing.two, alignItems: 'flex-start' },
-  card: { flex: 1, borderRadius: Spacing.three - 2, padding: Spacing.three, gap: Spacing.one },
+  card: { borderRadius: Spacing.three - 2, padding: Spacing.three, gap: Spacing.one },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   cardName: { flex: 1 },
   arrowOff: { opacity: 0.3 },
   suggest: { paddingTop: Spacing.four, gap: Spacing.two },
-  doorList: { gap: Spacing.two, alignSelf: 'stretch' },
   door: { borderRadius: Spacing.three - 2, overflow: 'hidden' },
   doorPhoto: { width: '100%', height: 72 },
   doorBody: { padding: Spacing.three, gap: 2 },
-  doorSpinner: { paddingVertical: Spacing.three },
   share: {
     marginTop: Spacing.three,
     alignItems: 'center',
     paddingVertical: Spacing.three,
     borderRadius: Spacing.three - Spacing.one,
   },
-  empty: { flex: 1, paddingHorizontal: Spacing.five, paddingTop: Spacing.six, gap: Spacing.two },
+  empty: { paddingHorizontal: Spacing.five, paddingTop: Spacing.six, gap: Spacing.two },
   emptyTitle: { marginTop: Spacing.one },
   emptyBody: { marginBottom: Spacing.three },
-  cta: {
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    borderRadius: Spacing.three - Spacing.one,
-  },
-  ctaText: { color: '#FFFFFF' },
 });
