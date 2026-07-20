@@ -1,3 +1,4 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { chargeGoogle } from '@/server/google-budget';
 import { rememberPhotoNames } from '@/server/photo-names';
 import { Place, PlaceCategory, PlaceDetails, PlaceReview, PlaceWithDistance } from '@/types/place';
@@ -138,12 +139,6 @@ const DetailsFieldMask = [
   'nationalPhoneNumber',
   'googleMapsUri',
   'priceLevel',
-  'outdoorSeating',
-  'allowsDogs',
-  'liveMusic',
-  'goodForChildren',
-  'reservable',
-  'accessibilityOptions',
   'reviewSummary.text',
   'reviews.rating',
   'reviews.text.text',
@@ -214,12 +209,6 @@ type GooglePlace = {
   formattedAddress?: string;
   websiteUri?: string;
   currentOpeningHours?: { openNow?: boolean; nextCloseTime?: string; nextOpenTime?: string };
-  outdoorSeating?: boolean;
-  allowsDogs?: boolean;
-  liveMusic?: boolean;
-  goodForChildren?: boolean;
-  reservable?: boolean;
-  accessibilityOptions?: { wheelchairAccessibleEntrance?: boolean };
   regularOpeningHours?: { weekdayDescriptions?: string[] };
   currentSecondaryOpeningHours?: {
     secondaryHoursType?: string;
@@ -280,23 +269,6 @@ export function applyRoutingSummaries(
       walkingDirectionsUri: summaries[index]?.directionsUri,
     };
   });
-}
-
-/**
- * Google-verified facts, mapped to display labels. Only TRUE values
- * become chips: `reservable: false` is Google saying "no bookings",
- * and advertising a negative reads as an error.
- */
-export function mapAmenities(googlePlace: GooglePlace): string[] | undefined {
-  const amenities = [
-    googlePlace.outdoorSeating && 'Outdoor seating',
-    googlePlace.allowsDogs && 'Dogs welcome',
-    googlePlace.liveMusic && 'Live music',
-    googlePlace.goodForChildren && 'Family friendly',
-    googlePlace.reservable && 'Takes bookings',
-    googlePlace.accessibilityOptions?.wheelchairAccessibleEntrance && 'Step-free entrance',
-  ].filter((amenity): amenity is string => typeof amenity === 'string');
-  return amenities.length > 0 ? amenities : undefined;
 }
 
 function mapReviews(googleReviews: GooglePlace['reviews']): PlaceReview[] | undefined {
@@ -432,7 +404,6 @@ export function mapGooglePlaceDetails(
       : undefined,
     reviewSummary: googlePlace.reviewSummary?.text?.text,
     reviews: mapReviews(googlePlace.reviews),
-    amenities: mapAmenities(googlePlace),
   };
 }
 
@@ -511,9 +482,28 @@ export async function searchNearby(options: {
   // nearest slots). Display sorts by walking time — merging widens the
   // net without changing the order. Everything is fetched up front:
   // no mid-scroll appending, no list jumping.
+  // Location-first cadence split: "what's nearby" refreshes hourly
+  // (route-level cache), but "what's famous in this exact 100m patch"
+  // barely changes by lunchtime — the POPULARITY ranking caches per
+  // area bucket for a day, halving steady-state premium queries.
+  // Movement always misses this cache: new bucket, fresh fetch.
+  const prominenceCache = ((globalThis as {
+    prominenceCache?: Map<string, { places: PlaceWithDistance[]; expires: number }>;
+  }).prominenceCache ??= diskBackedMap('prominence-lists'));
+  const prominenceKey = `${center.latitude.toFixed(3)},${center.longitude.toFixed(3)}|${category}`;
+  const cachedProminent = prominenceCache.get(prominenceKey);
+
   const [nearest, prominent] = await Promise.all([
     runQuery('DISTANCE'),
-    runQuery('POPULARITY'),
+    cachedProminent && cachedProminent.expires > Date.now()
+      ? Promise.resolve(cachedProminent.places)
+      : runQuery('POPULARITY').then((places) => {
+          prominenceCache.set(prominenceKey, {
+            places,
+            expires: Date.now() + 24 * 60 * 60 * 1000,
+          });
+          return places;
+        }),
   ]);
 
   // The prominence order survives the merge as a rank — it's what the

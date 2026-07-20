@@ -98,6 +98,12 @@ Lists scroll under the translucent tab bar but pad their bottom by the
 safe-area inset: the last card must always be able to rest fully above
 the bar.
 
+**Location-first caching (standing rule).** Every server cache is
+keyed by the ~100m area bucket: TTLs govern re-asking about the SAME
+spot, never about a new one — as the user moves, results change,
+always. Distances and sorting recompute from live GPS on-device.
+Cost optimisation may never freeze the user's position.
+
 ## Screen grammar
 
 Three questions, asked in order; nothing appears on a screen unless it
