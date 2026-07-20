@@ -109,14 +109,17 @@ function PlanBody({ center }: { center: Coordinates }) {
 
   const lastItem = items[items.length - 1];
   const suggestFrom = lastItem?.coordinates ?? center;
-  const excludeKey = items.map((item) => item.id).join(',');
+  // Order-independent: reordering mid-plan must not refire the rail
+  const excludeKey = items.map((item) => item.id).sort().join(',');
 
   // The rail: one engine call from wherever the plan leaves you
   const loadDoors = useCallback(async () => {
     // Deferred past the sync phase — React Compiler lint forbids
     // synchronous setState inside effects (house pattern)
     await Promise.resolve();
-    setDoors('loading');
+    // Stale-while-revalidate: keep the current doors visible while
+    // fresh ones load — blanking to a spinner flashed the screen
+    setDoors((current) => (Array.isArray(current) && current.length > 0 ? current : 'loading'));
     try {
       const plan = await fetchPlan({ center: suggestFrom, duration: 'hour', company: 'solo' });
       setDoors(doorsFromPlan(plan, new Set(excludeKey.split(','))));
@@ -126,8 +129,9 @@ function PlanBody({ center }: { center: Coordinates }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [suggestFrom.latitude, suggestFrom.longitude, excludeKey]);
 
+  const lastItemId = lastItem?.id;
   useEffect(() => {
-    if (items.length === 0) {
+    if (!lastItemId) {
       return;
     }
     // Async-IIFE with cancellation — the house effect pattern
@@ -141,7 +145,7 @@ function PlanBody({ center }: { center: Coordinates }) {
     return () => {
       cancelled = true;
     };
-  }, [items.length, loadDoors]);
+  }, [lastItemId, loadDoors]);
 
   if (items.length === 0) {
     return (
