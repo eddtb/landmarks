@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChapterFolds } from '@/components/chapter-folds';
 import { HistoryCard } from '@/components/history-card';
+import { ImageViewer } from '@/components/image-viewer';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
@@ -191,6 +192,7 @@ export function AreaGazetteer({
   const [retold, setRetold] = useState<Retold | null>(null);
   const [retoldStatus, setRetoldStatus] = useState<RetoldStatus>('pending');
   const [originalOpen, setOriginalOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [areaFor, setAreaFor] = useState<string | null>(null);
   const { speaking, toggle } = useRetoldSpeaker(retold);
 
@@ -320,6 +322,7 @@ export function AreaGazetteer({
   };
 
   return (
+    <>
     <FlatList
       ref={listRef}
       data={rows}
@@ -342,7 +345,12 @@ export function AreaGazetteer({
       ListHeaderComponent={
         article && areaName ? (
           <View>
-            <Hero areaName={areaName} article={article} retold={retold} />
+            <Pressable
+              accessibilityRole="imagebutton"
+              accessibilityLabel="Open the cover photo"
+              onPress={() => article.images.length > 0 && setViewerIndex(0)}>
+              <Hero areaName={areaName} article={article} retold={retold} />
+            </Pressable>
             {article.images.length > 1 && (
               <ScrollView
                 horizontal
@@ -350,7 +358,12 @@ export function AreaGazetteer({
                 style={styles.gallery}
                 contentContainerStyle={styles.galleryContent}>
                 {article.images.slice(1).map((image, index) => (
-                  <View key={index} style={styles.galleryItem}>
+                  <Pressable
+                    key={index}
+                    accessibilityRole="imagebutton"
+                    accessibilityLabel="Open photo"
+                    onPress={() => setViewerIndex(index + 1)}
+                    style={({ pressed }) => [styles.galleryItem, pressed && { opacity: 0.85 }]}>
                     <Image
                       source={{ uri: image.imageUrl }}
                       style={styles.galleryImage}
@@ -364,7 +377,7 @@ export function AreaGazetteer({
                       numberOfLines={1}>
                       {image.credit}
                     </ThemedText>
-                  </View>
+                  </Pressable>
                 ))}
               </ScrollView>
             )}
@@ -379,6 +392,12 @@ export function AreaGazetteer({
         )
       }
     />
+    <ImageViewer
+      images={article?.images ?? []}
+      initialIndex={viewerIndex}
+      onClose={() => setViewerIndex(null)}
+    />
+    </>
   );
 }
 
@@ -583,6 +602,8 @@ const styles = StyleSheet.create({
   },
   timeline: {
     marginTop: Spacing.two,
+    // A breath between the fun facts and PART ONE (Edd's redline)
+    marginBottom: Spacing.four,
   },
   timelineContent: {
     paddingHorizontal: Spacing.four,
