@@ -13,9 +13,21 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const { pageId, title, extract, source } = body;
-  if (typeof pageId !== 'number' || typeof title !== 'string' || typeof extract !== 'string') {
-    return Response.json({ error: 'pageId, title and extract are required' }, { status: 400 });
+  const { pageId, title, extract, source } = body as {
+    pageId?: unknown;
+    title?: unknown;
+    extract?: unknown;
+    source?: unknown;
+    area?: unknown;
+  };
+  // The area's own telling: no pageId, cached by name
+  const area = typeof (body as { area?: unknown }).area === 'string' ? (body as { area: string }).area : null;
+  if (
+    (typeof pageId !== 'number' && !area) ||
+    typeof title !== 'string' ||
+    typeof extract !== 'string'
+  ) {
+    return Response.json({ error: 'pageId (or area), title and extract are required' }, { status: 400 });
   }
   if (!extract.trim()) {
     // No source text, no telling — the model must never write from nothing
@@ -23,12 +35,15 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const telling = await getTelling({
-      pageId,
-      title,
-      extract,
-      source: typeof source === 'string' && source ? source : 'Wikipedia',
-    });
+    const telling = await getTelling(
+      {
+        pageId: typeof pageId === 'number' ? pageId : 0,
+        title,
+        extract,
+        source: typeof source === 'string' && source ? source : 'Wikipedia',
+      },
+      area ? `area:${area.toLowerCase()}` : String(pageId)
+    );
     if (!telling) {
       return Response.json({ error: 'No telling came back' }, { status: 502 });
     }

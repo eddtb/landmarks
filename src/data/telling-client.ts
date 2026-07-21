@@ -40,3 +40,30 @@ export async function fetchTelling(item: TellingSource): Promise<string> {
   cache.set(item.pageId, body.telling);
   return body.telling;
 }
+
+const areaCache = new Map<string, string>();
+
+/** The place's own telling — "the short version" atop its Gazetteer. */
+export async function fetchAreaTelling(areaName: string, extract: string): Promise<string> {
+  const key = areaName.toLowerCase();
+  const cached = areaCache.get(key);
+  if (cached) {
+    return cached;
+  }
+  const response = await fetch(apiUrl('/api/telling'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      area: areaName,
+      title: areaName,
+      extract: storyParagraphs(extract).join('\n'),
+      source: 'Wikipedia',
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Area telling failed with status ${response.status}`);
+  }
+  const body = (await response.json()) as { telling: string };
+  areaCache.set(key, body.telling);
+  return body.telling;
+}
