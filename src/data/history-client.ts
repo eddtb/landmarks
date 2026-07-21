@@ -4,9 +4,13 @@ import { apiUrl } from '@/data/api';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
+/** The feed plus how it was gathered: `sparse` means the server found
+ * a quiet corner and widened the Wikipedia search to fill it. */
+export type HistoryFeed = { items: HistoryItem[]; sparse?: boolean };
+
 // Same session-cache pattern as the places list: keyed on an ~11m grid,
 // individual items kept for the detail screen.
-const listCache = new Map<string, HistoryItem[]>();
+const listCache = new Map<string, HistoryFeed>();
 const itemCache = new Map<number, HistoryItem>();
 
 function cacheKey(center: Coordinates): string {
@@ -16,7 +20,7 @@ function cacheKey(center: Coordinates): string {
 export async function fetchNearbyHistory(
   center: Coordinates,
   options?: { forceRefresh?: boolean }
-): Promise<HistoryItem[]> {
+): Promise<HistoryFeed> {
   const key = cacheKey(center);
   if (!options?.forceRefresh) {
     const cached = listCache.get(key);
@@ -38,12 +42,13 @@ export async function fetchNearbyHistory(
     throw new Error(`History request failed with status ${response.status}`);
   }
 
-  const body = (await response.json()) as { items: HistoryItem[] };
-  listCache.set(key, body.items);
+  const body = (await response.json()) as { items: HistoryItem[]; sparse?: boolean };
+  const feed: HistoryFeed = body.sparse ? { items: body.items, sparse: true } : { items: body.items };
+  listCache.set(key, feed);
   for (const item of body.items) {
     itemCache.set(item.pageId, item);
   }
-  return body.items;
+  return feed;
 }
 
 export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {

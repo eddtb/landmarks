@@ -7,7 +7,7 @@ import { Coordinates } from '@/utils/geo';
 export type HistoryState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; items: HistoryItem[] };
+  | { status: 'ready'; items: HistoryItem[]; sparse?: boolean };
 
 export function useHistory(center: Coordinates): {
   state: HistoryState;
@@ -21,9 +21,9 @@ export function useHistory(center: Coordinates): {
     const id = ++requestId.current;
     (async () => {
       try {
-        const items = await fetchNearbyHistory({ latitude, longitude });
+        const { items, sparse } = await fetchNearbyHistory({ latitude, longitude });
         if (id === requestId.current) {
-          setState({ status: 'ready', items });
+          setState({ status: 'ready', items, sparse });
         }
       } catch (error) {
         console.warn('Failed to load history:', error);
@@ -37,9 +37,12 @@ export function useHistory(center: Coordinates): {
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
     try {
-      const items = await fetchNearbyHistory({ latitude, longitude }, { forceRefresh: true });
+      const { items, sparse } = await fetchNearbyHistory(
+        { latitude, longitude },
+        { forceRefresh: true }
+      );
       if (id === requestId.current) {
-        setState({ status: 'ready', items });
+        setState({ status: 'ready', items, sparse });
       }
     } catch (error) {
       console.warn('Failed to refresh history:', error);
