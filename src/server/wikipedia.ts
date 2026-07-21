@@ -201,6 +201,61 @@ export function buildHistoryItems(
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
+type SinglePage = BatchPage & {
+  /** Present (as '') when the pageid doesn't exist. */
+  missing?: string;
+  coordinates?: { lat: number; lon: number }[];
+};
+
+/**
+ * Pure assembly for one deep-linked story — the same fields
+ * buildHistoryItems produces, minus a viewer: a shared link carries no
+ * location, so distanceMeters is 0 until the client walks somewhere.
+ * Null for missing pages and for pages with no coordinates (a story
+ * you can't walk to isn't a Venture story).
+ */
+export function buildStoryItem(page: SinglePage): HistoryItem | null {
+  const coordinate = page.coordinates?.[0];
+  if (page.missing !== undefined || !page.pageid || !coordinate) {
+    return null;
+  }
+  return {
+    pageId: page.pageid,
+    title: page.title,
+    coordinates: { latitude: coordinate.lat, longitude: coordinate.lon },
+    distanceMeters: 0,
+    extract: page.extract || undefined,
+    thumbnailUrl: page.thumbnail?.source,
+    url: page.fullurl ?? `https://en.wikipedia.org/?curid=${page.pageid}`,
+    source: 'Wikipedia',
+  };
+}
+
+/**
+ * One story by Wikipedia pageId — the share deep-link cold start,
+ * where the recipient's session cache has never seen the item. Same
+ * props as the nearby batch, plus coordinates (geosearch supplied
+ * those in the batch path). Keyless and unmetered, like every
+ * Wikipedia call here.
+ */
+export async function fetchStoryByPageId(pageId: number): Promise<HistoryItem | null> {
+  const url =
+    'https://en.wikipedia.org/w/api.php?action=query&format=json' +
+    `&pageids=${pageId}` +
+    '&prop=pageimages%7Cextracts%7Cinfo%7Ccoordinates&exintro=1&explaintext=1' +
+    '&pithumbsize=800&inprop=url';
+  const response = await fetch(url, {
+    headers: { 'User-Agent': UserAgent },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) {
+    throw new Error(`Wikipedia page query failed with status ${response.status}`);
+  }
+  const body = (await response.json()) as { query?: { pages?: Record<string, SinglePage> } };
+  const page = body.query?.pages?.[String(pageId)];
+  return page ? buildStoryItem(page) : null;
+}
+
 /**
  * Wikipedia articles physically near the user — including things with no
  * business listing anywhere: vanished buildings, incidents, old boundaries.

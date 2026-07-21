@@ -14,7 +14,9 @@ const NhleBase =
   'https://services-eu1.arcgis.com/ZOdPfBS3aqqDYPUQ/arcgis/rest/services/' +
   'National_Heritage_List_for_England_NHLE_v02_VIEW/FeatureServer';
 
-// Synthetic pageId namespaces, far above real Wikipedia pageids
+// Synthetic pageId namespaces, far above real Wikipedia pageids —
+// SyntheticPageIdBase in types/history.ts is the shared floor that
+// the share deep-link path gates on
 const ListedBuildingIdBase = 2_000_000_000;
 const PlaqueIdBase = 3_000_000_000;
 
