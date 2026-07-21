@@ -13,7 +13,7 @@ import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-cli
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
+import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/utils/speech';
 
 /**
  * The Gazetteer: a magazine cover for the place. Hero and gallery in
@@ -136,6 +136,7 @@ function Hero({
 function useRetoldSpeaker(retold: Retold | null) {
   const [speaking, setSpeaking] = useState(false);
   const [engineFailed, setEngineFailed] = useState(false);
+  const [spokeOnce, setSpokeOnce] = useState(false);
   const cancelled = useRef(false);
 
   useEffect(() => {
@@ -157,6 +158,7 @@ function useRetoldSpeaker(retold: Retold | null) {
     }
     cancelled.current = false;
     setEngineFailed(false);
+    setSpokeOnce(true);
     setSpeaking(true);
     for (const [index, part] of retold.parts.entries()) {
       if (cancelled.current) {
@@ -179,7 +181,7 @@ function useRetoldSpeaker(retold: Retold | null) {
     }
   };
 
-  return { speaking, engineFailed, toggle };
+  return { speaking, engineFailed, spokeOnce, toggle };
 }
 
 export function AreaGazetteer({
@@ -202,7 +204,7 @@ export function AreaGazetteer({
   const [originalOpen, setOriginalOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [areaFor, setAreaFor] = useState<string | null>(null);
-  const { speaking, engineFailed, toggle } = useRetoldSpeaker(retold);
+  const { speaking, engineFailed, spokeOnce, toggle } = useRetoldSpeaker(retold);
 
   // Adjust-during-render: walking into Deptford must not show Greenwich
   if (areaFor !== areaName) {
@@ -275,6 +277,7 @@ export function AreaGazetteer({
     switch (row.kind) {
       case 'ai-label':
         return (
+          <View>
           <View style={styles.aiLabel}>
             <ThemedText type="small" themeColor="textSecondary" style={styles.aiLabelText}>
               ✦ Retold by AI from Wikipedia — original below
@@ -286,6 +289,13 @@ export function AreaGazetteer({
                 </ThemedText>
               </Pressable>
             )}
+          </View>
+          {spokeOnce && !speaking && !usingEnhancedVoice() && (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.voiceHint}>
+              A nicer voice is one download away: Settings › Accessibility › Spoken Content ›
+              Voices › English (UK)
+            </ThemedText>
+          )}
           </View>
         );
       case 'timeline':
@@ -564,6 +574,11 @@ const styles = StyleSheet.create({
   },
   aiLabelText: {
     flex: 1,
+    fontSize: 11,
+  },
+  voiceHint: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
     fontSize: 11,
   },
   pending: {

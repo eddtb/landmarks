@@ -66,6 +66,13 @@ export type SpeechOutcome = 'done' | 'stopped' | 'error' | 'unavailable';
 // voices appear here automatically once downloaded in iOS Settings →
 // Accessibility → Spoken Content → Voices.)
 let chosenVoice: string | null | undefined;
+let chosenVoiceEnhanced = false;
+
+/** Whether the session's voice is one of the good ones. */
+export function usingEnhancedVoice(): boolean {
+  return chosenVoiceEnhanced;
+}
+
 async function bestVoice(): Promise<string | null> {
   if (chosenVoice !== undefined) {
     return chosenVoice;
@@ -74,14 +81,19 @@ async function bestVoice(): Promise<string | null> {
     const voices = (await Speech?.getAvailableVoicesAsync?.()) ?? [];
     const english = voices.filter((voice) => voice.language?.startsWith('en'));
     const isEnhanced = (voice: SpeechVoice) => /enhanced|premium/i.test(voice.quality ?? '');
-    // ANY enhanced English beats the compact British robot: phones
-    // that never downloaded a UK voice usually still carry one
-    // enhanced voice from elsewhere in the anglosphere
-    chosenVoice =
-      (english.find((voice) => voice.language?.startsWith('en-GB') && isEnhanced(voice)) ??
-        english.find(isEnhanced) ??
-        english.find((voice) => voice.language?.startsWith('en-GB')) ??
-        english[0])?.identifier ?? null;
+    // ANY enhanced English beats the compact British robot — but with
+    // no enhanced voice installed, choose NOTHING and let the system
+    // default speak: 'first English voice alphabetically' is Albert
+    // the novelty voice, somehow worse than the robot
+    const picked =
+      english.find((voice) => voice.language?.startsWith('en-GB') && isEnhanced(voice)) ??
+      english.find(isEnhanced);
+    chosenVoice = picked?.identifier ?? null;
+    chosenVoiceEnhanced = picked !== undefined;
+    console.log(
+      `[voice] ${english.length} English voices, ${english.filter(isEnhanced).length} enhanced; ` +
+        `using ${picked?.identifier ?? 'system default (en-GB)'}`
+    );
   } catch {
     chosenVoice = null;
   }

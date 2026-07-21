@@ -93,7 +93,14 @@ export function ImageViewer({
               renderItem={({ item: image }) => (
                 <View style={{ width, height }}>
                   <ScrollView
-                    // iOS native pinch-zoom; Android keeps swipe + full view
+                    // iOS native pinch-zoom; Android keeps swipe + full view.
+                    // CRUCIAL: the zoom scroll view claims vertical touches
+                    // even with nothing to scroll — keep scrolling disabled
+                    // until actually zoomed so the drag-to-close pan can win
+                    // (pinch is its own recognizer and keeps working)
+                    scrollEnabled={zoomed}
+                    pinchGestureEnabled
+                    bounces={false}
                     maximumZoomScale={4}
                     minimumZoomScale={1}
                     onScroll={(event) => {
