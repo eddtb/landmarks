@@ -239,7 +239,7 @@ function GazetteerBody({ center }: { center: Coordinates }) {
 }
 
 /** The magic moment: a story within arm's reach leads the screen. */
-function StandingOnIt({ item, center }: { item: HistoryItem; center: Coordinates }) {
+export function StandingOnIt({ item, center }: { item: HistoryItem; center: Coordinates }) {
   const theme = useTheme();
   const meters = Math.round(distanceMeters(center, item.coordinates));
   return (
@@ -266,7 +266,7 @@ function StandingOnIt({ item, center }: { item: HistoryItem; center: Coordinates
 
 /** Mini featured listings up top (Edd's call): the fun-facts FORMAT,
  * but the content is places — the area's heavy hitters, tappable. */
-function FeaturedRail({
+export function FeaturedRail({
   items,
   excludePageId,
 }: {
