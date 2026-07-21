@@ -1,0 +1,43 @@
+# Merge-queue-lite. GitHub's real merge queue is org-repos-only, and
+# this repo lives on a personal account — so this recreates the useful
+# core: with "require branches up to date" protection, a merge to main
+# strands every other green PR behind a manual update-branch click.
+#
+# On every push to main, update the OLDEST open PR that has auto-merge
+# armed. Its checks re-run, auto-merge fires, that merge pushes main,
+# this workflow runs again, and the chain advances itself — PRs land
+# one by one with nobody babysitting.
+#
+# Arm a PR into the chain with: gh pr merge <n> --auto --squash
+name: Merge chain
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: merge-chain
+  cancel-in-progress: false
+
+jobs:
+  advance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update the oldest armed PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
+            --json number,autoMergeRequest,createdAt \
+            --jq '[.[] | select(.autoMergeRequest != null)] | sort_by(.createdAt) | .[0].number // empty')
+          if [ -z "$pr" ]; then
+            echo "No armed PRs waiting — chain idle."
+            exit 0
+          fi
+          echo "Advancing the chain: updating PR #$pr"
+          # Already up to date is fine — auto-merge will take it from here
+          gh pr update-branch "$pr" --repo "$GITHUB_REPOSITORY" || true
