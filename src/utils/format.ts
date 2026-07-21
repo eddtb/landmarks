@@ -123,17 +123,38 @@ export function formatRatingCount(count: number): string {
 }
 
 /**
+ * Does the record say this thing no longer exists? Two signals, never
+ * invention: demolition words anywhere, or the defining first
+ * sentence in the past tense — Wikipedia writes "the Palace of
+ * Placentia WAS an English royal residence" for vanished things and
+ * "Cutty Sark IS a British clipper ship" for standing ones. A first
+ * sentence carrying both ("…is a church that was designed by…")
+ * counts as standing.
+ */
+export function isVanished(extract: string | undefined): boolean {
+  if (!extract) {
+    return false;
+  }
+  // Only the DEFINING sentence may testify — extracts narrate their
+  // neighbours ("built on the grounds of the now demolished Greenwich
+  // Palace" describes the palace, not the Queen's House it sits on)
+  const firstSentence = storyHook(extract) ?? '';
+  if (
+    /demolish|destroyed|no longer exist|no longer stand|burned down|torn down|razed/i.test(
+      firstSentence
+    )
+  ) {
+    return true;
+  }
+  return /\b(was|were)\b/i.test(firstSentence) && !/\b(is|are)\b/i.test(firstSentence);
+}
+
+/**
  * The History archive's honest little tag, derived from what the
  * record already says. Never invents: no signal, generic tag.
  */
 export function historyTag(extract: string | undefined): string {
-  if (
-    extract &&
-    /demolish|destroyed|no longer exist|no longer stand|burned down|torn down|razed/i.test(extract)
-  ) {
-    return 'No longer standing';
-  }
-  return 'Hidden history';
+  return isVanished(extract) ? 'No longer standing' : 'Hidden history';
 }
 
 /** "https://en.wikipedia.org/wiki/Cutty_Sark" → "Cutty Sark", or null. */

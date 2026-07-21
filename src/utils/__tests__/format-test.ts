@@ -7,6 +7,7 @@ import {
   formatRatingCount,
   formatWalkTime,
   historyTag,
+  isVanished,
   opensLabel,
   liveOpenNow,
   openUntilLabel,
@@ -156,15 +157,43 @@ describe('storyHook', () => {
   });
 });
 
-describe('historyTag', () => {
-  test('reads the record, never invents', () => {
+describe('isVanished / historyTag', () => {
+  test("a neighbour's demolition is not yours — only the defining sentence testifies", () => {
+    // The real Queen's House record: standing, on demolished ground
+    expect(
+      isVanished(
+        "Queen's House is a former royal residence in the London borough of Greenwich, which presently serves as a public art gallery.  It was built between 1616 and 1635 on the grounds of the now demolished Greenwich Palace."
+      )
+    ).toBe(false);
+  });
+
+  test('demolition words in the defining sentence mean gone', () => {
     expect(historyTag('The palace was demolished in the 17th century.')).toBe(
       'No longer standing'
     );
     expect(historyTag('The theatre building was torn down for the railway.')).toBe(
       'No longer standing'
     );
-    expect(historyTag('A nuclear reactor ran here until 1996.')).toBe('Hidden history');
+  });
+
+  test('the defining first sentence in the past tense means gone — the real records', () => {
+    expect(
+      isVanished('Greenwich Hospital was a permanent home for retired sailors of the Royal Navy.')
+    ).toBe(true);
+    expect(
+      isVanished('The Palace of Placentia, also known as Greenwich Palace, was an English royal residence.')
+    ).toBe(true);
+    expect(isVanished('JASON was a low-power nuclear research reactor. It is remembered.')).toBe(
+      true
+    );
+  });
+
+  test('present-tense records stand — including mixed-tense first sentences', () => {
+    expect(isVanished('Cutty Sark is a British clipper ship. She was built in 1869.')).toBe(false);
+    expect(isVanished("The Queen's House is a former royal residence that was designed in 1616.")).toBe(
+      false
+    );
+    expect(isVanished('The Greenwich Foot Tunnel crosses beneath the River Thames.')).toBe(false);
     expect(historyTag(undefined)).toBe('Hidden history');
   });
 });

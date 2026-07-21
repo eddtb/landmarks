@@ -10,9 +10,11 @@ import { formatWalkTime, historyTag, storyHook } from '@/utils/format';
 
 type Props = {
   item: HistoryItem;
+  /** Archive cards wear the lavender spine and the honest tag. */
+  archive?: boolean;
 };
 
-export function HistoryCard({ item }: Props) {
+export function HistoryCard({ item, archive }: Props) {
   const theme = useTheme();
 
   return (
@@ -26,15 +28,15 @@ export function HistoryCard({ item }: Props) {
       style={[
         styles.card,
         { backgroundColor: theme.backgroundElement },
-        // Archive cards (no subject photo exists) wear a lavender spine
-        // and an honest tag instead — deliberate, not broken
-        !item.thumbnailUrl && [styles.archive, { borderLeftColor: theme.accentSoft }],
+        // Archive cards wear a lavender spine and an honest tag —
+        // deliberate, not broken; a palace's painting may still show
+        archive && [styles.archive, { borderLeftColor: theme.accentSoft }],
       ]}>
         {item.thumbnailUrl && (
           <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
         )}
         <View style={styles.body}>
-          {!item.thumbnailUrl && (
+          {archive && (
             <ThemedText type="eyebrow" themeColor="accent">
               {historyTag(item.extract)}
             </ThemedText>
