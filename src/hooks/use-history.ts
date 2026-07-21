@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { fetchNearbyHistory } from '@/data/history-client';
+import { fetchNearbyHistory, HistoryFetchResult } from '@/data/history-client';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 export type HistoryState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; items: HistoryItem[]; sparse?: boolean };
+  | { status: 'ready'; items: HistoryItem[]; sparse?: boolean; stale?: boolean };
 
 export function useHistory(center: Coordinates): {
   state: HistoryState;
@@ -17,14 +17,32 @@ export function useHistory(center: Coordinates): {
   const { latitude, longitude } = center;
   const requestId = useRef(0);
 
+  // An expired persisted bucket paints instantly as a placeholder; the
+  // fresh answer (or the offline-stale flag) follows when it lands.
+  // Both honesty flags ride through: sparse (the server looked further)
+  // and stale (a network failure forced serving saved stories).
+  const applyResult = useCallback(async (id: number, result: HistoryFetchResult) => {
+    if (id === requestId.current) {
+      setState({ status: 'ready', items: result.items, sparse: result.sparse, stale: result.stale });
+    }
+    if (result.revalidate) {
+      try {
+        const fresh = await result.revalidate;
+        if (id === requestId.current) {
+          setState({ status: 'ready', items: fresh.items, sparse: fresh.sparse, stale: fresh.stale });
+        }
+      } catch {
+        // Nothing newer to show — the placeholder stands
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const id = ++requestId.current;
     (async () => {
       try {
-        const { items, sparse } = await fetchNearbyHistory({ latitude, longitude });
-        if (id === requestId.current) {
-          setState({ status: 'ready', items, sparse });
-        }
+        const result = await fetchNearbyHistory({ latitude, longitude });
+        await applyResult(id, result);
       } catch (error) {
         console.warn('Failed to load history:', error);
         if (id === requestId.current) {
@@ -32,25 +50,20 @@ export function useHistory(center: Coordinates): {
         }
       }
     })();
-  }, [latitude, longitude]);
+  }, [latitude, longitude, applyResult]);
 
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
     try {
-      const { items, sparse } = await fetchNearbyHistory(
-        { latitude, longitude },
-        { forceRefresh: true }
-      );
-      if (id === requestId.current) {
-        setState({ status: 'ready', items, sparse });
-      }
+      const result = await fetchNearbyHistory({ latitude, longitude }, { forceRefresh: true });
+      await applyResult(id, result);
     } catch (error) {
       console.warn('Failed to refresh history:', error);
       if (id === requestId.current) {
         setState({ status: 'error' });
       }
     }
-  }, [latitude, longitude]);
+  }, [latitude, longitude, applyResult]);
 
   return { state, refresh };
 }

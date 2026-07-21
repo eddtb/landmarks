@@ -3,6 +3,12 @@
 process.env.AI_CACHE_DIR = '.ai-cache-test';
 require('react-native-reanimated').setUpTests();
 
+// AsyncStorage is native — the official in-memory mock keeps the
+// persisted client caches (src/data/persisted-cache.ts) alive in tests
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+
 // Official mock: SafeAreaView renders plain, useSafeAreaInsets returns zeros
 jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default
