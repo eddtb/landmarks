@@ -1,5 +1,5 @@
 import { StoriesScreen } from '@/components/section-screen';
 
-export default function NearbyTab() {
+export default function HomeTab() {
   return <StoriesScreen />;
 }

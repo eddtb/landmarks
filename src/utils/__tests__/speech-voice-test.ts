@@ -9,7 +9,8 @@ type Voice = { identifier: string; language: string; quality: string };
 function loadSpeech(voices: Voice[]) {
   jest.resetModules();
   const speak = jest.fn(
-    (_text: string, options: { onDone: () => void; voice?: string }) => options.onDone()
+    (_text: string, options: { onDone: () => void; voice?: string; language?: string }) =>
+      options.onDone()
   );
   jest.doMock('expo-speech', () => ({
     speak,
