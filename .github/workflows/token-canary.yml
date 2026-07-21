@@ -1,0 +1,49 @@
+# The review robot's heartbeat.
+#
+# claude-review authenticates with a long-lived OAuth token
+# (CLAUDE_CODE_OAUTH_TOKEN) that expires by design. When it died on
+# 2026-07-21 we found out the worst way: every review failing in ~30s
+# and a jammed merge queue. This canary exercises the same secret with
+# a trivial call every Monday; the first week it fails, it opens ONE
+# issue pointing at the runbook (scripts/rotate-review-token.sh) —
+# turning the next expiry into a calendar reminder instead of an outage.
+name: Review-token canary
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # Mondays 08:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exercise the review token
+        id: probe
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude -p "Reply with exactly: TOKEN-ALIVE" | grep -q "TOKEN-ALIVE"
+
+      - name: Sound the alarm (one open issue, no duplicates)
+        if: steps.probe.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          open_count=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label token-canary --state open --json number --jq length)
+          if [ "$open_count" = "0" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --label token-canary \
+              --title "Review token failing its canary — rotate it" \
+              --body "$(printf 'The weekly canary could not authenticate with CLAUDE_CODE_OAUTH_TOKEN.\n\nUntil rotated, every claude-review check will fail in ~30 seconds and block merges.\n\n**Fix (one click + one command):** run scripts/rotate-review-token.sh — approve the browser prompt when it opens. The script verifies the new token with a live call before storing it, and re-fires the most recent failed review.\n\nCanary run: %s/%s/actions/runs/%s' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+          fi
+
+      - name: Fail the run when the token is dead
+        if: steps.probe.outcome == 'failure'
+        run: exit 1
