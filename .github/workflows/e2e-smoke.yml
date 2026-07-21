@@ -63,7 +63,7 @@ jobs:
       - name: Pre-warm the JS bundle
         run: |
           time curl -sf -o /dev/null --max-time 600 \
-            "http://localhost:8081/index.bundle?platform=ios&dev=true"
+            "http://localhost:8081/node_modules/expo-router/entry.bundle?platform=ios&dev=true"
 
       - name: Build and install the dev app on a simulator
         run: npx expo run:ios --no-bundler
