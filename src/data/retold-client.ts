@@ -2,8 +2,9 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 
-export type RetoldPart = { heading: string; body: string };
-export type Retold = { parts: RetoldPart[]; minutes: number };
+export type RetoldPart = { heading: string; body: string; pullQuote?: string };
+export type TimelineStop = { year: string; label: string; part: number };
+export type Retold = { parts: RetoldPart[]; minutes: number; timeline: TimelineStop[] };
 
 const cache = new Map<string, Retold>();
 

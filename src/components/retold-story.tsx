@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ChapterFolds } from '@/components/chapter-folds';
 import { ThemedText } from '@/components/themed-text';
@@ -76,23 +76,60 @@ export function RetoldStory({ retold, article }: { retold: Retold; article: Arti
           </Pressable>
         )}
       </View>
-      <View style={styles.body}>
-        {retold.parts.map((part, index) => (
-          <View key={`${index}-${part.heading}`}>
-            {index > 0 && <View style={[styles.rule, { backgroundColor: theme.backgroundElement }]} />}
-            <ThemedText type="eyebrow" themeColor="accent" style={styles.partNum}>
-              Part {PartWords[index] ?? index + 1}
-            </ThemedText>
-            <ThemedText type="headline" style={styles.partHead}>
-              {part.heading}
-            </ThemedText>
-            {part.body.split(/\n+/).map((paragraph, paragraphIndex) => (
-              <ThemedText key={paragraphIndex} type="default" style={styles.para}>
-                {paragraph}
+      {retold.timeline.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.timeline}
+          contentContainerStyle={styles.timelineContent}>
+          {retold.timeline.map((stop, index) => (
+            <View key={index} style={[styles.timelineStop, { backgroundColor: theme.accentSoft }]}>
+              <ThemedText type="smallBold" themeColor="accent" style={styles.timelineYear}>
+                {stop.year}
               </ThemedText>
-            ))}
-          </View>
-        ))}
+              <ThemedText type="small" style={styles.timelineLabel} numberOfLines={2}>
+                {stop.label}
+              </ThemedText>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+      <View style={styles.body}>
+        {retold.parts.map((part, index) => {
+          const paragraphs = part.body.split(/\n+/).filter(Boolean);
+          // The pull-quote breaks the part mid-way, magazine-style
+          const quoteAfter = part.pullQuote ? Math.ceil(paragraphs.length / 2) - 1 : -1;
+          return (
+            <View key={`${index}-${part.heading}`}>
+              {index > 0 && (
+                <View style={[styles.rule, { backgroundColor: theme.backgroundElement }]} />
+              )}
+              <ThemedText type="eyebrow" themeColor="accent" style={styles.partNum}>
+                Part {PartWords[index] ?? index + 1}
+              </ThemedText>
+              <ThemedText type="headline" style={styles.partHead}>
+                {part.heading}
+              </ThemedText>
+              {paragraphs.map((paragraph, paragraphIndex) => (
+                <View key={paragraphIndex}>
+                  <ThemedText
+                    type="default"
+                    // The lede: the story's opening paragraph invites
+                    style={[styles.para, index === 0 && paragraphIndex === 0 && styles.lede]}>
+                    {paragraph}
+                  </ThemedText>
+                  {paragraphIndex === quoteAfter && (
+                    <View style={[styles.pull, { borderLeftColor: theme.accent }]}>
+                      <ThemedText type="headline" themeColor="accent" style={styles.pullText}>
+                        {part.pullQuote}
+                      </ThemedText>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          );
+        })}
       </View>
       <Pressable
         accessibilityRole="button"
@@ -154,6 +191,41 @@ const styles = StyleSheet.create({
   },
   para: {
     marginBottom: Spacing.three,
+  },
+  lede: {
+    fontSize: 17.5,
+    lineHeight: 27,
+    fontWeight: '500',
+  },
+  pull: {
+    borderLeftWidth: 3,
+    paddingLeft: Spacing.three,
+    paddingVertical: 2,
+    marginBottom: Spacing.three,
+  },
+  pullText: {
+    fontSize: 18,
+    lineHeight: 25,
+  },
+  timeline: {
+    marginTop: Spacing.two,
+  },
+  timelineContent: {
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.two,
+  },
+  timelineStop: {
+    borderRadius: Spacing.three - 2,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    maxWidth: 150,
+  },
+  timelineYear: {
+    fontSize: 15,
+  },
+  timelineLabel: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   door: {
     flexDirection: 'row',
