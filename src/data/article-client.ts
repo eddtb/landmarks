@@ -23,6 +23,26 @@ export async function fetchArticle(title: string): Promise<Article> {
   return body.article;
 }
 
+/**
+ * Chapters-first: the light article paints the hero text and reading
+ * time in one cheap server leg, ahead of the ~1.2s of image legs the
+ * full article costs cold. Never cached client-side — only the
+ * complete article earns a place in articleCache (an empty gallery
+ * cached here would hide the images that are seconds behind it).
+ */
+export async function fetchArticleLight(title: string): Promise<Article> {
+  const cached = articleCache.get(title);
+  if (cached) {
+    return cached; // complete beats light
+  }
+  const response = await fetch(apiUrl(`/api/article?title=${encodeURIComponent(title)}&light=1`));
+  if (!response.ok) {
+    throw new Error(`Light article request failed with status ${response.status}`);
+  }
+  const body = (await response.json()) as { article: Article };
+  return body.article;
+}
+
 /** Just the reading time, for the story screen's door. */
 export async function fetchArticleMinutes(title: string): Promise<number | null> {
   const cached = metaCache.get(title);

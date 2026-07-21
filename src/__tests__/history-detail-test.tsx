@@ -18,6 +18,9 @@ jest.mock('expo-router', () => {
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
 jest.mock('@/data/article-client', () => ({
+  // A light miss: the screen must not depend on the chapters-first
+  // fast path — the full article alone still paints everything
+  fetchArticleLight: jest.fn(async () => null),
   fetchArticle: jest.fn(async () => ({
     minutes: 3,
     images: [],

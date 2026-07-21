@@ -153,16 +153,23 @@ async function fetchArticleImages(title: string): Promise<ArticleImage[]> {
 }
 
 const ArticleTtlMs = 7 * 24 * 60 * 60 * 1000;
-// v2: v1 entries predate images and would serve without them for a week
+// Short: the light entry is a bridge to first paint, never a second
+// source of truth — the complete article overtakes it within seconds
+const LightTtlMs = 15 * 60 * 1000;
+// v2: v1 entries predate images and would serve without them for a
+// week. Only COMPLETE articles (gallery legs run) are stored here —
+// a light result cached with images: [] would read as tried-and-
+// found-none and hide the gallery for a week (couldn't-try ≠
+// tried-and-failed), hence the separate short-lived light key.
 const cache = diskBackedMap<{ article: Article; at: number }>('articles-v2');
+const lightCache = diskBackedMap<{ article: Article; at: number }>('articles-light-v1');
+// Single-flight (mirrors retold.ts): concurrent /api/article and
+// /api/retold cold-opens share one upstream fetch per title
+const inFlight = new Map<string, Promise<Article | null>>();
+const lightInFlight = new Map<string, Promise<Article | null>>();
 
-export async function getArticle(title: string): Promise<Article | null> {
-  const key = title.toLowerCase();
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.at < ArticleTtlMs) {
-    return cached.article;
-  }
-
+/** The extract leg alone: ~0.2s of a 1.3-1.7s cold open. */
+async function fetchChapters(title: string): Promise<Omit<Article, 'images'> | null> {
   const params = new URLSearchParams({
     action: 'query',
     format: 'json',
@@ -183,12 +190,70 @@ export async function getArticle(title: string): Promise<Article | null> {
     query?: { pages?: Record<string, { extract?: string }> };
   };
   const text = Object.values(body.query?.pages ?? {})[0]?.extract;
-  if (!text) {
+  return text ? parseArticle(text) : null;
+}
+
+/**
+ * Chapters-first: everything first paint needs, without the two
+ * image-resolution legs (~1.2s serialized) the gallery costs. A
+ * complete cached article is preferred — its images ride along free.
+ */
+export async function getArticleLight(title: string): Promise<Article | null> {
+  const key = title.toLowerCase();
+  const full = cache.get(key);
+  if (full && Date.now() - full.at < ArticleTtlMs) {
+    return full.article;
+  }
+  const cachedLight = lightCache.get(key);
+  if (cachedLight && Date.now() - cachedLight.at < LightTtlMs) {
+    return cachedLight.article;
+  }
+  const pending = lightInFlight.get(key);
+  if (pending) {
+    return pending;
+  }
+  const work = fetchLightUncached(title, key).finally(() => lightInFlight.delete(key));
+  lightInFlight.set(key, work);
+  return work;
+}
+
+async function fetchLightUncached(title: string, key: string): Promise<Article | null> {
+  const base = await fetchChapters(title);
+  if (!base) {
     return null;
   }
+  const article = { ...base, images: [] };
+  lightCache.set(key, { article, at: Date.now() });
+  return article;
+}
 
+export async function getArticle(title: string): Promise<Article | null> {
+  const key = title.toLowerCase();
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.at < ArticleTtlMs) {
+    return cached.article;
+  }
+  const pending = inFlight.get(key);
+  if (pending) {
+    return pending;
+  }
+  const work = fetchFullUncached(title, key).finally(() => inFlight.delete(key));
+  inFlight.set(key, work);
+  return work;
+}
+
+async function fetchFullUncached(title: string, key: string): Promise<Article | null> {
+  // The light path usually just paid for the extract leg — reuse it
+  const light = lightCache.get(key);
+  const base =
+    light && Date.now() - light.at < LightTtlMs
+      ? { chapters: light.article.chapters, minutes: light.article.minutes }
+      : await fetchChapters(title);
+  if (!base) {
+    return null;
+  }
   const images = await fetchArticleImages(title).catch(() => []);
-  const article = { ...parseArticle(text), images };
+  const article = { ...base, images };
   cache.set(key, { article, at: Date.now() });
   return article;
 }

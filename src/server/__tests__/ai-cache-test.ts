@@ -75,3 +75,47 @@ describe('extractAnswerText truncation handling', () => {
     expect(JSON.parse(text)).toEqual([{ title: 'Quiz', sourceUrl: 'https://full.example' }]);
   });
 });
+
+/**
+ * The clobber regression: two processes sharing .ai-cache must never
+ * erase each other's entries. Simulated by writing a "foreign" entry
+ * straight to disk after hydration — the next flush must keep it.
+ */
+describe('diskBackedMap merge-on-write', () => {
+  const name = 'test-merge-cache';
+  const path = `${process.env.AI_CACHE_DIR}/${name}.json`;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { writeFileSync, readFileSync } = require('fs') as {
+    writeFileSync: (path: string, data: string) => void;
+    readFileSync: (path: string, encoding: 'utf8') => string;
+  };
+
+  afterAll(() => {
+    if (existsSync(path)) {
+      rmSync(path);
+    }
+  });
+
+  test("another process's entries survive this process's flush", async () => {
+    const map = diskBackedMap<string>(name);
+    map.set('ours', 'from this process');
+
+    // Another process writes its own entry (plus a stale copy of ours)
+    // AFTER we hydrated — the old code would erase it on flush
+    writeFileSync(
+      path,
+      JSON.stringify([
+        ['theirs', 'from the other process'],
+        ['ours', 'their stale copy'],
+      ])
+    );
+
+    map.set('ours-2', 'trigger a flush');
+    await new Promise((resolve) => setTimeout(resolve, 2600));
+
+    const onDisk = new Map(JSON.parse(readFileSync(path, 'utf8')) as [string, string][]);
+    expect(onDisk.get('theirs')).toBe('from the other process'); // preserved, not clobbered
+    expect(onDisk.get('ours')).toBe('from this process'); // in-memory wins for our keys
+    expect(onDisk.get('ours-2')).toBe('trigger a flush');
+  });
+});
