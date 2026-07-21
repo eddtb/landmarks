@@ -210,12 +210,14 @@ export async function findNearbyHistory(
   center: Coordinates,
   radius = 1500
 ): Promise<HistoryItem[]> {
-  // 100, not 20: dense areas rank the treasure low — measured from
-  // Greenwich centre, Queen's House sat 27th, beyond a top-20's reach
-  // entirely — and the deep feed shows everything within the walk
+  // 200, not 100: in Greenwich-density areas the 100 cap binds BEFORE
+  // the radius — measured live, 1500m and 3000m searches returned
+  // byte-identical results, all within 1212m, silently amputating the
+  // last 4 walking minutes (21 stories) of the promised 19-min walk.
+  // (And not 20: Queen's House once sat 27th — the treasure ranks low.)
   const geoUrl =
     'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
-    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=100`;
+    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=200`;
 
   const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
   if (!geoResponse.ok) {
