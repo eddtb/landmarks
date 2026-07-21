@@ -9,8 +9,10 @@ const AccentTint: ColorValue =
     : Colors.light.accent;
 
 /**
- * The Storyteller has two destinations: the stories around you, and
- * the walk you're building through them. Smaller app, deeper app.
+ * Two questions, two tabs: what can I go see (Nearby — subject-photo
+ * stories, findable on arrival) and what happened here (History — the
+ * archive, photo optional). The walk is a STATE, not a place: the
+ * violet bar rides above this bar while a walk exists.
  */
 export default function TabsLayout() {
   return (
@@ -19,9 +21,9 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Nearby</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="sparkles" md="auto_awesome" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="walks">
-        <NativeTabs.Trigger.Label>Walks</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="figure.walk" md="directions_walk" />
+      <NativeTabs.Trigger name="history">
+        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="building.columns" md="account_balance" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );

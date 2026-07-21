@@ -28,6 +28,7 @@ export default function RootLayout() {
           name="history/[pageId]/go"
           options={{ presentation: 'modal', headerShown: false }}
         />
+        <Stack.Screen name="walk" options={{ presentation: 'modal', headerShown: false }} />
       </Stack>
       </ThemeProvider>
     </GestureHandlerRootView>

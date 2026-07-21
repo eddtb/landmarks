@@ -4,7 +4,7 @@ import {
   dressWithPhotos,
   fullSizeUrl,
   GeographPhoto,
-  pickPhotoFor,
+  pickMatchingPhoto,
 } from '@/server/geograph';
 import { HistoryItem } from '@/types/history';
 
@@ -23,7 +23,7 @@ const syndicatorItems = [
 
 const story = (overrides: Partial<HistoryItem>): HistoryItem => ({
   pageId: 1,
-  title: 'Royal Observatory',
+  title: 'Greenwich Observatory', // shares two name tokens with the recorded photo
   coordinates: { latitude: 51.4779, longitude: -0.0015 },
   distanceMeters: 10,
   url: 'https://example.org',
@@ -32,7 +32,7 @@ const story = (overrides: Partial<HistoryItem>): HistoryItem => ({
 });
 
 beforeEach(() => {
-  diskBackedMap('story-photos').clear(); // the disk cache outlives runs BY DESIGN
+  diskBackedMap('subject-photos').clear(); // the disk cache outlives runs BY DESIGN
 });
 
 describe('buildPhotos', () => {
@@ -48,13 +48,19 @@ describe('buildPhotos', () => {
   });
 });
 
-describe('pickPhotoFor', () => {
+describe("pickMatchingPhoto (subject photo or nothing — Edd's rule)", () => {
   const photos = buildPhotos(syndicatorItems);
 
-  test('nearest within range wins; out of range is null', () => {
-    expect(pickPhotoFor(story({}), photos)?.credit).toContain('Alan Swain');
+  test('a name-matched photo within range wins; out of range is null', () => {
+    expect(pickMatchingPhoto(story({}), photos)?.credit).toContain('Alan Swain');
     const far = story({ coordinates: { latitude: 51.6, longitude: -0.0015 } });
-    expect(pickPhotoFor(far, photos)).toBeNull();
+    expect(pickMatchingPhoto(far, photos)).toBeNull();
+  });
+
+  test('a merely-nearby photo is the site, not the subject: rejected', () => {
+    // The Greenwich Playhouse case — the nearest photo is the station
+    const playhouse = story({ title: 'Greenwich Playhouse' }); // shares only 'greenwich'
+    expect(pickMatchingPhoto(playhouse, photos)).toBeNull();
   });
 });
 
@@ -127,8 +133,8 @@ describe('dressWithPhotos', () => {
 
   test('caps uncached lookups per request', async () => {
     const fetcher = jest.fn(async () => [] as GeographPhoto[]);
-    const many = Array.from({ length: 20 }, (_, index) => story({ pageId: 100 + index }));
+    const many = Array.from({ length: 25 }, (_, index) => story({ pageId: 100 + index }));
     await dressWithPhotos(many, fetcher, noCommons);
-    expect(fetcher).toHaveBeenCalledTimes(15);
+    expect(fetcher).toHaveBeenCalledTimes(20);
   });
 });

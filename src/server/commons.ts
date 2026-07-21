@@ -25,6 +25,11 @@ type CommonsPage = {
 
 const NoiseTokens = new Set(['the', 'a', 'an', 'of', 'and', 'file', 'jpg', 'jpeg', 'png']);
 
+/** Shared with the Geograph matcher: same names, same rules. */
+export function matchTokens(text: string): Set<string> {
+  return tokens(text);
+}
+
 function tokens(text: string): Set<string> {
   return new Set(
     text

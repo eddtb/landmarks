@@ -6,6 +6,7 @@ import {
   formatRating,
   formatRatingCount,
   formatWalkTime,
+  historyTag,
   opensLabel,
   liveOpenNow,
   openUntilLabel,
@@ -152,6 +153,19 @@ describe('storyHook', () => {
     expect(storyHook('Cutty Sark (/ˌkʌti ˈsɑːrk/) is a British clipper ship. Built in 1869.')).toBe(
       'Cutty Sark is a British clipper ship.'
     );
+  });
+});
+
+describe('historyTag', () => {
+  test('reads the record, never invents', () => {
+    expect(historyTag('The palace was demolished in the 17th century.')).toBe(
+      'No longer standing'
+    );
+    expect(historyTag('The theatre building was torn down for the railway.')).toBe(
+      'No longer standing'
+    );
+    expect(historyTag('A nuclear reactor ran here until 1996.')).toBe('Hidden history');
+    expect(historyTag(undefined)).toBe('Hidden history');
   });
 });
 

@@ -43,6 +43,12 @@ export async function GET(request: Request) {
   }
   const center = { latitude: lat, longitude: lng };
 
+  // The photo verdict routes, it doesn't delete: the client puts
+  // subject-photo stories in Nearby (findable on arrival — Edd's rule)
+  // and the rest in the History archive. The server ships everything.
+  const respond = (items: Awaited<ReturnType<typeof dressWithPhotos>>) =>
+    Response.json({ items });
+
   const key = bucketKey(lat, lng);
   if (!fresh) {
     const cached = listCache.get(key);
@@ -50,9 +56,9 @@ export async function GET(request: Request) {
       // Re-dress from the photo cache only (zero lookups): background
       // lookups that finished since the list was cached land here
       const items = await dressWithPhotos(cached.items, undefined, undefined, 0, 0);
-      // …and quietly warm the still-bare tail for the next request
+      // …and quietly warm the still-unverdicted tail for the next request
       void dressWithPhotos(cached.items).catch(() => {});
-      return Response.json({ items });
+      return respond(items);
     }
   }
 
@@ -88,7 +94,7 @@ export async function GET(request: Request) {
     // (the deep tail warms up across requests), so length ≠ load time
     const items = await dressWithPhotos(told.slice(0, 150));
     listCache.set(key, { items, at: Date.now() });
-    return Response.json({ items });
+    return respond(items);
   } catch (error) {
     console.error('History lookup failed:', error);
     return Response.json({ error: 'History lookup failed' }, { status: 502 });

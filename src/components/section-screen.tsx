@@ -16,11 +16,14 @@ import { HistoryCard } from '@/components/history-card';
 import { LocationPriming } from '@/components/location-priming';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { WalkBar } from '@/components/walk-bar';
 import { Spacing } from '@/constants/theme';
 import { useAreaName } from '@/hooks/use-area-name';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
+import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
+import { historyTag } from '@/utils/format';
 import { Coordinates, FallbackCoordinates } from '@/utils/geo';
 
 /**
@@ -67,8 +70,13 @@ export type GateProps = {
   onManualCenter: (center: Coordinates) => void;
 };
 
-/** NEARBY over the area name with the locator dot. */
-function SectionHeader({ center, locationDenied, onManualCenter }: GateProps) {
+/** The eyebrow over the area name with the locator dot. */
+function SectionHeader({
+  center,
+  locationDenied,
+  onManualCenter,
+  eyebrow,
+}: GateProps & { eyebrow: string }) {
   const [searchText, setSearchText] = useState('');
   const areaName = useAreaName(center);
   const theme = useTheme();
@@ -93,7 +101,7 @@ function SectionHeader({ center, locationDenied, onManualCenter }: GateProps) {
   return (
     <View style={styles.header}>
       <ThemedText type="eyebrow" themeColor="textSecondary">
-        Nearby
+        {eyebrow}
       </ThemedText>
       <View style={styles.titleRow}>
         <View style={styles.titleGroup}>
@@ -130,8 +138,9 @@ export function StoriesScreen() {
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <SectionHeader {...gate} />
-            <HistoryBody center={gate.center} />
+            <SectionHeader {...gate} eyebrow="Nearby" />
+            <HistoryBody center={gate.center} mode="nearby" />
+            <WalkBar />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -139,10 +148,34 @@ export function StoriesScreen() {
   );
 }
 
-export function HistoryBody({ center }: { center: Coordinates }) {
+/** The archive: what happened here, photo optional (Edd's split). */
+export function HistoryArchiveScreen() {
+  return (
+    <LocationGate>
+      {(gate) => (
+        <ThemedView style={styles.container}>
+          <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <SectionHeader {...gate} eyebrow="History" />
+            <HistoryBody center={gate.center} mode="archive" />
+            <WalkBar />
+          </SafeAreaView>
+        </ThemedView>
+      )}
+    </LocationGate>
+  );
+}
+
+export function HistoryBody({
+  center,
+  mode,
+}: {
+  center: Coordinates;
+  mode: 'nearby' | 'archive';
+}) {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
+  const walkStops = usePlan();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -171,28 +204,48 @@ export function HistoryBody({ center }: { center: Coordinates }) {
     );
   }
 
+  // The photo verdict routes: subject-photo stories are findable
+  // (Nearby); the rest are the archive of what happened here (History)
+  const items =
+    mode === 'nearby'
+      ? state.items.filter((item) => item.thumbnailUrl)
+      : state.items.filter((item) => !item.thumbnailUrl);
+  const vanished =
+    mode === 'archive'
+      ? items.filter((item) => historyTag(item.extract) === 'No longer standing').length
+      : 0;
+
   return (
     <>
-      {state.items.length > 0 && (
+      {items.length > 0 && (
         <View style={styles.controlLine}>
           <ThemedText type="small" themeColor="textSecondary">
-            {state.items.length} {state.items.length === 1 ? 'story' : 'stories'} within a walk
+            {mode === 'nearby'
+              ? `${items.length} ${items.length === 1 ? 'story' : 'stories'} within a walk`
+              : `${items.length} ${items.length === 1 ? 'story' : 'stories'} of this ground` +
+                (vanished > 0 ? ` · ${vanished} no longer standing` : '')}
           </ThemedText>
         </View>
       )}
       <FlatList
-        data={state.items}
+        data={items}
         keyExtractor={(item) => String(item.pageId)}
         renderItem={({ item }) => <HistoryCard item={item} />}
         // The deep feed can run to ~150 stories — render the first
         // screenful fast and let virtualisation handle the rest
         initialNumToRender={8}
-        contentContainerStyle={[styles.list, { paddingBottom: Spacing.four + insets.bottom }]}
+        contentContainerStyle={[
+          styles.list,
+          // Room for the walk bar riding above the tab bar
+          { paddingBottom: Spacing.four + insets.bottom + (walkStops.length > 0 ? 64 : 0) },
+        ]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-            No recorded history right here — wander a little.
+            {mode === 'nearby'
+              ? 'No recorded history right here — wander a little.'
+              : 'Nothing hidden here that the records know of.'}
           </ThemedText>
         }
       />
