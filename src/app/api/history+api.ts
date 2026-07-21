@@ -1,4 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { fixturesEnabled, readFixture } from '@/server/fixtures';
 import { dressWithPhotos } from '@/server/geograph';
 import {
   enrichStandaloneListed,
@@ -35,6 +36,15 @@ function bucketKey(lat: number, lng: number): string {
 }
 
 export async function GET(request: Request) {
+  // Hermetic E2E: recorded Greenwich payload regardless of coords
+  // (CI pins the simulator there) — runner IPs get 429'd upstream
+  if (fixturesEnabled()) {
+    const fixture = readFixture<{ items: HistoryItem[] }>('history');
+    if (fixture) {
+      return Response.json(fixture);
+    }
+  }
+
   const url = new URL(request.url);
   const latParam = url.searchParams.get('lat');
   const lngParam = url.searchParams.get('lng');
