@@ -191,10 +191,131 @@ describe('persistedMap corruption and failure tolerance', () => {
   });
 
   test('a failing storage layer never surfaces to callers', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('disk full'));
     const map = persistedMap<string>('failing', HourMs);
     map.set('k', 'v');
     await expect(map.flush()).resolves.toBeUndefined(); // swallowed
     expect(map.get('k')).toBe('v'); // in-memory service unaffected
+    warn.mockRestore();
+  });
+
+  test('a dead store warns once per session — visible in dev, never a throw', async () => {
+    // The Android 6MB-ceiling failure mode: every setItem throws and
+    // persistence is silently gone. One console.warn makes it visible.
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    (AsyncStorage.setItem as jest.Mock)
+      .mockRejectedValueOnce(new Error('SQLITE_FULL'))
+      .mockRejectedValueOnce(new Error('SQLITE_FULL'));
+
+    const map = persistedMap<string>('dead', HourMs);
+    map.set('a', '1');
+    await map.flush();
+    map.set('b', '2');
+    await map.flush();
+
+    const deadStoreWarns = warn.mock.calls.filter((call) =>
+      String(call[0]).includes("write-back failed for 'dead'")
+    );
+    expect(deadStoreWarns).toHaveLength(1); // once, not per write
+    expect(map.get('b')).toBe('2'); // in-memory service unaffected
+    warn.mockRestore();
+  });
+});
+
+/**
+ * The size bound, sibling of the age bound above: Android's
+ * AsyncStorage ships a ~6MB ceiling, and an uncapped feed store was
+ * measured killing persistence after ~50 walked buckets. Oldest-written
+ * entries leave first once a capped map is over its maxEntries.
+ */
+describe('persistedMap LRU cap', () => {
+  test('set evicts the oldest-written entry beyond the cap', async () => {
+    const now = jest.spyOn(Date, 'now');
+    const base = 1_700_000_000_000;
+    now.mockReturnValue(base);
+    const map = persistedMap<string>('cap', HourMs, { maxEntries: 2 });
+    await map.hydrated;
+
+    map.set('first', 'oldest');
+    now.mockReturnValue(base + 1000);
+    map.set('second', 'newer');
+    now.mockReturnValue(base + 2000);
+    map.set('third', 'newest'); // over cap — 'first' must go
+
+    expect(map.get('first')).toBeUndefined();
+    expect(map.get('second')).toBe('newer');
+    expect(map.get('third')).toBe('newest');
+
+    await map.flush();
+    const onDisk = new Map(JSON.parse(raw()['cache-cap-v1']) as [string, { value: string }][]);
+    expect(onDisk.size).toBe(2); // the cap holds on disk too
+    expect(onDisk.has('first')).toBe(false);
+    now.mockRestore();
+  });
+
+  test('hydrating an over-cap legacy store trims to the cap, oldest first', async () => {
+    raw()['cache-cap2-v1'] = JSON.stringify([
+      ['old', { value: 'from last month', at: Date.now() - 3000 }],
+      ['mid', { value: 'yesterday', at: Date.now() - 2000 }],
+      ['new', { value: 'just now', at: Date.now() }],
+    ]);
+    const map = persistedMap<string>('cap2', HourMs, { maxEntries: 2 });
+    await map.hydrated;
+
+    expect(map.peek('old')).toBeUndefined(); // evicted on arrival
+    expect(map.peek('mid')?.value).toBe('yesterday');
+    expect(map.peek('new')?.value).toBe('just now');
+  });
+});
+
+/**
+ * The fold-once invariant (see the module header): each named map is a
+ * process singleton and RN runs one app process, so foreign writes can
+ * only surface at the hydration boundary. The first write-back folds
+ * storage in; every later one skips the whole-store getItem+parse —
+ * that parse was measured at ~100-170ms of phone JS thread per
+ * debounced write while walking.
+ */
+describe('persistedMap fold-once', () => {
+  function getItemCallsFor(storageKey: string): number {
+    return (AsyncStorage.getItem as jest.Mock).mock.calls.filter(
+      (call) => call[0] === storageKey
+    ).length;
+  }
+
+  test('the whole-store re-read happens on the first write-back only', async () => {
+    const map = persistedMap<string>('fold', HourMs);
+    await map.hydrated;
+    const afterHydration = getItemCallsFor('cache-fold-v1');
+
+    map.set('a', '1');
+    await map.flush();
+    expect(getItemCallsFor('cache-fold-v1')).toBe(afterHydration + 1); // the one fold
+
+    map.set('b', '2');
+    await map.flush();
+    map.set('c', '3');
+    await map.flush();
+    expect(getItemCallsFor('cache-fold-v1')).toBe(afterHydration + 1); // never again
+
+    // And nothing was lost to the skipped folds
+    const onDisk = new Map(JSON.parse(raw()['cache-fold-v1']) as [string, { value: string }][]);
+    expect([...onDisk.keys()].sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  test('a write-back racing hydration still folds the persisted entries in', async () => {
+    // Set + flush immediately, without awaiting hydration — the flush
+    // must not clobber last session's entries with just its own.
+    raw()['cache-race-v1'] = JSON.stringify([
+      ['last-session', { value: 'persisted before this process', at: Date.now() }],
+    ]);
+    const map = persistedMap<string>('race', HourMs);
+    map.set('this-session', 'written before hydration resolved');
+    await map.flush();
+
+    const onDisk = new Map(JSON.parse(raw()['cache-race-v1']) as [string, { value: string }][]);
+    expect(onDisk.get('last-session')?.value).toBe('persisted before this process');
+    expect(onDisk.get('this-session')?.value).toBe('written before hydration resolved');
   });
 });

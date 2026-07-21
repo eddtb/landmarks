@@ -11,16 +11,17 @@ const HourMs = 60 * 60 * 1000;
  * a quiet corner and widened the Wikipedia search to fill it. */
 export type HistoryFeed = { items: HistoryItem[]; sparse?: boolean };
 
-// Same session-cache pattern as the places list: keyed on an ~11m grid,
-// individual items kept for the detail screen. Both persist across
-// process death (see persisted-cache.ts) BY THE SAME KEYS — the ~11m
-// bucket keying is what makes persistence safe: movement always lands
-// in a different bucket, so a stored list can never be served for the
-// wrong location. TTLs govern re-asking about the SAME spot: the list
-// mirrors the server's 1h bucket-staleness intent; an older persisted
-// bucket is only ever a placeholder (serve-stale-while-revalidate) or
-// an offline fallback, never a quiet substitute. Items are content by
-// pageId (not location-served), kept a week for the detail screen.
+// Same session-cache pattern as the places list: keyed on the server's
+// own ~111m grid (3 dp — see cacheKey), individual items kept for the
+// detail screen. Both persist across process death (see
+// persisted-cache.ts) BY THE SAME KEYS — the bucket keying is what
+// makes persistence safe: movement always lands in a different bucket,
+// so a stored list can never be served for the wrong location. TTLs
+// govern re-asking about the SAME spot: the list mirrors the server's
+// 1h bucket-staleness intent; an older persisted bucket is only ever a
+// placeholder (serve-stale-while-revalidate) or an offline fallback,
+// never a quiet substitute. Items are content by pageId (not
+// location-served), kept a week for the detail screen.
 //
 // The list persists the whole HistoryFeed — sparse metadata WITH the
 // items — so a cache-served or offline-stale feed for a quiet village
@@ -28,11 +29,30 @@ export type HistoryFeed = { items: HistoryItem[]; sparse?: boolean };
 // the earlier 'history-list'): the cached-shape ruling from the
 // sparse-area change applies to persisted entries identically — a
 // bare-array entry predates sparse and must not replay as a feed.
-const listCache = persistedMap<HistoryFeed>('history-feed', HourMs);
-const itemCache = persistedMap<HistoryItem>('history-item', 7 * 24 * HourMs);
+//
+// Caps (see persisted-cache's maxEntries): 8 feed buckets is a whole
+// walk's worth at 3 dp (~900m of latitude each) while one ~124KB
+// Greenwich-sized feed × 8 stays well under Android AsyncStorage's
+// ~6MB ceiling; 500 items keeps several walks of detail-screen
+// material at ~2KB apiece for ~1MB worst case.
+const FeedBucketCap = 8;
+const ItemCap = 500;
+const listCache = persistedMap<HistoryFeed>('history-feed', HourMs, {
+  maxEntries: FeedBucketCap,
+});
+const itemCache = persistedMap<HistoryItem>('history-item', 7 * 24 * HourMs, {
+  maxEntries: ItemCap,
+});
 
+// 3 dp ≈ 111m of latitude — the server's own bucket (src/app/api/
+// history+api.ts), mirrored so walking mints a new client bucket
+// exactly when the server would mint a new answer. (Was 4 dp ≈ 11m: finer than
+// the ~10m GPS tick, so every tick minted a bucket — ~90/km, each
+// persisting a full ~124KB feed.) Old 4 dp entries can't collide with
+// these keys — toFixed(3) and toFixed(4) render disjoint strings — so
+// they're simply never hit again and age out via the 2×TTL prune.
 function cacheKey(center: Coordinates): string {
-  return `${center.latitude.toFixed(4)}|${center.longitude.toFixed(4)}`;
+  return `${center.latitude.toFixed(3)}|${center.longitude.toFixed(3)}`;
 }
 
 export type HistoryFetchResult = HistoryFeed & {
@@ -57,7 +77,11 @@ export async function fetchNearbyHistory(
       cached = listCache.get(key);
     }
     if (cached) {
-      return { ...cached };
+      // The stored object itself, not a copy: a repeated hit for the
+      // same bucket returns the IDENTICAL result, so useHistory can
+      // bail its setState on reference equality. Nothing mutates
+      // results downstream — keep it that way.
+      return cached;
     }
 
     // An expired bucket for this exact spot paints instantly while the
@@ -98,7 +122,7 @@ async function fetchFresh(
     for (const item of body.items) {
       itemCache.set(String(item.pageId), item);
     }
-    return { ...feed };
+    return feed; // same object the cache holds — see the cache-hit note
   } catch (error) {
     // Offline path: saved stories for this exact bucket (even expired)
     // beat a spinner in a dead zone — sparse honesty riding along. Only

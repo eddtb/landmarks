@@ -30,25 +30,26 @@ const HourMs = 60 * 60 * 1000;
 
 // Seed "last session's" persisted buckets BEFORE the client module
 // loads — its caches hydrate at import, so this is the app relaunching
-// after a force-quit. Keys are the client's own ~11m grid buckets;
-// values are whole feeds (items plus sparse metadata).
+// after a force-quit. Keys are the client's own ~111m (3 dp — the
+// server's own grid) buckets; values are whole feeds (items plus
+// sparse metadata).
 const store = (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> })
   .__INTERNAL_MOCK_STORAGE__;
 store['cache-history-feed-v1'] = JSON.stringify([
   [
-    '50.1000|-0.0900',
+    '50.100|-0.090',
     { value: { items: [persistedItem(1, 'Persisted Fresh')] }, at: Date.now() },
   ],
   [
-    '50.2000|-0.0900',
+    '50.200|-0.090',
     { value: { items: [persistedItem(2, 'Persisted Stale')] }, at: Date.now() - 2 * HourMs },
   ],
   [
-    '50.3000|-0.0900',
+    '50.300|-0.090',
     { value: { items: [persistedItem(3, 'Persisted Offline')] }, at: Date.now() - 2 * HourMs },
   ],
   [
-    '50.4000|-0.0900',
+    '50.400|-0.090',
     {
       value: { items: [persistedItem(4, 'Persisted Sparse Village')], sparse: true },
       at: Date.now() - 2 * HourMs,
@@ -226,5 +227,38 @@ describe('fetchStory', () => {
     mockFetch.mockResolvedValue({ ok: false, status: 502 });
 
     await expect(fetchStory(4244)).rejects.toThrow('502');
+  });
+});
+
+// These mint fresh feed buckets, and the feed cache caps at 8 — they
+// run LAST so any eviction lands after the persistence assertions above.
+describe('fetchNearbyHistory bucket grain (the walking-tick fix)', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  test("4th-decimal GPS jitter lands in one 3 dp bucket — one fetch, the server's own grain", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [item] }) });
+    const base = freshCenter();
+
+    await fetchNearbyHistory(base);
+    // ~30m of drift: below the ~111m bucket, previously a fresh ~124KB
+    // fetch (4 dp buckets were ~11m — finer than the ~10m GPS tick)
+    await fetchNearbyHistory({
+      latitude: base.latitude + 0.0004,
+      longitude: base.longitude + 0.0003,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('a repeated bucket hit returns the identical result object', async () => {
+    // The reference useHistory's setState bail hangs on: same bucket,
+    // same object — not a fresh spread per tick
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [item] }) });
+    const center = freshCenter();
+
+    const first = await fetchNearbyHistory(center);
+    const second = await fetchNearbyHistory(center);
+
+    expect(second).toBe(first);
   });
 });

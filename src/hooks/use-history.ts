@@ -14,22 +14,40 @@ export function useHistory(center: Coordinates): {
   refresh: () => Promise<void>;
 } {
   const [state, setState] = useState<HistoryState>({ status: 'loading' });
-  const { latitude, longitude } = center;
+  // Quantized to the server's own 3 dp bucket (~111m): GPS ticks every
+  // ~10m, and effect deps finer than the bucket refired a whole feed
+  // fetch per tick. The raw center never enters this hook — it keeps
+  // flowing to standing-on/distance labels in the components untouched.
+  const latitude = Number(center.latitude.toFixed(3));
+  const longitude = Number(center.longitude.toFixed(3));
   const requestId = useRef(0);
 
   // An expired persisted bucket paints instantly as a placeholder; the
   // fresh answer (or the offline-stale flag) follows when it lands.
   // Both honesty flags ride through: sparse (the server looked further)
   // and stale (a network failure forced serving saved stories).
+  //
+  // Same answer, same state: a repeated bucket hit returns the cache's
+  // own result object (see history-client), so identical items + flags
+  // bail out of setState instead of re-rendering the feed every tick.
   const applyResult = useCallback(async (id: number, result: HistoryFetchResult) => {
+    const apply = (next: HistoryFetchResult) =>
+      setState((prev) =>
+        prev.status === 'ready' &&
+        prev.items === next.items &&
+        prev.sparse === next.sparse &&
+        prev.stale === next.stale
+          ? prev
+          : { status: 'ready', items: next.items, sparse: next.sparse, stale: next.stale }
+      );
     if (id === requestId.current) {
-      setState({ status: 'ready', items: result.items, sparse: result.sparse, stale: result.stale });
+      apply(result);
     }
     if (result.revalidate) {
       try {
         const fresh = await result.revalidate;
         if (id === requestId.current) {
-          setState({ status: 'ready', items: fresh.items, sparse: fresh.sparse, stale: fresh.stale });
+          apply(fresh);
         }
       } catch {
         // Nothing newer to show — the placeholder stands
