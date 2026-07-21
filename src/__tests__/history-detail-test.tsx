@@ -80,6 +80,29 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
   });
 
+  test('a plaque with a resolved subject opens the SUBJECT gazetteer, inscription in view', async () => {
+    cacheHistoryItems([
+      {
+        pageId: 3000031040,
+        title: 'Deptford Creek. This is the mouth of the River…',
+        coordinates: { latitude: 51.4814, longitude: -0.01613 },
+        distanceMeters: 200,
+        extract: 'Deptford Creek. This is the mouth of the River Ravensbourne, first bridged in 1804.',
+        url: 'https://openplaques.org/plaques/31040',
+        source: 'Open Plaques',
+        subject: 'River Ravensbourne',
+      },
+    ]);
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '3000031040' });
+    await render(<HistoryDetailScreen />);
+
+    // The hero tells the SUBJECT's story, not the inscription's
+    expect(await screen.findByText('River Ravensbourne')).toBeOnTheScreen();
+    // The plaque itself stays in view — primary source on the ground
+    expect(screen.getByText('The plaque reads')).toBeOnTheScreen();
+    expect(screen.getByText(/first bridged in 1804/)).toBeOnTheScreen();
+  });
+
   test('handles unknown pages gracefully', async () => {
     mockUseLocalSearchParams.mockReturnValue({ pageId: '999' });
     await render(<HistoryDetailScreen />);

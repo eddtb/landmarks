@@ -18,4 +18,8 @@ export type HistoryItem = {
   /** A structured existence fact from Wikidata — "Demolished 1936",
    * "Until 1675", "Former hospital" — or absent: honest silence. */
   pastTag?: string;
+  /** A plaque's resolved subject when the feed already tells that
+   * story under its own card: the story screen opens the subject's
+   * Gazetteer while the card keeps the honest inscription. */
+  subject?: string;
 };
