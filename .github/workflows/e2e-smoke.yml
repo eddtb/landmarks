@@ -77,6 +77,10 @@ jobs:
           # Without this the app boots into the permission prompt and
           # nothing renders (first CI run's failure mode)
           xcrun simctl privacy booted grant location com.eddtb.landmarks
+          # A fresh install shows the dev menu's one-time onboarding
+          # sheet over the whole app (run 7: everything rendered, the
+          # welcome mat blocked the assertion) — mark it already seen
+          xcrun simctl spawn booted defaults write com.eddtb.landmarks EXDevMenuIsOnboardingFinished -bool true
 
       # CI runs the smoke flow ONLY — deliberately, not silently.
       # E2E_FIXTURES now satisfies the data dependencies the wider
