@@ -29,6 +29,11 @@ appId: com.eddtb.landmarks
     timeout: 45000
 
 # Open the first story and expect the story screen
+# CI runners are slow: run 8's tap landed mid-settle (images decoding,
+# layout moving) and was swallowed — the app never navigated. Let the
+# frame settle first.
+- waitForAnimationToEnd:
+    timeout: 5000
 - tapOn:
     id: 'history-card'
     index: 0
