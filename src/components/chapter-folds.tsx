@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -9,16 +9,9 @@ import { useTheme } from '@/hooks/use-theme';
 /**
  * The fold list (mock direction B, now shared): chapters collapsed to
  * heading + first-line peek, tap to unfold, several open at once.
- * Story screens and the Gazetteer both read through this; `interleave`
- * lets the Gazetteer thread the article's images between folds.
+ * Story screens and the Gazetteer both read through this.
  */
-export function ChapterFolds({
-  chapters,
-  interleave,
-}: {
-  chapters: ArticleChapter[];
-  interleave?: (index: number) => ReactNode;
-}) {
+export function ChapterFolds({ chapters }: { chapters: ArticleChapter[] }) {
   const theme = useTheme();
   const [open, setOpen] = useState<Set<number>>(new Set([0]));
 
@@ -39,8 +32,9 @@ export function ChapterFolds({
       {chapters.map((chapter, index) => {
         const isOpen = open.has(index);
         return (
-          <View key={`${index}-${chapter.title}`}>
-            <View style={[styles.fold, { borderTopColor: theme.backgroundElement }]}>
+          <View
+            key={`${index}-${chapter.title}`}
+            style={[styles.fold, { borderTopColor: theme.backgroundElement }]}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${isOpen ? 'Collapse' : 'Expand'} ${chapter.title}`}
@@ -65,8 +59,6 @@ export function ChapterFolds({
                     {paragraph}
                   </ThemedText>
                 ))}
-            </View>
-            {interleave?.(index)}
           </View>
         );
       })}
