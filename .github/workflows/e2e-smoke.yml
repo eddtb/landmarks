@@ -42,9 +42,9 @@ jobs:
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
 
-      - name: Build and install the dev app on a simulator
-        run: npx expo run:ios --no-bundler
-
+      # Metro comes up FIRST: run 4 built clean in 25 minutes, then
+      # died at the final step — expo run:ios auto-opens the app
+      # pointed at Metro, which didn't exist yet (exit 60, timeout)
       - name: Start Metro (replay-only — no AI call can bill from CI)
         run: |
           REPLAY_ONLY=1 npx expo start --port 8081 &> metro.log &
@@ -59,11 +59,14 @@ jobs:
       # Metro's first bundle on a cold runner takes minutes — run 3
       # died on the splash at "Bundling 52%" while the flow's timeout
       # expired. Bundle BEFORE the flow starts so its waits measure
-      # the app, not the bundler.
+      # the app, not the bundler. (It also warms while xcodebuild runs.)
       - name: Pre-warm the JS bundle
         run: |
           time curl -sf -o /dev/null --max-time 600 \
             "http://localhost:8081/index.bundle?platform=ios&dev=true"
+
+      - name: Build and install the dev app on a simulator
+        run: npx expo run:ios --no-bundler
 
       - name: Pin the simulator to Greenwich and grant location
         run: |
