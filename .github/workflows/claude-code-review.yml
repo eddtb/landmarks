@@ -3,6 +3,12 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+
+# A force-push obsoletes the running review — kill it rather than
+# spend a review invocation on a commit that no longer exists
+concurrency:
+  group: review-${{ github.ref }}
+  cancel-in-progress: true
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
