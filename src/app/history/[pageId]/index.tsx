@@ -144,7 +144,7 @@ export default function HistoryDetailScreen() {
                 primary source you are physically standing at */}
             {item.source.startsWith('Open Plaques') && item.extract && (
               <View style={styles.inscription}>
-                <ThemedText type="eyebrow" themeColor="accent">
+                <ThemedText type="eyebrow" themeColor="textSecondary">
                   The plaque reads
                 </ThemedText>
                 <ThemedText type="default">{item.extract}</ThemedText>

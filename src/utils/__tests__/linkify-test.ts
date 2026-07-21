@@ -1,4 +1,4 @@
-import { linkifyParagraph } from '@/utils/linkify';
+import { linkifyParagraph, planStoryLinks } from '@/utils/linkify';
 
 const candidates = [
   { title: 'Palace of Placentia', pageId: 1 },
@@ -36,5 +36,41 @@ describe('linkifyParagraph (the web of history)', () => {
   test('matching is case-insensitive but keeps the prose spelling', () => {
     const segments = linkifyParagraph('the palace of placentia was grand.', candidates);
     expect(segments.find((segment) => segment.pageId === 1)?.text).toBe('palace of placentia');
+  });
+});
+
+describe('planStoryLinks (a door opens once per story)', () => {
+  const parts = [
+    ['Henry was born at the Palace of Placentia.', 'The Liberty of the Clink lay south.'],
+    ['The Palace of Placentia grew.', 'Prisoners filled the Liberty of the Clink.'],
+    ['The Palace of Placentia fell.'],
+  ];
+
+  test('each title is allowed only at its FIRST mention across the whole story', () => {
+    const plan = planStoryLinks(parts, candidates);
+    expect(plan[0][0].map((c) => c.pageId)).toEqual([1]); // Placentia: part 1, para 1
+    // Both Clink titles first-match here (one contains the other) —
+    // the render layer's longest-first pass keeps only one door
+    expect(plan[0][1].map((c) => c.pageId)).toEqual([2, 4]);
+    expect(plan[1][0]).toEqual([]); // later mentions are prose, not doors
+    expect(plan[1][1]).toEqual([]);
+    expect(plan[2][0]).toEqual([]);
+  });
+
+  test('overlapping planned titles still render as a single door', () => {
+    const plan = planStoryLinks(parts, candidates);
+    const segments = linkifyParagraph(parts[0][1], plan[0][1]);
+    expect(segments.filter((segment) => segment.pageId !== undefined)).toHaveLength(1);
+    expect(segments.find((segment) => segment.pageId === 2)?.text).toBe('Liberty of the Clink');
+  });
+
+  test('one-word titles never enter the plan', () => {
+    const plan = planStoryLinks([['Greenwich everywhere.']], candidates);
+    expect(plan[0][0]).toEqual([]);
+  });
+
+  test('the plan is shaped like the story even when nothing matches', () => {
+    const plan = planStoryLinks([['nothing here'], ['or here', 'or here']], candidates);
+    expect(plan).toEqual([[[]], [[], []]]);
   });
 });
