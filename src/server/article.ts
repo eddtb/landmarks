@@ -1,4 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { CommonsPage, creditLine } from '@/server/commons';
 import { storyParagraphs } from '@/utils/format';
 
 /**
@@ -11,7 +12,8 @@ import { storyParagraphs } from '@/utils/format';
 const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
 
 export type ArticleChapter = { title: string; paragraphs: string[] };
-export type Article = { chapters: ArticleChapter[]; minutes: number };
+export type ArticleImage = { imageUrl: string; credit: string };
+export type Article = { chapters: ArticleChapter[]; minutes: number; images: ArticleImage[] };
 
 // The reference apparatus reads as junk in a reading app
 const JunkSections = new Set([
@@ -31,7 +33,7 @@ const JunkSections = new Set([
 const ReadingWordsPerMinute = 230;
 
 /** Pure and unit-tested: wiki-format plaintext → chapters. */
-export function parseArticle(text: string): Article {
+export function parseArticle(text: string): Omit<Article, 'images'> {
   const blocks: { title: string; depth: number; lines: string[] }[] = [
     { title: '', depth: 2, lines: [] },
   ];
@@ -79,8 +81,80 @@ export function parseArticle(text: string): Article {
   return { chapters, minutes: Math.max(1, Math.round(words / ReadingWordsPerMinute)) };
 }
 
+/**
+ * The article's OWN illustrations — never guessed, so a station can't
+ * moonlight as a theatre here. media-list gives the files; one batched
+ * Commons lookup gives 800px renditions and honest credits. Diagrams,
+ * maps, flags and heraldry are reading furniture, not photographs.
+ */
+const NoiseFilePattern = /\.svg$|\bmaps?\b|logo|icon|flag|coat[_ ]of[_ ]arms|locator|banner|montage/i;
+
+export function pickImageFiles(titles: string[], limit = 8): string[] {
+  const picked: string[] = [];
+  for (const title of titles) {
+    if (!NoiseFilePattern.test(title) && !picked.includes(title)) {
+      picked.push(title);
+    }
+    if (picked.length >= limit) {
+      break;
+    }
+  }
+  return picked;
+}
+
+async function fetchArticleImages(title: string): Promise<ArticleImage[]> {
+  const mediaResponse = await fetch(
+    `https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(title)}`,
+    { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(5000) }
+  );
+  if (!mediaResponse.ok) {
+    return [];
+  }
+  const media = (await mediaResponse.json()) as {
+    items?: { type?: string; title?: string; srcset?: unknown[] }[];
+  };
+  const files = pickImageFiles(
+    (media.items ?? [])
+      .filter((item) => item.type === 'image' && item.srcset?.length && item.title)
+      .map((item) => item.title!)
+  );
+  if (files.length === 0) {
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    titles: files.join('|'),
+    prop: 'imageinfo',
+    iiprop: 'url|extmetadata',
+    iiurlwidth: '800',
+  });
+  const infoResponse = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`, {
+    headers: { 'User-Agent': UserAgent },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!infoResponse.ok) {
+    return [];
+  }
+  const info = (await infoResponse.json()) as { query?: { pages?: Record<string, CommonsPage> } };
+  // Preserve the article's own ordering — the lead image leads. The
+  // API normalises underscores to spaces in response titles; match
+  // both sides normalised or every lookup silently misses.
+  const normalise = (title: string) => title.replace(/_/g, ' ');
+  const byTitle = new Map(
+    Object.values(info.query?.pages ?? {}).map((page) => [normalise(page.title ?? ''), page])
+  );
+  return files.flatMap((file) => {
+    const page = byTitle.get(normalise(file));
+    const thumburl = page?.imageinfo?.[0]?.thumburl;
+    return page && thumburl ? [{ imageUrl: thumburl, credit: creditLine(page) }] : [];
+  });
+}
+
 const ArticleTtlMs = 7 * 24 * 60 * 60 * 1000;
-const cache = diskBackedMap<{ article: Article; at: number }>('articles');
+// v2: v1 entries predate images and would serve without them for a week
+const cache = diskBackedMap<{ article: Article; at: number }>('articles-v2');
 
 export async function getArticle(title: string): Promise<Article | null> {
   const key = title.toLowerCase();
@@ -113,7 +187,8 @@ export async function getArticle(title: string): Promise<Article | null> {
     return null;
   }
 
-  const article = parseArticle(text);
+  const images = await fetchArticleImages(title).catch(() => []);
+  const article = { ...parseArticle(text), images };
   cache.set(key, { article, at: Date.now() });
   return article;
 }

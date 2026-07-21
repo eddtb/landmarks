@@ -1,25 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { ChapterFolds } from '@/components/chapter-folds';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { Article, fetchArticle } from '@/data/article-client';
-import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { wikiTitleFromUrl } from '@/utils/format';
 
 /**
- * The full story, folded (mock direction B): every chapter shows its
- * heading and opening line; tap to unfold the ones you care about.
- * The first chapter arrives open — an invitation, not an index. Only
+ * The full story, folded (mock direction B): fetches the story's own
+ * article and hands the chapters to the shared fold list. Only
  * stories with a Wikipedia article fold out; a plaque's inscription
  * IS its whole story.
  */
 export function StoryFolds({ item }: { item: HistoryItem }) {
-  const theme = useTheme();
   const title = wikiTitleFromUrl(item.url);
   const [article, setArticle] = useState<Article | null>(null);
-  const [open, setOpen] = useState<Set<number>>(new Set([0]));
 
   useEffect(() => {
     if (!title) {
@@ -47,56 +44,12 @@ export function StoryFolds({ item }: { item: HistoryItem }) {
     return null;
   }
 
-  const toggle = (index: number) => {
-    setOpen((current) => {
-      const next = new Set(current);
-      if (next.has(index)) {
-        next.delete(index);
-      } else {
-        next.add(index);
-      }
-      return next;
-    });
-  };
-
   return (
     <View>
       <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.header}>
         The full story · {article.minutes} min read
       </ThemedText>
-      {chapters.map((chapter, index) => {
-        const isOpen = open.has(index);
-        return (
-          <View
-            key={`${index}-${chapter.title}`}
-            style={[styles.fold, { borderTopColor: theme.backgroundElement }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${isOpen ? 'Collapse' : 'Expand'} ${chapter.title}`}
-              onPress={() => toggle(index)}>
-              <View style={styles.foldHead}>
-                <ThemedText type="headline" style={styles.foldTitle} numberOfLines={1}>
-                  {chapter.title}
-                </ThemedText>
-                <ThemedText type="smallBold" themeColor="accent">
-                  {isOpen ? '⌄' : '›'}
-                </ThemedText>
-              </View>
-              {!isOpen && (
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                  {chapter.paragraphs[0]}
-                </ThemedText>
-              )}
-            </Pressable>
-            {isOpen &&
-              chapter.paragraphs.map((paragraph, paragraphIndex) => (
-                <ThemedText key={paragraphIndex} type="default" style={styles.para}>
-                  {paragraph}
-                </ThemedText>
-              ))}
-          </View>
-        );
-      })}
+      <ChapterFolds chapters={chapters} />
     </View>
   );
 }
@@ -104,21 +57,5 @@ export function StoryFolds({ item }: { item: HistoryItem }) {
 const styles = StyleSheet.create({
   header: {
     marginBottom: Spacing.two,
-  },
-  fold: {
-    borderTopWidth: 1,
-    paddingVertical: Spacing.three,
-    gap: Spacing.one,
-  },
-  foldHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-  },
-  foldTitle: {
-    flex: 1,
-  },
-  para: {
-    marginTop: Spacing.two,
   },
 });

@@ -3,7 +3,8 @@ import { fetch } from 'expo/fetch';
 import { apiUrl } from '@/data/api';
 
 export type ArticleChapter = { title: string; paragraphs: string[] };
-export type Article = { chapters: ArticleChapter[]; minutes: number };
+export type ArticleImage = { imageUrl: string; credit: string };
+export type Article = { chapters: ArticleChapter[]; minutes: number; images: ArticleImage[] };
 
 const articleCache = new Map<string, Article>();
 const metaCache = new Map<string, number>();
