@@ -28,6 +28,15 @@ jobs:
 
       - run: npm ci
 
+      # The runner defaults to an older Xcode; SDK 56 needs the iOS 26
+      # toolchain. Exit 65 with "0 error(s)" is this mismatch's tell.
+      - name: Select the newest Xcode on the image
+        run: |
+          ls -d /Applications/Xcode*.app
+          NEWEST="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$NEWEST"
+          xcodebuild -version
+
       - name: Install Maestro CLI
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
