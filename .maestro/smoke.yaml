@@ -56,7 +56,10 @@ appId: com.eddtb.landmarks
     end: 90%, 50%
 
 # History tab: the gazetteer hero appears
-- tapOn: 'History'
+# The floating tab pill ignores text taps intermittently (verifier's
+# observation, confirmed 2/3 local failures) — tap by position
+- tapOn:
+    point: 61%, 94%
 - extendedWaitUntil:
     visible:
       id: 'gazetteer-hero'

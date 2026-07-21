@@ -30,7 +30,12 @@ jobs:
     steps:
       - name: Update the oldest armed PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          # A fine-grained PAT, not github.token: GITHUB_TOKEN pushes
+          # trigger no workflows (anti-recursion), so chain updates
+          # produced check-less heads that auto-merge waited on forever.
+          # PAT pushes fire pull_request CI natively. Expires like the
+          # review token — the canary watches it.
+          GH_TOKEN: ${{ secrets.CHAIN_TOKEN || github.token }}
         run: |
           pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
             --json number,autoMergeRequest,createdAt \
@@ -42,10 +47,3 @@ jobs:
           echo "Advancing the chain: updating PR #$pr"
           # Already up to date is fine — auto-merge will take it from here
           gh pr update-branch "$pr" --repo "$GITHUB_REPOSITORY" || true
-          # GITHUB_TOKEN pushes trigger no workflows (anti-recursion),
-          # so the required check must be dispatched by hand — onto the
-          # PR's branch, where its runs attach to the head commit
-          branch=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json headRefName --jq .headRefName)
-          sleep 5
-          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
-          echo "Dispatched CI onto $branch"
