@@ -56,11 +56,26 @@ jobs:
           tail -50 metro.log >&2
           exit 1
 
-      - name: Pin the simulator to Greenwich
-        run: xcrun simctl location booted set 51.4826,-0.0077
+      - name: Pin the simulator to Greenwich and grant location
+        run: |
+          xcrun simctl location booted set 51.4826,-0.0077
+          # Without this the app boots into the permission prompt and
+          # nothing renders (first CI run's failure mode)
+          xcrun simctl privacy booted grant location com.eddtb.landmarks
 
+      # CI runs the smoke flow ONLY — deliberately, not silently:
+      # timeline.yaml needs the AI-retold cache (.ai-cache is
+      # gitignored and REPLAY_ONLY rightly refuses fresh calls), and
+      # lightbox.yaml needs Wikipedia/Commons images from runner IPs
+      # that upstreams rate-limit (Wikidata already 429s us). Those two
+      # flows run locally via scripts/e2e-local.sh where the caches
+      # live. CI's job is the boot-and-render spine.
       - name: Run the smoke flow
-        run: maestro test --debug-output e2e-debug .maestro/
+        run: maestro test --debug-output e2e-debug .maestro/smoke.yaml
+
+      - name: Capture the simulator screen on failure
+        if: failure()
+        run: xcrun simctl io booted screenshot sim-at-failure.png || true
 
       - name: Keep the evidence when it fails
         if: failure()
@@ -70,4 +85,5 @@ jobs:
           path: |
             e2e-debug
             metro.log
+            sim-at-failure.png
           retention-days: 14
