@@ -19,7 +19,6 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
-import { usePlan } from '@/hooks/use-plan';
 import { LinkCandidate, linkifyParagraph } from '@/utils/linkify';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
@@ -216,7 +215,6 @@ export function AreaGazetteer({
   empty?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
-  const walkStops = usePlan();
   const listRef = useRef<FlatList<GazetteerRow>>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [articleStatus, setArticleStatus] = useState<'pending' | 'ready' | 'none'>('pending');
@@ -374,7 +372,7 @@ export function AreaGazetteer({
       keyExtractor={(row) => row.key}
       renderItem={({ item: row }) => renderRow(row)}
       contentContainerStyle={{
-        paddingBottom: Spacing.four + insets.bottom + (walkStops.length > 0 ? 64 : 0),
+        paddingBottom: Spacing.four + insets.bottom,
       }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}

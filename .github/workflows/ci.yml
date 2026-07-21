@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue tests PRs on temporary branches that emit
+  # merge_group events — a required check that never runs there
+  # would block the queue forever
+  merge_group:
 
 concurrency:
   group: ci-${{ github.ref }}
