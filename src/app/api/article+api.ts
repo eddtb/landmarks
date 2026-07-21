@@ -1,4 +1,5 @@
 import { getArticle, getArticleLight } from '@/server/article';
+import { fixtureSlug, fixturesEnabled, readFixture } from '@/server/fixtures';
 
 /**
  * GET /api/article?title=Cutty%20Sark[&meta=1][&light=1]
@@ -16,6 +17,24 @@ export async function GET(request: Request) {
   const title = url.searchParams.get('title');
   if (!title) {
     return Response.json({ error: 'Expected title' }, { status: 400 });
+  }
+
+  // Hermetic E2E: recorded full article for both light=1 and default
+  // (images included is fine); missing fixture keeps today's 404
+  if (fixturesEnabled()) {
+    const fixture = readFixture<{ article: { minutes: number; chapters: unknown[] } }>(
+      `article-${fixtureSlug(title)}`
+    );
+    if (!fixture) {
+      return Response.json({ error: 'No article' }, { status: 404 });
+    }
+    if (url.searchParams.get('meta') === '1') {
+      return Response.json({
+        minutes: fixture.article.minutes,
+        chapters: fixture.article.chapters.length,
+      });
+    }
+    return Response.json(fixture);
   }
 
   try {
