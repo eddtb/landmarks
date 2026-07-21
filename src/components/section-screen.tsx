@@ -387,7 +387,7 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
         initialNumToRender={8}
         contentContainerStyle={[
           styles.list,
-          // Room for the walk bar riding above the tab bar
+          // Clear the tab bar
           { paddingBottom: Spacing.four + insets.bottom },
         ]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

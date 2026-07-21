@@ -10,7 +10,7 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
-    // The plan's drag-reorder (gesture-handler) requires this at the root
+    // The image viewer's pinch/pan (gesture-handler) requires this at the root
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
@@ -28,7 +28,6 @@ export default function RootLayout() {
           name="history/[pageId]/go"
           options={{ presentation: 'modal', headerShown: false }}
         />
-        <Stack.Screen name="walk" options={{ presentation: 'modal', headerShown: false }} />
       </Stack>
       </ThemeProvider>
     </GestureHandlerRootView>
