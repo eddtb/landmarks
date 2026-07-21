@@ -63,8 +63,8 @@ export function TellingSection({ item }: { item: HistoryItem }) {
         : status === 'error'
           ? 'Couldn’t write the telling — try again'
           : telling && speechAvailable
-            ? '🔊 Listen again'
-            : '🔊 Listen · about a minute';
+            ? 'Listen again'
+            : 'Listen · about a minute';
 
   return (
     <>
