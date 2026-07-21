@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
 
 import HistoryDetailScreen from '@/app/history/[pageId]';
+import { fetchArticle } from '@/data/article-client';
 import { cacheHistoryItems } from '@/data/history-client';
 
 const mockUseLocalSearchParams = jest.fn();
@@ -19,15 +20,17 @@ jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 jest.mock('@/data/article-client', () => ({
   fetchArticle: jest.fn(async () => ({
     minutes: 3,
+    images: [],
     chapters: [
-      { title: '', paragraphs: ['The intro, already shown as the extract.'] },
+      { title: '', paragraphs: ['The intro, the surprising true thing.'] },
       { title: 'Construction', paragraphs: ['Built by the Borough in 1791.', 'Rebuilt twice.'] },
       { title: 'Demolition', paragraphs: ['Torn down for the railway in 1855.'] },
     ],
   })),
 }));
 
-
+// No retelling in these tests: the original article stands as the story
+jest.mock('@/data/retold-client', () => ({ fetchRetold: jest.fn(async () => null) }));
 
 describe('<HistoryDetailScreen />', () => {
   beforeAll(() => {
@@ -45,26 +48,37 @@ describe('<HistoryDetailScreen />', () => {
     ]);
   });
 
-  test('renders the venue-grammar story screen', async () => {
+  test('a place with its own article gets the Gazetteer treatment', async () => {
     mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
     await render(<HistoryDetailScreen />);
 
+    // The hero leads with the place's own story
+    expect(await screen.findByText('The story of')).toBeOnTheScreen();
     expect(screen.getByText('Borough Compter')).toBeOnTheScreen();
-    // 112m at walking pace rounds to the 1-minute floor
-    expect(screen.getByText(/History · 1 min walk · Wikipedia/)).toBeOnTheScreen();
+    expect(screen.getByText(/3 min read · 3 chapters/)).toBeOnTheScreen();
+
+    // The venue grammar rides under the hero (112m rounds to the 1-min floor)
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
     expect(screen.getByText('＋ Walk')).toBeOnTheScreen();
-    expect(screen.getByText('Story')).toBeOnTheScreen();
-    expect(screen.getByText(/Listen · about a minute/)).toBeOnTheScreen();
+    expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
+
+    // No retelling exists → the original article stands as the story:
+    // intro first, then the folds (first chapter open, the rest peeking)
+    expect(await screen.findByText('The intro, the surprising true thing.')).toBeOnTheScreen();
+    expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
+    expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen();
+  });
+
+  test('a place with NO article of its own keeps the extract story', async () => {
+    (fetchArticle as jest.Mock).mockResolvedValueOnce(null);
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
+    await render(<HistoryDetailScreen />);
+
+    expect(await screen.findByText('Story')).toBeOnTheScreen();
     expect(screen.getByText(/demolished in 1855/)).toBeOnTheScreen();
     expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
-
-    // The folds (direction B): first chapter open, the rest peeking;
-    // the intro chapter never repeats as a fold
-    expect(await screen.findByText(/The full story · 3 min read/)).toBeOnTheScreen();
-    expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
-    expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen(); // the peek
-    expect(screen.queryByText('The intro, already shown as the extract.')).not.toBeOnTheScreen();
+    // The venue grammar survives the fallback
+    expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
   });
 
   test('handles unknown pages gracefully', async () => {

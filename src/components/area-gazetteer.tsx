@@ -1,7 +1,15 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChapterFolds } from '@/components/chapter-folds';
@@ -101,7 +109,7 @@ function Hero({
   article: Article;
   retold: Retold | null;
 }) {
-  const lead: ArticleImage | undefined = article.images[0];
+  const lead: ArticleImage | undefined = (article.images ?? [])[0];
   return (
     <View style={styles.hero} testID="gazetteer-hero">
       {lead && (
@@ -192,6 +200,8 @@ export function AreaGazetteer({
   allStories,
   refreshing,
   onRefresh,
+  lead,
+  empty,
 }: {
   areaName: string | null;
   relics: HistoryItem[];
@@ -199,11 +209,17 @@ export function AreaGazetteer({
   allStories: HistoryItem[];
   refreshing: boolean;
   onRefresh: () => void;
+  /** Rendered in the header under the hero — a place screen's Go row. */
+  lead?: ReactNode;
+  /** Rendered when NO article exists (never while loading) — a place
+   * screen's fallback story. Areas keep the default empty text. */
+  empty?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const walkStops = usePlan();
   const listRef = useRef<FlatList<GazetteerRow>>(null);
   const [article, setArticle] = useState<Article | null>(null);
+  const [articleStatus, setArticleStatus] = useState<'pending' | 'ready' | 'none'>('pending');
   const [retold, setRetold] = useState<Retold | null>(null);
   const [retoldStatus, setRetoldStatus] = useState<RetoldStatus>('pending');
   const [originalOpen, setOriginalOpen] = useState(false);
@@ -215,6 +231,7 @@ export function AreaGazetteer({
   if (areaFor !== areaName) {
     setAreaFor(areaName);
     setArticle(null);
+    setArticleStatus('pending');
     setRetold(null);
     setRetoldStatus('pending');
     setOriginalOpen(false);
@@ -232,6 +249,7 @@ export function AreaGazetteer({
       const loaded = await fetchArticle(areaName).catch(() => null);
       if (active) {
         setArticle(loaded);
+        setArticleStatus(loaded ? 'ready' : 'none');
       }
     })();
     return () => {
@@ -375,16 +393,16 @@ export function AreaGazetteer({
             <Pressable
               accessibilityRole="imagebutton"
               accessibilityLabel="Open the cover photo"
-              onPress={() => article.images.length > 0 && setViewerIndex(0)}>
+              onPress={() => (article.images ?? []).length > 0 && setViewerIndex(0)}>
               <Hero areaName={areaName} article={article} retold={retold} />
             </Pressable>
-            {article.images.length > 1 && (
+            {(article.images ?? []).length > 1 && (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 style={styles.gallery}
                 contentContainerStyle={styles.galleryContent}>
-                {article.images.slice(1).map((image, index) => (
+                {(article.images ?? []).slice(1).map((image, index) => (
                   <Pressable
                     key={index}
                     accessibilityRole="imagebutton"
@@ -409,11 +427,18 @@ export function AreaGazetteer({
                 ))}
               </ScrollView>
             )}
+            {lead}
           </View>
+        ) : lead ? (
+          <View>{lead}</View>
         ) : null
       }
       ListEmptyComponent={
-        article ? null : (
+        article ? null : articleStatus === 'pending' ? (
+          <ActivityIndicator style={styles.empty} />
+        ) : empty ? (
+          <>{empty}</>
+        ) : (
           <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
             Nothing hidden here that the records know of.
           </ThemedText>
