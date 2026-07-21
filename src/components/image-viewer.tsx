@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FlatList, Modal, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -8,6 +8,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,8 +39,17 @@ export function ImageViewer({
   const [zoomed, setZoomed] = useState(false);
   const dragY = useSharedValue(0);
 
+  // A fresh open starts from rest — the last exit left dragY at height
+  useEffect(() => {
+    if (initialIndex !== null) {
+      // eslint-disable-next-line react-hooks/immutability
+      dragY.value = 0;
+    }
+  }, [initialIndex, dragY]);
+
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(dragY.value, [0, 300], [1, 0.3], 'clamp'),
+    // Reaches ~0 as the photo exits — the modal unmounts into nothing
+    opacity: interpolate(dragY.value, [0, height * 0.75], [1, 0], 'clamp'),
   }));
   const pageStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: dragY.value }],
@@ -48,6 +58,17 @@ export function ImageViewer({
   if (initialIndex === null) {
     return null;
   }
+
+  // The dismissal finishes the story the drag started: photo continues
+  // off-screen, backdrop to nothing, THEN unmount — no snap, no flash
+  const animateOut = () => {
+    // eslint-disable-next-line react-hooks/immutability
+    dragY.value = withTiming(height, { duration: 180 }, (finished) => {
+      if (finished) {
+        runOnJS(onClose)();
+      }
+    });
+  };
 
   const pan = Gesture.Pan()
     .enabled(!zoomed)
@@ -64,11 +85,16 @@ export function ImageViewer({
     .onEnd((event) => {
       'worklet';
       if (dragY.value > 120 || event.velocityY > 900) {
-        runOnJS(onClose)();
+        // Finish the story the drag started: photo continues off-screen,
+        // backdrop reaches nothing, THEN unmount — no snap, no flash
         // eslint-disable-next-line react-hooks/immutability
-        dragY.value = 0;
+        dragY.value = withTiming(height, { duration: 180 }, (finished) => {
+          if (finished) {
+            runOnJS(onClose)();
+          }
+        });
       } else {
-         
+        // eslint-disable-next-line react-hooks/immutability
         dragY.value = withSpring(0);
       }
     });
@@ -133,7 +159,7 @@ export function ImageViewer({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close"
-          onPress={onClose}
+          onPress={animateOut}
           hitSlop={Spacing.three}
           style={[styles.close, { top: insets.top + Spacing.two }]}>
           <ThemedText type="headline" style={styles.closeText}>
