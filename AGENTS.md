@@ -11,6 +11,14 @@ one exists — `eas-hosting` for API-route deployment, `eas-workflows` for
 CI/CD YAML, `expo-router`/`expo-dev-client` for framework work. Skills
 complement the versioned-docs rule above; they don't replace it.
 
+# Repo skills (.claude/skills/)
+
+This repo's own runbooks, encoded: `verifier-simulator` (UI evidence
+via Maestro — use before any UI PR), `record-caches` (the REPLAY_ONLY-
+off recording session; needs Edd's go), `device-triage` (Edd's phone
+findings → diagnosed, verified, merged PRs), `perf-audit`. Prefer
+invoking these over rediscovering their contents.
+
 
 # Paid APIs: replay-only development
 
