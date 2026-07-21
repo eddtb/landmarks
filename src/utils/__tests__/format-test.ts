@@ -6,8 +6,6 @@ import {
   formatRating,
   formatRatingCount,
   formatWalkTime,
-  historyTag,
-  isVanished,
   opensLabel,
   liveOpenNow,
   openUntilLabel,
@@ -154,51 +152,6 @@ describe('storyHook', () => {
     expect(storyHook('Cutty Sark (/ˌkʌti ˈsɑːrk/) is a British clipper ship. Built in 1869.')).toBe(
       'Cutty Sark is a British clipper ship.'
     );
-  });
-});
-
-describe('isVanished / historyTag', () => {
-  test("a neighbour's demolition is not yours — only the defining sentence testifies", () => {
-    // The real Queen's House record: standing, on demolished ground
-    expect(
-      isVanished(
-        "Queen's House is a former royal residence in the London borough of Greenwich, which presently serves as a public art gallery.  It was built between 1616 and 1635 on the grounds of the now demolished Greenwich Palace."
-      )
-    ).toBe(false);
-  });
-
-  test('demolition words in the defining sentence mean gone', () => {
-    expect(historyTag('The palace was demolished in the 17th century.')).toBe('Lost');
-    expect(historyTag('The theatre building was torn down for the railway.')).toBe('Lost');
-  });
-
-  test('creation and biography are not demise — the statue and gun cases', () => {
-    expect(isVanished('This Turkish bronze gun was cast in 1790-91 in Istanbul.')).toBe(false);
-    expect(isVanished('The memorial was unveiled in 1959 by the Ambassador.')).toBe(false);
-    expect(isVanished('The Baltic Exchange Memorial Glass was commissioned in 1920.')).toBe(false);
-    // …but a bare past copula alongside a creation verb still testifies
-    expect(isVanished('The pavilion was built in 1890 and was a concert hall.')).toBe(true);
-  });
-
-  test('the defining first sentence in the past tense means gone — the real records', () => {
-    expect(
-      isVanished('Greenwich Hospital was a permanent home for retired sailors of the Royal Navy.')
-    ).toBe(true);
-    expect(
-      isVanished('The Palace of Placentia, also known as Greenwich Palace, was an English royal residence.')
-    ).toBe(true);
-    expect(isVanished('JASON was a low-power nuclear research reactor. It is remembered.')).toBe(
-      true
-    );
-  });
-
-  test('present-tense records stand — including mixed-tense first sentences', () => {
-    expect(isVanished('Cutty Sark is a British clipper ship. She was built in 1869.')).toBe(false);
-    expect(isVanished("The Queen's House is a former royal residence that was designed in 1616.")).toBe(
-      false
-    );
-    expect(isVanished('The Greenwich Foot Tunnel crosses beneath the River Thames.')).toBe(false);
-    expect(historyTag(undefined)).toBe('Hidden history');
   });
 });
 

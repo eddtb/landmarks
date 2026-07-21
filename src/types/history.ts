@@ -15,4 +15,7 @@ export type HistoryItem = {
   source: string;
   /** CC BY-SA attribution when the photo is Geograph's, not Wikipedia's. */
   thumbnailCredit?: string;
+  /** A structured existence fact from Wikidata — "Demolished 1936",
+   * "Until 1675", "Former hospital" — or absent: honest silence. */
+  pastTag?: string;
 };

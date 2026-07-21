@@ -6,8 +6,10 @@ import {
   fetchPlaques,
   mergeHistorySources,
 } from '@/server/heritage';
+import { fetchExistenceTags } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
+import { wikiTitleFromUrl } from '@/utils/format';
 
 /**
  * GET /api/history?lat=51.5&lng=-0.09[&fresh=1]
@@ -23,9 +25,8 @@ import { HistoryItem } from '@/types/history';
  * and bypasses the read.
  */
 const ListTtlMs = 60 * 60 * 1000;
-// v2: v1 entries hold pre-rule blind-photo verdicts (every item
-// dressed, station-on-theatre included) — they must never serve again
-const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists-v2');
+// v3: earlier entries predate photo rules (v1) and existence tags (v2)
+const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists-v3');
 
 function bucketKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
@@ -94,7 +95,27 @@ export async function GET(request: Request) {
     // The deep feed: everything within the walk, not a top-40 — the list
     // virtualises client-side, and photo lookups stay capped per request
     // (the deep tail warms up across requests), so length ≠ load time
-    const items = await dressWithPhotos(told.slice(0, 150));
+    const dressed = await dressWithPhotos(told.slice(0, 150));
+    // Structured existence facts from Wikidata — grammar retired (#137's
+    // ceiling); failure degrades to fewer tags, never fewer stories
+    let items = dressed;
+    try {
+      const wikiTitled = dressed.flatMap((item) => {
+        const title = wikiTitleFromUrl(item.url);
+        return title ? [[item, title] as const] : [];
+      });
+      const tags = await fetchExistenceTags(wikiTitled.map(([, title]) => title));
+      const tagByPageId = new Map(
+        wikiTitled.flatMap(([item, title]) =>
+          tags.has(title) ? [[item.pageId, tags.get(title)!] as const] : []
+        )
+      );
+      items = dressed.map((item) =>
+        tagByPageId.has(item.pageId) ? { ...item, pastTag: tagByPageId.get(item.pageId) } : item
+      );
+    } catch (error) {
+      console.warn('Existence facts degraded:', error);
+    }
     listCache.set(key, { items, at: Date.now() });
     return respond(items);
   } catch (error) {
