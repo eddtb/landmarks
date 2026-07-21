@@ -103,7 +103,7 @@ export default function HistoryDetailScreen() {
               accessibilityRole="button"
               onPress={() =>
                 router.push({
-                  pathname: '/history/[pageId]/compass',
+                  pathname: '/history/[pageId]/go',
                   params: { pageId: String(item.pageId) },
                 })
               }
@@ -113,7 +113,7 @@ export default function HistoryDetailScreen() {
                 pressed && { opacity: 0.85 },
               ]}>
               <ThemedText type="smallBold" style={styles.goText}>
-                Compass · {formatWalkTime(walkSeconds)}
+                Go · {formatWalkTime(walkSeconds)}
               </ThemedText>
             </Pressable>
             <Pressable

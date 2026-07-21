@@ -24,6 +24,10 @@ export default function RootLayout() {
           name="history/[pageId]/compass"
           options={{ presentation: 'modal', headerShown: false }}
         />
+        <Stack.Screen
+          name="history/[pageId]/go"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
       </Stack>
       </ThemeProvider>
     </GestureHandlerRootView>
