@@ -70,17 +70,6 @@ count line reads `41 stories of this ground · 6 no longer standing`.
 Story screens push over the tab bar; dip-in tools (compass, Go)
 present modally.
 
-**The walk is a state, not a place.** A violet now-playing bar rides
-above the tab bar only while a walk exists: `Tonight · 3 stops`, the
-next stop's name, and ▶ to play the audio tour from anywhere (shown
-only when the device's speech engine exists). Tap the bar for the
-full builder, which presents modally. **Walks stay anchor-first**: the
-user supplies the stops — ＋Walk on any story, or the "After this?"
-doors (zero API calls) — and the app supplies order-keeping:
-straight-line walking legs at ~1.33 m/s, your order, nothing invented.
-↑↓ to reorder, ✕ to remove. **No clocks, no dwell times.** The walk
-persists until Clear.
-
 Lists scroll under the translucent tab bar but pad their bottom by the
 safe-area inset: the last card must always be able to rest fully above
 the bar.
