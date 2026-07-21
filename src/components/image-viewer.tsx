@@ -60,6 +60,17 @@ export function ImageViewer({
                 minimumZoomScale={1}
                 contentContainerStyle={styles.zoomPage}
                 centerContent
+                bounces
+                alwaysBounceVertical
+                // Drag the photo downwards to close (Edd's redline) —
+                // a pull past the threshold dismisses, never while zoomed
+                onScrollEndDrag={(event) => {
+                  const { contentOffset, zoomScale } = event.nativeEvent;
+                  if ((zoomScale ?? 1) <= 1.01 && contentOffset.y < -80) {
+                    onClose();
+                  }
+                }}
+                scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
                 showsHorizontalScrollIndicator={false}>
                 <Image

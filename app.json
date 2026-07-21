@@ -46,7 +46,8 @@
           "imageWidth": 76
         }
       ],
-      "expo-maps"
+      "expo-maps",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
