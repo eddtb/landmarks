@@ -16,6 +16,7 @@ jest.mock('expo-router', () => {
 });
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
+const mockExpoFetch = jest.requireMock('expo/fetch').fetch as jest.Mock;
 
 jest.mock('@/data/article-client', () => ({
   // A light miss: the screen must not depend on the chapters-first
@@ -106,10 +107,49 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText(/first bridged in 1804/)).toBeOnTheScreen();
   });
 
-  test('handles unknown pages gracefully', async () => {
+  test('cold start (a shared deep link): cache miss fetches the story, then renders it', async () => {
+    // Nothing has cached pageId 777 — the recipient opened
+    // landmarks://history/777 on a fresh app
+    mockExpoFetch.mockReset();
+    mockExpoFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        item: {
+          pageId: 777,
+          title: 'Marshalsea',
+          coordinates: { latitude: 51.5014, longitude: -0.0921 },
+          distanceMeters: 0,
+          extract: 'A notorious prison on the south bank of the Thames.',
+          url: 'https://en.wikipedia.org/wiki/Marshalsea',
+          source: 'Wikipedia',
+        },
+      }),
+    });
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '777' });
+    await render(<HistoryDetailScreen />);
+
+    expect(await screen.findByText('Marshalsea')).toBeOnTheScreen();
+    expect(String(mockExpoFetch.mock.calls[0][0])).toContain('/api/story?pageId=777');
+    expect(screen.queryByText('This story could not be found.')).not.toBeOnTheScreen();
+  });
+
+  test('while the cold-start fetch is in flight, the screen waits — never a false not-found', async () => {
+    mockExpoFetch.mockReset();
+    mockExpoFetch.mockReturnValue(new Promise(() => {})); // never resolves
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '778' });
+    await render(<HistoryDetailScreen />);
+
+    expect(screen.getByTestId('story-loading')).toBeOnTheScreen();
+    expect(screen.queryByText('This story could not be found.')).not.toBeOnTheScreen();
+  });
+
+  test('a true 404 keeps the not-found branch', async () => {
+    mockExpoFetch.mockReset();
+    mockExpoFetch.mockResolvedValue({ ok: false, status: 404 });
     mockUseLocalSearchParams.mockReturnValue({ pageId: '999' });
     await render(<HistoryDetailScreen />);
 
-    expect(screen.getByText('This story could not be found.')).toBeOnTheScreen();
+    expect(await screen.findByText('This story could not be found.')).toBeOnTheScreen();
   });
 });

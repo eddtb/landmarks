@@ -1,4 +1,4 @@
-import { fetchNearbyHistory, getCachedHistoryItem } from '@/data/history-client';
+import { fetchNearbyHistory, fetchStory, getCachedHistoryItem } from '@/data/history-client';
 
 const mockFetch = jest.fn();
 
@@ -69,5 +69,38 @@ describe('fetchNearbyHistory', () => {
     mockFetch.mockResolvedValue({ ok: false, status: 502 });
 
     await expect(fetchNearbyHistory(freshCenter())).rejects.toThrow('502');
+  });
+});
+
+describe('fetchStory', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  test('requests /api/story and populates the item cache', async () => {
+    const story = { ...item, pageId: 4242, title: 'Marshalsea' };
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ item: story }) });
+
+    const first = await fetchStory(4242);
+
+    expect(String(mockFetch.mock.calls[0][0])).toContain('/api/story?pageId=4242');
+    expect(first?.title).toBe('Marshalsea');
+    // The cold-start fetch feeds the same session cache the list fills
+    expect(getCachedHistoryItem(4242)?.title).toBe('Marshalsea');
+
+    // …and a cached story never re-fetches
+    const second = await fetchStory(4242);
+    expect(second).toEqual(first);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('a true 404 is null — the story genuinely does not exist', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 404 });
+
+    expect(await fetchStory(4243)).toBeNull();
+  });
+
+  test('upstream trouble throws, so callers can tell it from a 404', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 502 });
+
+    await expect(fetchStory(4244)).rejects.toThrow('502');
   });
 });

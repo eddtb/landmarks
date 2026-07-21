@@ -23,3 +23,15 @@ export type HistoryItem = {
    * Gazetteer while the card keeps the honest inscription. */
   subject?: string;
 };
+
+/**
+ * Heritage items carry synthetic pageIds far above real Wikipedia
+ * pageids (listed buildings from 2e9, plaques from 3e9 — the bases in
+ * server/heritage.ts). Only a real Wikipedia pageId can be re-fetched
+ * on its own, so only those earn a landmarks:// share deep-link.
+ */
+export const SyntheticPageIdBase = 2_000_000_000;
+
+export function isWikiPageId(pageId: number): boolean {
+  return Number.isInteger(pageId) && pageId > 0 && pageId < SyntheticPageIdBase;
+}

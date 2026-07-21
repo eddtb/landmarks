@@ -1,6 +1,7 @@
 import * as Linking from 'expo-linking';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Platform, Pressable, Share, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { ExternalLink } from '@/components/external-link';
@@ -10,9 +11,9 @@ import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { getCachedHistoryItem, getCachedHistoryItems } from '@/data/history-client';
+import { fetchStory, getCachedHistoryItem, getCachedHistoryItems } from '@/data/history-client';
 import { useTheme } from '@/hooks/use-theme';
-import { HistoryItem } from '@/types/history';
+import { HistoryItem, isWikiPageId } from '@/types/history';
 import { formatWalkTime, storyParagraphs } from '@/utils/format';
 import { Coordinates } from '@/utils/geo';
 
@@ -103,7 +104,46 @@ function ExtractStory({ item }: { item: HistoryItem }) {
  */
 export default function HistoryDetailScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
-  const item = getCachedHistoryItem(Number(pageId));
+  const numericPageId = Number(pageId);
+
+  // Cold start — a shared landmarks:// link opens here with an empty
+  // session cache, so a miss fetches the single story before the
+  // screen is allowed to say "not found".
+  const [fetched, setFetched] = useState<HistoryItem | null>(null);
+  const [missingPageId, setMissingPageId] = useState<number | null>(null);
+  const item =
+    getCachedHistoryItem(numericPageId) ??
+    (fetched?.pageId === numericPageId ? fetched : undefined);
+
+  useEffect(() => {
+    if (item || missingPageId === numericPageId) {
+      return;
+    }
+    let cancelled = false;
+    fetchStory(numericPageId)
+      .then((story) => {
+        if (cancelled) return;
+        if (story) setFetched(story);
+        else setMissingPageId(numericPageId);
+      })
+      .catch(() => {
+        // Upstream trouble reads the same as a missing story here —
+        // there is nothing else this screen could honestly show
+        if (!cancelled) setMissingPageId(numericPageId);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [item, missingPageId, numericPageId]);
+
+  if (!item && missingPageId !== numericPageId) {
+    return (
+      <ThemedView style={styles.notFound} testID="story-loading">
+        <Stack.Screen options={{ title: '' }} />
+        <ActivityIndicator />
+      </ThemedView>
+    );
+  }
 
   if (!item) {
     return (
@@ -128,7 +168,17 @@ export default function HistoryDetailScreen() {
                 { id: 'maps', title: 'Open in Maps' },
               ]}
               onAction={(id) => {
-                if (id === 'share') Share.share({ message: `${item.title} — ${item.url}` });
+                if (id === 'share') {
+                  // Recipients with Venture jump straight to this story;
+                  // the source URL on the second line keeps the share
+                  // useful without the app. Synthetic heritage ids
+                  // (plaques, register entries) can't deep-link — they
+                  // keep the plain source URL.
+                  const message = isWikiPageId(item.pageId)
+                    ? `${item.title} — walk to it with Venture: landmarks://history/${item.pageId}\n${item.url}`
+                    : `${item.title} — ${item.url}`;
+                  Share.share({ message });
+                }
                 if (id === 'maps') Linking.openURL(mapsWalkingUrl(item.coordinates));
               }}
             />

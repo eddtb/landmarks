@@ -12,7 +12,10 @@ appId: com.eddtb.landmarks
     commands:
       - openLink: exp+landmarks://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081
 
-- tapOn: 'History'
+# The floating tab pill ignores text taps intermittently (verifier's
+# observation, confirmed 2/3 local failures) — tap by position
+- tapOn:
+    point: 61%, 94%
 - extendedWaitUntil:
     visible:
       id: 'gazetteer-hero'

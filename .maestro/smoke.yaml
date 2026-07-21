@@ -21,6 +21,15 @@ appId: com.eddtb.landmarks
       visible: 'This is the developer menu'
     commands:
       - tapOn: 'Continue'
+# Fresh installs (CI is always one) see the first-run onboarding cards
+# covering the tabs — dismiss them the way a hurried user would
+- runFlow:
+    when:
+      visible:
+        id: 'onboarding'
+    commands:
+      - tapOn:
+          id: 'onboarding-skip'
 
 # Nearby: the list renders real story cards
 - extendedWaitUntil:
@@ -47,7 +56,10 @@ appId: com.eddtb.landmarks
     end: 90%, 50%
 
 # History tab: the gazetteer hero appears
-- tapOn: 'History'
+# The floating tab pill ignores text taps intermittently (verifier's
+# observation, confirmed 2/3 local failures) — tap by position
+- tapOn:
+    point: 61%, 94%
 - extendedWaitUntil:
     visible:
       id: 'gazetteer-hero'
