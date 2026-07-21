@@ -20,6 +20,7 @@ import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
 import { LinkCandidate, linkifyParagraph } from '@/utils/linkify';
+import { withoutPullQuote } from '@/utils/pull-quote';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/utils/speech';
@@ -500,7 +501,8 @@ function PartRow({
   links: LinkCandidate[];
 }) {
   const theme = useTheme();
-  const paragraphs = part.body.split(/\n+/).filter(Boolean);
+  // The highlight replaces its origin sentence, never repeats it
+  const paragraphs = withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote);
   const quoteAfter = part.pullQuote ? Math.ceil(paragraphs.length / 2) - 1 : -1;
   return (
     <View style={styles.partWrap}>
