@@ -4,9 +4,12 @@
 # macOS job (free on a public repo, but slow), and the per-PR gate is
 # unit tests + typecheck + review. Maestro drives the same topology we
 # verify locally — dev build + Metro with REPLAY_ONLY=1 — because the
-# API routes have no production origin; data upstreams (Wikipedia,
-# Historic England, Geograph) are keyless and unmetered, and REPLAY_ONLY
-# guarantees no AI call can bill from CI (it refuses even free ones).
+# API routes have no production origin; REPLAY_ONLY guarantees no AI
+# call can bill from CI (it refuses even free ones). E2E_FIXTURES=1
+# makes the run hermetic: Wikipedia/Wikidata rate-limit GitHub's
+# shared runner IPs (run 6: batch query 429 → history 502 → no cards),
+# so the API routes serve the committed Greenwich payloads in
+# e2e-fixtures/ instead of calling upstreams at all.
 name: E2E smoke (Maestro)
 
 on:
@@ -45,9 +48,9 @@ jobs:
       # Metro comes up FIRST: run 4 built clean in 25 minutes, then
       # died at the final step — expo run:ios auto-opens the app
       # pointed at Metro, which didn't exist yet (exit 60, timeout)
-      - name: Start Metro (replay-only — no AI call can bill from CI)
+      - name: Start Metro (replay-only + fixtures — hermetic, nothing bills)
         run: |
-          REPLAY_ONLY=1 npx expo start --port 8081 &> metro.log &
+          REPLAY_ONLY=1 E2E_FIXTURES=1 npx expo start --port 8081 &> metro.log &
           for i in $(seq 1 60); do
             curl -sf -o /dev/null http://localhost:8081/status && exit 0
             sleep 2
@@ -75,13 +78,14 @@ jobs:
           # nothing renders (first CI run's failure mode)
           xcrun simctl privacy booted grant location com.eddtb.landmarks
 
-      # CI runs the smoke flow ONLY — deliberately, not silently:
-      # timeline.yaml needs the AI-retold cache (.ai-cache is
-      # gitignored and REPLAY_ONLY rightly refuses fresh calls), and
-      # lightbox.yaml needs Wikipedia/Commons images from runner IPs
-      # that upstreams rate-limit (Wikidata already 429s us). Those two
-      # flows run locally via scripts/e2e-local.sh where the caches
-      # live. CI's job is the boot-and-render spine.
+      # CI runs the smoke flow ONLY — deliberately, not silently.
+      # E2E_FIXTURES now satisfies the data dependencies the wider
+      # flows used to lack (lightbox's history/article payloads come
+      # from committed fixtures, not rate-limited runner IPs; retold
+      # fixtures cover timeline's cache dependency), but widening the
+      # scoping is a separate follow-up — this run stays the
+      # boot-and-render spine. timeline.yaml and lightbox.yaml still
+      # run locally via scripts/e2e-local.sh.
       - name: Run the smoke flow
         run: maestro test --debug-output e2e-debug .maestro/smoke.yaml
 

@@ -184,6 +184,23 @@ export function storyHook(extract: string | undefined): string | undefined {
 }
 
 /**
+ * A plaque's card title IS its inscription's opening, so the hook —
+ * the extract's first sentence — often just repeats the headline with
+ * three more words. A card that says the same thing twice reads as
+ * broken (Edd's "empty Open Plaque listings"). Echo = one is a
+ * truncation-tolerant prefix of the other.
+ */
+export function hookEchoesTitle(title: string, hook: string): boolean {
+  const strip = (text: string) => text.replace(/…$/, '').trim().toLowerCase();
+  const a = strip(title);
+  const b = strip(hook);
+  if (!a || !b) {
+    return false;
+  }
+  return a.startsWith(b) || b.startsWith(a);
+}
+
+/**
  * The clock corrects the cache: openNow is a snapshot from fetch
  * time, but nextCloseTime/nextOpenTime are exact moments — so the
  * honest current state is derivable free. A venue past its close
