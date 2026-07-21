@@ -38,7 +38,7 @@ export function HistoryCard({ item, archive }: Props) {
         <View style={styles.body}>
           {archive && (
             <ThemedText type="eyebrow" themeColor="accent">
-              {historyTag(item.extract)}
+              {item.source.startsWith('Open Plaques') ? 'Plaque' : historyTag(item.extract)}
             </ThemedText>
           )}
           <ThemedText type="headline" numberOfLines={2}>

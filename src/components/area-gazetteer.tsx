@@ -24,19 +24,27 @@ type Row =
   | { kind: 'section'; key: string; title: string }
   | { kind: 'relic'; key: string; item: HistoryItem };
 
-/** Pure and unit-tested: relics grouped vanished-first, with counts. */
+/**
+ * Pure and unit-tested: relics grouped lost-first, with counts.
+ * Plaques are their own section — a plaque is a PRESENT, findable
+ * artifact whose inscription happens to speak in the past tense
+ * ("was cast in 1790…"); grammar tests don't apply to it.
+ */
 export function gazetteerRows(relics: HistoryItem[]): Row[] {
-  const vanished = relics.filter((item) => historyTag(item.extract) === 'No longer standing');
-  const hidden = relics.filter((item) => historyTag(item.extract) !== 'No longer standing');
+  const plaques = relics.filter((item) => item.source.startsWith('Open Plaques'));
+  const articles = relics.filter((item) => !item.source.startsWith('Open Plaques'));
+  const lost = articles.filter((item) => historyTag(item.extract) === 'Lost');
+  const hidden = articles.filter((item) => historyTag(item.extract) !== 'Lost');
   const rows: Row[] = [];
-  if (vanished.length > 0) {
-    rows.push({ kind: 'section', key: 's-vanished', title: `No longer standing · ${vanished.length}` });
-    rows.push(...vanished.map((item): Row => ({ kind: 'relic', key: String(item.pageId), item })));
-  }
-  if (hidden.length > 0) {
-    rows.push({ kind: 'section', key: 's-hidden', title: `Hidden history · ${hidden.length}` });
-    rows.push(...hidden.map((item): Row => ({ kind: 'relic', key: String(item.pageId), item })));
-  }
+  const push = (key: string, title: string, group: HistoryItem[]) => {
+    if (group.length > 0) {
+      rows.push({ kind: 'section', key, title: `${title} · ${group.length}` });
+      rows.push(...group.map((item): Row => ({ kind: 'relic', key: String(item.pageId), item })));
+    }
+  };
+  push('s-lost', 'Lost', lost);
+  push('s-plaques', 'Plaques', plaques);
+  push('s-hidden', 'Hidden history', hidden);
   return rows;
 }
 

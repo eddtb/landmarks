@@ -146,15 +146,28 @@ export function isVanished(extract: string | undefined): boolean {
   ) {
     return true;
   }
-  return /\b(was|were)\b/i.test(firstSentence) && !/\b(is|are)\b/i.test(firstSentence);
+  // "was cast in 1790", "was unveiled in 1959": creation and biography
+  // speak in the past tense about things still present — only a bare
+  // past copula ("was a royal residence") testifies to pastness
+  const withoutCreation = firstSentence.replace(
+    /\b(was|were)\s+(built|erected|unveiled|designed|sculpted|carved|constructed|completed|installed|founded|established|opened|commissioned|created|made|cast|laid|dedicated|painted|born|launched|listed)\b/gi,
+    ''
+  );
+  return (
+    /\b(was|were)\b/i.test(withoutCreation) &&
+    !/\b(is|are|stands?|remains?|survives?)\b/i.test(firstSentence)
+  );
 }
 
 /**
  * The History archive's honest little tag, derived from what the
- * record already says. Never invents: no signal, generic tag.
+ * record already says. "Lost" claims pastness, not rubble — it holds
+ * for a razed palace, a dissolved institution and a closed theatre
+ * alike, without asserting bricks fell. Never invents: no signal,
+ * generic tag.
  */
 export function historyTag(extract: string | undefined): string {
-  return isVanished(extract) ? 'No longer standing' : 'Hidden history';
+  return isVanished(extract) ? 'Lost' : 'Hidden history';
 }
 
 /** "https://en.wikipedia.org/wiki/Cutty_Sark" → "Cutty Sark", or null. */
