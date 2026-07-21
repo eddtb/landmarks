@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChapterFolds } from '@/components/chapter-folds';
@@ -12,11 +12,11 @@ import { usePlan } from '@/hooks/use-plan';
 import { HistoryItem } from '@/types/history';
 
 /**
- * The Gazetteer (Edd's pick, mock direction A): a magazine cover for
- * the place. The area's full illustrated story — hero from the
- * article's own images, intro at reading size, chapters as folds with
- * images threaded between — and beneath it, the relics of this ground
- * in tagged sections. One glorious scroll: the place, then its ghosts.
+ * The Gazetteer: a magazine cover for the place. Hero from the
+ * article's lead image, the gallery of its remaining images (together
+ * at the top — Edd's call — never merely NEAR an unrelated chapter),
+ * the full story as folds, and beneath it one neutral list of what
+ * this ground remembers, tagged only by evidence.
  */
 
 type Row =
@@ -112,7 +112,8 @@ export function AreaGazetteer({
   const rows = gazetteerRows(listRelics);
   const intro = article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [];
   const chapters = article?.chapters.filter((chapter) => chapter.title !== '') ?? [];
-  // Thread the article's remaining images between every other fold
+  // The gallery (Edd's call): the article's remaining images together
+  // at the top, credited — never merely NEAR an unrelated chapter
   const spare = article?.images.slice(1) ?? [];
 
   return (
@@ -140,31 +141,38 @@ export function AreaGazetteer({
         article && areaName ? (
           <View>
             <Hero areaName={areaName} article={article} />
+            {spare.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.gallery}
+                contentContainerStyle={styles.galleryContent}>
+                {spare.map((image, index) => (
+                  <View key={index} style={styles.galleryItem}>
+                    <Image
+                      source={{ uri: image.imageUrl }}
+                      style={styles.galleryImage}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                    />
+                    <ThemedText
+                      type="small"
+                      themeColor="textSecondary"
+                      style={styles.galleryCredit}
+                      numberOfLines={1}>
+                      {image.credit}
+                    </ThemedText>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
             <View style={styles.article}>
               {intro.map((paragraph, index) => (
                 <ThemedText key={index} type="default" style={styles.introPara}>
                   {paragraph}
                 </ThemedText>
               ))}
-              <ChapterFolds
-                chapters={chapters}
-                interleave={(index) => {
-                  const image = index % 2 === 1 ? spare[(index - 1) / 2] : undefined;
-                  return image ? (
-                    <View style={styles.inlineWrap}>
-                      <Image
-                        source={{ uri: image.imageUrl }}
-                        style={styles.inlineImage}
-                        contentFit="cover"
-                        cachePolicy="memory-disk"
-                      />
-                      <ThemedText type="small" themeColor="textSecondary" style={styles.inlineCredit} numberOfLines={1}>
-                        {image.credit}
-                      </ThemedText>
-                    </View>
-                  ) : null;
-                }}
-              />
+              <ChapterFolds chapters={chapters} />
             </View>
           </View>
         ) : null
@@ -216,16 +224,23 @@ const styles = StyleSheet.create({
   introPara: {
     marginBottom: Spacing.three,
   },
-  inlineWrap: {
-    marginVertical: Spacing.two,
+  gallery: {
+    marginTop: Spacing.three,
+  },
+  galleryContent: {
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.two,
+  },
+  galleryItem: {
+    width: 168,
     gap: 2,
   },
-  inlineImage: {
-    height: 130,
+  galleryImage: {
+    height: 110,
     borderRadius: Spacing.three - 2,
   },
-  inlineCredit: {
-    fontSize: 10,
+  galleryCredit: {
+    fontSize: 9,
   },
   sectionHead: {
     paddingHorizontal: Spacing.four,
