@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { ReactNode, useCallback, useState , useEffect } from 'react';
+import { ReactNode, useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -28,7 +29,8 @@ import { useLocation } from '@/hooks/use-location';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { fetchRetold, Retold } from '@/data/retold-client';
+import { featuredStories } from '@/utils/featured';
+import { formatWalkTime } from '@/utils/format';
 import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
 
 /** Pure and unit-tested: the story you are physically standing on. */
@@ -262,56 +264,62 @@ function StandingOnIt({ item, center }: { item: HistoryItem; center: Coordinates
   );
 }
 
-/** A taste of the History tab: the area's fun facts, up top (Edd's call). */
-function NearbyFacts({ areaName }: { areaName: string | null }) {
+/** Mini featured listings up top (Edd's call): the fun-facts FORMAT,
+ * but the content is places — the area's heavy hitters, tappable. */
+function FeaturedRail({
+  items,
+  excludePageId,
+}: {
+  items: HistoryItem[];
+  excludePageId?: number;
+}) {
   const theme = useTheme();
-  const [retold, setRetold] = useState<Retold | null>(null);
+  const featured = featuredStories(items, excludePageId);
 
-  useEffect(() => {
-    if (!areaName) {
-      return;
-    }
-    let active = true;
-    (async () => {
-      const loaded = await fetchRetold(areaName).catch(() => null);
-      if (active) {
-        setRetold(loaded);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [areaName]);
-
-  if (!retold || (retold.timeline ?? []).length === 0) {
+  if (featured.length < 2) {
     return null;
   }
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.factsRail}
-      contentContainerStyle={styles.factsContent}>
-      {retold.timeline.map((stop, index) => (
-        <Pressable
-          key={index}
-          accessibilityRole="button"
-          accessibilityLabel={`${stop.year}: ${stop.label} — read the story of ${areaName}`}
-          onPress={() => router.push('/history')}
-          style={({ pressed }) => [
-            styles.factStop,
-            { backgroundColor: theme.accentSoft },
-            pressed && { opacity: 0.8 },
-          ]}>
-          <ThemedText type="smallBold" themeColor="accent" style={styles.factYear}>
-            {stop.year}
-          </ThemedText>
-          <ThemedText type="small" style={styles.factLabel} numberOfLines={2}>
-            {stop.label}
-          </ThemedText>
-        </Pressable>
-      ))}
-    </ScrollView>
+    <View style={styles.featured}>
+      <ThemedText type="eyebrow" themeColor="accent" style={styles.featuredEyebrow}>
+        Featured
+      </ThemedText>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.featuredContent}>
+        {featured.map((item) => (
+          <Pressable
+            key={item.pageId}
+            accessibilityRole="button"
+            accessibilityLabel={`Featured: ${item.title}`}
+            onPress={() =>
+              router.push({
+                pathname: '/history/[pageId]',
+                params: { pageId: String(item.pageId) },
+              })
+            }
+            style={({ pressed }) => [
+              styles.featuredCard,
+              { backgroundColor: theme.accentSoft },
+              pressed && { opacity: 0.85 },
+            ]}>
+            <Image
+              source={{ uri: item.thumbnailUrl }}
+              style={styles.featuredImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+            <ThemedText type="smallBold" style={styles.featuredTitle} numberOfLines={2}>
+              {item.title}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.featuredMeta}>
+              {formatWalkTime(Math.round(item.distanceMeters / 1.33))}
+            </ThemedText>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -320,7 +328,6 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
   const walkStops = usePlan();
-  const areaName = useAreaName(center);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -359,7 +366,7 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   return (
     <>
       {standing && <StandingOnIt item={standing} center={center} />}
-      <NearbyFacts areaName={areaName} />
+      <FeaturedRail items={state.items} excludePageId={standing?.pageId} />
       {items.length > 0 && (
         <View style={styles.controlLine}>
           <ThemedText type="small" themeColor="textSecondary">
@@ -431,25 +438,37 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     gap: 2,
   },
-  factsRail: {
+  featured: {
     marginTop: Spacing.two,
+    gap: Spacing.one,
   },
-  factsContent: {
+  featuredEyebrow: {
+    paddingHorizontal: Spacing.four,
+  },
+  featuredContent: {
     paddingHorizontal: Spacing.four,
     gap: Spacing.two,
   },
-  factStop: {
+  featuredCard: {
+    width: 148,
     borderRadius: Spacing.three - 2,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    maxWidth: 150,
+    padding: Spacing.one,
+    gap: 2,
   },
-  factYear: {
-    fontSize: 15,
+  featuredImage: {
+    width: '100%',
+    height: 82,
+    borderRadius: Spacing.three - 4,
   },
-  factLabel: {
+  featuredTitle: {
+    fontSize: 13,
+    lineHeight: 16,
+    paddingHorizontal: 2,
+  },
+  featuredMeta: {
     fontSize: 11,
-    lineHeight: 14,
+    paddingHorizontal: 2,
+    paddingBottom: 2,
   },
   controlLine: {
     flexDirection: 'row',
