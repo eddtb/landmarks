@@ -56,6 +56,15 @@ jobs:
           tail -50 metro.log >&2
           exit 1
 
+      # Metro's first bundle on a cold runner takes minutes — run 3
+      # died on the splash at "Bundling 52%" while the flow's timeout
+      # expired. Bundle BEFORE the flow starts so its waits measure
+      # the app, not the bundler.
+      - name: Pre-warm the JS bundle
+        run: |
+          time curl -sf -o /dev/null --max-time 600 \
+            "http://localhost:8081/index.bundle?platform=ios&dev=true"
+
       - name: Pin the simulator to Greenwich and grant location
         run: |
           xcrun simctl location booted set 51.4826,-0.0077
