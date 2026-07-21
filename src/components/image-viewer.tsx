@@ -68,7 +68,7 @@ export function ImageViewer({
         // eslint-disable-next-line react-hooks/immutability
         dragY.value = 0;
       } else {
-        // eslint-disable-next-line react-hooks/immutability
+         
         dragY.value = withSpring(0);
       }
     });
