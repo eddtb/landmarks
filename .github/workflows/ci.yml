@@ -8,6 +8,9 @@ on:
   # merge_group events — a required check that never runs there
   # would block the queue forever
   merge_group:
+  # The merge chain updates branches with GITHUB_TOKEN, whose pushes
+  # trigger no workflows (anti-recursion) — so it dispatches CI here
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
