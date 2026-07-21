@@ -366,18 +366,25 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   return (
     <>
       {standing && <StandingOnIt item={standing} center={center} />}
-      <FeaturedRail items={state.items} excludePageId={standing?.pageId} />
-      {items.length > 0 && (
-        <View style={styles.controlLine}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {items.length} {items.length === 1 ? 'story' : 'stories'} within a walk
-          </ThemedText>
-        </View>
-      )}
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.pageId)}
         renderItem={({ item }) => <HistoryCard item={item} />}
+        // Featured scrolls away with the listings (Edd's call) — it's
+        // the list's header, not the screen's. The negative margin
+        // cancels the list padding so the rail bleeds edge to edge.
+        ListHeaderComponent={
+          <View style={styles.listHeader}>
+            <FeaturedRail items={state.items} excludePageId={standing?.pageId} />
+            {items.length > 0 && (
+              <View style={styles.controlLine}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {items.length} {items.length === 1 ? 'story' : 'stories'} within a walk
+                </ThemedText>
+              </View>
+            )}
+          </View>
+        }
         // The deep feed can run to ~150 stories — render the first
         // screenful fast and let virtualisation handle the rest
         initialNumToRender={8}
@@ -429,6 +436,12 @@ const styles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 5,
+  },
+  listHeader: {
+    // Cancel the list's horizontal padding: the rail manages its own
+    // insets and must scroll edge to edge
+    marginHorizontal: -Spacing.four,
+    marginBottom: Spacing.one,
   },
   standing: {
     marginHorizontal: Spacing.four,
