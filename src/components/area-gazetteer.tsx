@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Pressable,
   RefreshControl,
@@ -21,6 +22,7 @@ import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
 import { LinkCandidate, linkifyParagraph } from '@/utils/linkify';
 import { withoutPullQuote } from '@/utils/pull-quote';
+import { readingProgress } from '@/utils/reading-progress';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/utils/speech';
@@ -216,6 +218,9 @@ export function AreaGazetteer({
   empty?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
+  // Lazy state, not a ref: stable identity, render-safe under the compiler
+  const [readProgress] = useState(() => new Animated.Value(0));
   const listRef = useRef<FlatList<GazetteerRow>>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [articleStatus, setArticleStatus] = useState<'pending' | 'ready' | 'none'>('pending');
@@ -366,12 +371,20 @@ export function AreaGazetteer({
   };
 
   return (
-    <>
+    <View style={styles.wrap}>
     <FlatList
       ref={listRef}
       data={rows}
       keyExtractor={(row) => row.key}
       renderItem={({ item: row }) => renderRow(row)}
+      // The reading bar: recompute on every scroll tick, no re-render
+      onScroll={(event) => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        readProgress.setValue(
+          readingProgress(contentOffset.y, contentSize.height, layoutMeasurement.height)
+        );
+      }}
+      scrollEventThrottle={32}
       contentContainerStyle={{
         paddingBottom: Spacing.four + insets.bottom,
       }}
@@ -444,12 +457,28 @@ export function AreaGazetteer({
         )
       }
     />
+    {/* The violet reading bar (Edd's ask, returned): how far through
+        the story you are, riding the top edge of the scroll */}
+    <View pointerEvents="none" style={styles.progressTrack} testID="reading-progress">
+      <Animated.View
+        style={[
+          styles.progressFill,
+          {
+            backgroundColor: theme.accent,
+            width: readProgress.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0%', '100%'],
+            }),
+          },
+        ]}
+      />
+    </View>
     <ImageViewer
       images={article?.images ?? []}
       initialIndex={viewerIndex}
       onClose={() => setViewerIndex(null)}
     />
-    </>
+    </View>
   );
 }
 
@@ -580,6 +609,19 @@ function DoorRow({
 }
 
 const styles = StyleSheet.create({
+  wrap: {
+    flex: 1,
+  },
+  progressTrack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+  },
+  progressFill: {
+    height: 3,
+  },
   hero: {
     height: 220,
     justifyContent: 'flex-end',
