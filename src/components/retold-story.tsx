@@ -1,20 +1,18 @@
-import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ChapterFolds } from '@/components/chapter-folds';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { Article, ArticleImage } from '@/data/article-client';
+import { Article } from '@/data/article-client';
 import { Retold } from '@/data/retold-client';
 import { useTheme } from '@/hooks/use-theme';
 import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
 
 /**
  * The retold story as the main event (Edd's design, mock 8b92ec46):
- * titled parts at reading size, the article's images between parts as
- * credited texture (claiming no association), AI authorship labelled
- * at the top, 🔊 reading the whole thing — and the untouched original
+ * titled parts at reading size (the images live in the gallery above
+ * — Edd's ruling), AI authorship labelled at the top, 🔊 reading the whole thing — and the untouched original
  * behind a door at the end. The retelling improves the read; the
  * original remains the record.
  */
@@ -61,9 +59,6 @@ export function RetoldStory({ retold, article }: { retold: Retold; article: Arti
     }
   };
 
-  // Between-part texture: the article's own images, credited,
-  // claiming nothing (the lead image is the hero's)
-  const spare: ArticleImage[] = article.images.slice(1);
   const intro = article.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [];
   const chapters = article.chapters.filter((chapter) => chapter.title !== '');
 
@@ -96,19 +91,6 @@ export function RetoldStory({ retold, article }: { retold: Retold; article: Arti
                 {paragraph}
               </ThemedText>
             ))}
-            {index % 2 === 1 && spare[(index - 1) / 2] && (
-              <View style={styles.imageWrap}>
-                <Image
-                  source={{ uri: spare[(index - 1) / 2].imageUrl }}
-                  style={styles.image}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                />
-                <ThemedText type="small" themeColor="textSecondary" style={styles.credit} numberOfLines={1}>
-                  {spare[(index - 1) / 2].credit}
-                </ThemedText>
-              </View>
-            )}
           </View>
         ))}
       </View>
@@ -172,17 +154,6 @@ const styles = StyleSheet.create({
   },
   para: {
     marginBottom: Spacing.three,
-  },
-  imageWrap: {
-    marginBottom: Spacing.three,
-    gap: 2,
-  },
-  image: {
-    height: 130,
-    borderRadius: Spacing.three - 2,
-  },
-  credit: {
-    fontSize: 9,
   },
   door: {
     flexDirection: 'row',
