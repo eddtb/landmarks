@@ -1,7 +1,19 @@
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ReactNode, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  View,
+  ViewStyle,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Compass } from '@/components/compass';
+import { PointerDial } from '@/components/pointer-dial';
+import { RouteMap } from '@/components/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -10,163 +22,181 @@ import { fetchRoute, WalkingRoute } from '@/data/route-client';
 import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDistance, formatWalkTime } from '@/utils/format';
-import { distanceMeters } from '@/utils/geo';
-import { metersFromRoute, upcomingManeuver } from '@/utils/navigation';
+import { guidanceFor } from '@/utils/guidance';
 
 /**
- * Go: the finding map. You, the story, and the streets between —
- * Apple's native map (free; the module has been aboard since PR #50),
- * a violet straight line for bearing, and the live distance counting
- * down as you walk. No routing engine: the Google one billed per
- * open, and for sub-walk distances the streets on screen ARE the
- * route. Android's map needs a key we don't have — it keeps the
- * compass dial instead.
+ * Liquid glass chrome where supported (iOS 26+); the themed solid
+ * surface — today's exact look — everywhere else. Content stays
+ * opaque; only the chrome floating over the map is glass.
  */
-
-// Native module: guarded like every other one
-const Maps = (() => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('expo-maps') as typeof import('expo-maps');
-  } catch {
-    return null;
+function ChromeSurface({
+  style,
+  interactive,
+  children,
+}: {
+  style: StyleProp<ViewStyle>;
+  interactive?: boolean;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  if (isLiquidGlassAvailable()) {
+    return (
+      <GlassView glassEffectStyle="regular" isInteractive={interactive} style={style}>
+        {children}
+      </GlassView>
+    );
   }
-})();
-
-/** Fit both ends of the walk: farther apart → wider camera. */
-export function zoomFor(meters: number): number {
-  if (meters <= 0) {
-    return 17;
-  }
-  return Math.min(17, Math.max(12, 17 - Math.log2(meters / 150)));
+  return <View style={[style, { backgroundColor: theme.background }]}>{children}</View>;
 }
 
+/**
+ * Go mode: the whole screen is the journey — the venue-era UI, back
+ * verbatim on Valhalla's free routes. The map fills it; the directions
+ * sheet carries the compass dial beside the live step — one block, per
+ * the design. No walking route degrades to the big compass alone.
+ * Destination-agnostic: vanished palaces ride it too.
+ */
 export default function GoScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
-  const theme = useTheme();
   const { coordinates } = useLocation();
-  const [route, setRoute] = useState<WalkingRoute | null>(null);
+  const [stepsOpen, setStepsOpen] = useState(false);
+  const [routeState, setRouteState] = useState<
+    { status: 'loading' } | { status: 'none' } | { status: 'ready'; route: WalkingRoute }
+  >({ status: 'loading' });
 
-  // A route when there is none, a new one at >30m drift; GPS breathing
-  // inside the corridor never refetches (and the server's ~27m origin
-  // bucket makes most refetches cache hits anyway)
+  const latitude = coordinates?.latitude;
+  const longitude = coordinates?.longitude;
+  const target = item?.coordinates;
+
   useEffect(() => {
-    if (!coordinates || !item) {
+    if (latitude === undefined || longitude === undefined || !target) {
       return;
     }
-    if (route && metersFromRoute(route.coordinates, coordinates) <= 30) {
-      return;
-    }
-    let active = true;
+    let cancelled = false;
     (async () => {
       try {
-        const fresh = await fetchRoute(coordinates, item.coordinates);
-        if (active) {
-          setRoute(fresh);
+        const route = await fetchRoute({ latitude, longitude }, target);
+        if (!cancelled) {
+          setRouteState(route ? { status: 'ready', route } : { status: 'none' });
         }
-      } catch {
-        // The straight line stands in; the next position change retries
+      } catch (error) {
+        console.warn('Failed to load route:', error);
+        if (!cancelled) {
+          setRouteState((current) => (current.status === 'ready' ? current : { status: 'none' }));
+        }
       }
     })();
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [coordinates, item, route]);
+  }, [latitude, longitude, target]);
 
-  if (!item) {
+  if (!item || !target || !coordinates) {
     return (
       <ThemedView style={styles.centered}>
-        <Stack.Screen options={{ title: 'Go' }} />
-        <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
+        <Stack.Screen options={{ headerShown: false }} />
+        {item ? (
+          <ActivityIndicator />
+        ) : (
+          <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
+        )}
       </ThemedView>
     );
   }
 
-  const meters = coordinates ? distanceMeters(coordinates, item.coordinates) : null;
-  const next =
-    route && coordinates ? upcomingManeuver(route.coordinates, route.maneuvers, coordinates) : null;
-  const AppleMapView = Platform.OS === 'ios' ? Maps?.AppleMaps.View : null;
-
-  const midpoint = coordinates
-    ? {
-        latitude: (coordinates.latitude + item.coordinates.latitude) / 2,
-        longitude: (coordinates.longitude + item.coordinates.longitude) / 2,
-      }
-    : item.coordinates;
+  const route = routeState.status === 'ready' ? routeState.route : null;
+  const guidance = route ? guidanceFor(route, coordinates) : null;
 
   return (
     <ThemedView style={styles.container}>
-      {AppleMapView ? (
-        <AppleMapView
-          style={styles.map}
-          cameraPosition={{ coordinates: midpoint, zoom: zoomFor(meters ?? 300) }}
-          properties={{ isMyLocationEnabled: true }}
-          markers={[
-            {
-              id: 'story',
-              coordinates: item.coordinates,
-              title: item.title,
-              tintColor: theme.accent,
-              systemImage: 'book.fill',
-            },
-          ]}
-          polylines={
-            route
-              ? [{ id: 'route', coordinates: route.coordinates, color: theme.accent, width: 5 }]
-              : coordinates
-                ? [
-                    {
-                      id: 'bearing',
-                      coordinates: [coordinates, item.coordinates],
-                      color: theme.accent,
-                      width: 4,
-                    },
-                  ]
-                : []
-          }
-        />
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {route ? (
+        <RouteMap route={route} destination={target} fullscreen />
       ) : (
         <View style={styles.centered}>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.fallback}>
-            The map needs iOS for now — the compass knows the way on every platform.
-          </ThemedText>
+          {routeState.status === 'loading' ? (
+            <ActivityIndicator />
+          ) : (
+            <>
+              <Compass target={target} />
+              <ThemedText type="small" themeColor="textSecondary">
+                No walking route available — compass it is.
+              </ThemedText>
+            </>
+          )}
         </View>
       )}
-      <View style={[styles.footer, { backgroundColor: theme.background }]}>
-        <View style={styles.footerText}>
-          <ThemedText type="headline" numberOfLines={2}>
-            {next ? next.instruction : item.title}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {next && next.metersUntil > 0
-              ? `in ${formatDistance(next.metersUntil)} · ` +
-                `${formatDistance(route!.meters)} · ${formatWalkTime(route!.seconds)}`
-              : route
-                ? `${formatDistance(route.meters)} · ${formatWalkTime(route.seconds)}`
-                : meters !== null
-                  ? `${formatDistance(meters)} · ${formatWalkTime(Math.round(meters / 1.33))}`
-                  : 'Finding you…'}
-          </ThemedText>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() =>
-            router.replace({
-              pathname: '/history/[pageId]/compass',
-              params: { pageId: String(item.pageId) },
-            })
-          }
-          style={({ pressed }) => [
-            styles.compassButton,
-            { backgroundColor: theme.accentSoft },
-            pressed && { opacity: 0.85 },
-          ]}>
-          <ThemedText type="smallBold" themeColor="accent">
-            Compass ›
-          </ThemedText>
-        </Pressable>
-      </View>
+
+      <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
+        <ChromeSurface style={styles.topCard} interactive>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            onPress={() => router.back()}
+            hitSlop={Spacing.two}>
+            <ThemedText type="headline" themeColor="textSecondary">
+              ✕
+            </ThemedText>
+          </Pressable>
+          <View style={styles.topText}>
+            <ThemedText type="smallBold" numberOfLines={1}>
+              {item.title}
+            </ThemedText>
+            {route && (
+              <ThemedText type="small" themeColor="textSecondary">
+                {formatWalkTime(route.seconds)} · {formatDistance(route.meters)}
+              </ThemedText>
+            )}
+          </View>
+        </ChromeSurface>
+      </SafeAreaView>
+
+      {guidance && (
+        <SafeAreaView style={styles.sheetArea} edges={['bottom']} pointerEvents="box-none">
+          <ChromeSurface style={styles.sheet} interactive>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setStepsOpen((open) => !open)}
+              style={styles.sheetPress}>
+              <View style={styles.sheetHeader}>
+                <PointerDial
+                  compact
+                  size={56}
+                  user={coordinates}
+                  target={guidance.target}
+                  primary={guidance.arrived ? 'Here' : formatDistance(guidance.metersToManeuver)}
+                />
+                <View style={styles.sheetText}>
+                  <ThemedText type="headline">
+                    {guidance.arrived ? 'You have arrived' : guidance.step.instruction}
+                  </ThemedText>
+                  {!guidance.arrived && (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {formatDistance(guidance.metersToManeuver)} to next turn
+                    </ThemedText>
+                  )}
+                </View>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {stepsOpen ? '▼' : '▲'}
+                </ThemedText>
+              </View>
+              {stepsOpen &&
+                route &&
+                route.maneuvers.map((maneuver, index) => (
+                  <ThemedText
+                    key={`${index}-${maneuver.instruction}`}
+                    type="small"
+                    themeColor={index === guidance.stepIndex ? undefined : 'textSecondary'}>
+                    {index + 1}. {maneuver.instruction}
+                    {maneuver.meters > 0 ? ` · ${formatDistance(maneuver.meters)}` : ''}
+                  </ThemedText>
+                ))}
+            </Pressable>
+          </ChromeSurface>
+        </SafeAreaView>
+      )}
     </ThemedView>
   );
 }
@@ -179,29 +209,50 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.three,
   },
-  fallback: {
-    textAlign: 'center',
-    paddingHorizontal: Spacing.six,
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
-  map: {
-    flex: 1,
-  },
-  footer: {
+  topCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.five,
+    marginHorizontal: Spacing.three,
+    marginTop: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.three - Spacing.one,
   },
-  footerText: {
+  topText: {
+    flex: 1,
+    gap: 1,
+  },
+  sheetArea: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  sheet: {
+    marginHorizontal: Spacing.three,
+    marginBottom: Spacing.three,
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  sheetPress: {
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  sheetText: {
     flex: 1,
     gap: 2,
-  },
-  compassButton: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three - Spacing.one,
   },
 });

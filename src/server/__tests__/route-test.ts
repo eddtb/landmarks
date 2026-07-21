@@ -1,5 +1,4 @@
 import { buildRoute, decodePolyline6 } from '@/server/route';
-import { nearestPointIndex, metersFromRoute, upcomingManeuver } from '@/utils/navigation';
 
 // Recorded from the live FOSSGIS Valhalla server, 2026-07-21:
 // Royal Hill → Cutty Sark, 0.573 km, 8 maneuvers
@@ -53,31 +52,5 @@ describe('buildRoute', () => {
 
   test('no shape, no route', () => {
     expect(buildRoute({ legs: [{}] })).toBeNull();
-  });
-});
-
-describe('navigation arithmetic', () => {
-  // A straight north-going street, ~111m per point
-  const shape = [0, 1, 2, 3, 4].map((step) => ({ latitude: 51.4 + step / 1000, longitude: 0 }));
-  const maneuvers = [
-    { instruction: 'Walk north.', meters: 222, beginIndex: 0 },
-    { instruction: 'Turn right at the palace.', meters: 222, beginIndex: 2 },
-    { instruction: 'You have arrived.', meters: 0, beginIndex: 4 },
-  ];
-
-  test('finds where you are and how far you have strayed', () => {
-    expect(nearestPointIndex(shape, { latitude: 51.4021, longitude: 0 })).toBe(2);
-    expect(metersFromRoute(shape, { latitude: 51.401, longitude: 0.001 })).toBeCloseTo(69, -1);
-  });
-
-  test('the upcoming maneuver is the next one ahead, with distance until it', () => {
-    const next = upcomingManeuver(shape, maneuvers, { latitude: 51.4001, longitude: 0 });
-    expect(next?.instruction).toBe('Turn right at the palace.');
-    expect(next?.metersUntil).toBeCloseTo(222, -2);
-  });
-
-  test('past the last turn you are arriving', () => {
-    const next = upcomingManeuver(shape, maneuvers, { latitude: 51.404, longitude: 0 });
-    expect(next).toEqual({ instruction: 'You have arrived.', metersUntil: 0 });
   });
 });
