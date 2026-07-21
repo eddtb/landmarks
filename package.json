@@ -58,6 +58,8 @@
   "jest": {
     "preset": "jest-expo",
     "resolver": "react-native-worklets/jest/resolver",
+    "testPathIgnorePatterns": ["/node_modules/", "/.claude/"],
+    "modulePathIgnorePatterns": ["/.claude/worktrees/"],
     "setupFilesAfterEnv": [
       "./jest-setup.js"
     ],

@@ -45,3 +45,4 @@ example
 # Disk-persisted AI result caches (dev)
 .ai-cache/
 .ai-cache-test/
+.claude/worktrees/

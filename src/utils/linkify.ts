@@ -13,6 +13,35 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * The story-level link plan: each title becomes a door ONCE per story,
+ * at its first mention — Wikipedia's own first-occurrence convention.
+ * Precomputed and pure so virtualised part rows (which can render in
+ * any order after a timeline jump) all agree on where the door is.
+ * Returns, per part, per paragraph, the candidates allowed to link.
+ */
+export function planStoryLinks(
+  partParagraphs: string[][],
+  candidates: LinkCandidate[]
+): LinkCandidate[][][] {
+  const plan = partParagraphs.map((paragraphs) => paragraphs.map(() => [] as LinkCandidate[]));
+  for (const candidate of candidates) {
+    if (candidate.title.trim().split(/\s+/).length < 2) {
+      continue;
+    }
+    const pattern = new RegExp(`\\b${escapeRegExp(candidate.title)}\\b`, 'i');
+    outer: for (let part = 0; part < partParagraphs.length; part++) {
+      for (let index = 0; index < partParagraphs[part].length; index++) {
+        if (pattern.test(partParagraphs[part][index])) {
+          plan[part][index].push(candidate);
+          break outer;
+        }
+      }
+    }
+  }
+  return plan;
+}
+
 export function linkifyParagraph(
   paragraph: string,
   candidates: LinkCandidate[]
