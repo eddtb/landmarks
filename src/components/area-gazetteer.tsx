@@ -347,7 +347,7 @@ export function AreaGazetteer({
             {speechAvailable && (
               <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.two}>
                 <ThemedText type="smallBold" themeColor="accent">
-                  {speaking ? '◼ Stop' : engineFailed ? '🔊 Speech failed · retry' : '🔊 Listen'}
+                  {speaking ? '◼ Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
                 </ThemedText>
               </Pressable>
             )}
