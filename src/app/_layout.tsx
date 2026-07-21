@@ -23,10 +23,6 @@ export default function RootLayout() {
           options={{ title: '', headerBackTitle: 'Stories' }}
         />
         <Stack.Screen
-          name="history/[pageId]/compass"
-          options={{ presentation: 'modal', headerShown: false }}
-        />
-        <Stack.Screen
           name="history/[pageId]/go"
           options={{ presentation: 'modal', headerShown: false }}
         />

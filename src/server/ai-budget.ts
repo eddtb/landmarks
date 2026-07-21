@@ -31,7 +31,3 @@ export function assertBudget() {
 export function recordSpend(dollars: number) {
   budget.record(dollars);
 }
-
-export function recentSpend() {
-  return budget.recent();
-}

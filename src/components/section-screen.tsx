@@ -163,7 +163,7 @@ export function StoriesScreen() {
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <SectionHeader {...gate} eyebrow="Nearby" />
-            <HistoryBody center={gate.center} mode="nearby" />
+            <HistoryBody center={gate.center} />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -319,7 +319,7 @@ export function FeaturedRail({
   );
 }
 
-export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }) {
+export function HistoryBody({ center }: { center: Coordinates }) {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
