@@ -99,7 +99,7 @@ export function ImageViewer({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <GestureHandlerRootView style={styles.root}>
+      <GestureHandlerRootView style={styles.root} testID="image-viewer">
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]} />
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.page, pageStyle]}>

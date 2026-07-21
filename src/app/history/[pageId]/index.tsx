@@ -55,7 +55,7 @@ export default function HistoryDetailScreen() {
   const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView style={styles.container} testID="story-screen">
       <Stack.Screen
         options={{
           title: item.title,

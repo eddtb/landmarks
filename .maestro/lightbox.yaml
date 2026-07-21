@@ -1,0 +1,37 @@
+# The lightbox flow: our most expensive bug family, pinned.
+# Drag-to-close broke twice (GestureHandlerRootView-in-Modal, then
+# the zoom ScrollView claiming vertical touches) and cost three device
+# rounds. This drives the exact gesture: open a gallery photo, drag it
+# down, the viewer must close.
+appId: com.eddtb.landmarks
+---
+- launchApp
+- runFlow:
+    when:
+      visible: 'Development servers'
+    commands:
+      - openLink: exp+landmarks://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081
+
+- tapOn: 'History'
+- extendedWaitUntil:
+    visible:
+      id: 'gazetteer-hero'
+    timeout: 45000
+
+# Open a gallery photo full-screen
+- tapOn:
+    id: 'gallery-photo'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'image-viewer'
+    timeout: 10000
+
+# THE gesture: drag the photo downwards — the viewer must close
+- swipe:
+    start: 50%, 40%
+    end: 50%, 85%
+- extendedWaitUntil:
+    notVisible:
+      id: 'image-viewer'
+    timeout: 5000
