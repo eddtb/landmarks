@@ -1,14 +1,17 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { getCachedHistoryItem } from '@/data/history-client';
+import { fetchRoute, WalkingRoute } from '@/data/route-client';
 import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDistance, formatWalkTime } from '@/utils/format';
 import { distanceMeters } from '@/utils/geo';
+import { metersFromRoute, upcomingManeuver } from '@/utils/navigation';
 
 /**
  * Go: the finding map. You, the story, and the streets between —
@@ -43,6 +46,33 @@ export default function GoScreen() {
   const item = getCachedHistoryItem(Number(pageId));
   const theme = useTheme();
   const { coordinates } = useLocation();
+  const [route, setRoute] = useState<WalkingRoute | null>(null);
+
+  // A route when there is none, a new one at >30m drift; GPS breathing
+  // inside the corridor never refetches (and the server's ~27m origin
+  // bucket makes most refetches cache hits anyway)
+  useEffect(() => {
+    if (!coordinates || !item) {
+      return;
+    }
+    if (route && metersFromRoute(route.coordinates, coordinates) <= 30) {
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const fresh = await fetchRoute(coordinates, item.coordinates);
+        if (active) {
+          setRoute(fresh);
+        }
+      } catch {
+        // The straight line stands in; the next position change retries
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [coordinates, item, route]);
 
   if (!item) {
     return (
@@ -54,6 +84,8 @@ export default function GoScreen() {
   }
 
   const meters = coordinates ? distanceMeters(coordinates, item.coordinates) : null;
+  const next =
+    route && coordinates ? upcomingManeuver(route.coordinates, route.maneuvers, coordinates) : null;
   const AppleMapView = Platform.OS === 'ios' ? Maps?.AppleMaps.View : null;
 
   const midpoint = coordinates
@@ -80,16 +112,18 @@ export default function GoScreen() {
             },
           ]}
           polylines={
-            coordinates
-              ? [
-                  {
-                    id: 'bearing',
-                    coordinates: [coordinates, item.coordinates],
-                    color: theme.accent,
-                    width: 4,
-                  },
-                ]
-              : []
+            route
+              ? [{ id: 'route', coordinates: route.coordinates, color: theme.accent, width: 5 }]
+              : coordinates
+                ? [
+                    {
+                      id: 'bearing',
+                      coordinates: [coordinates, item.coordinates],
+                      color: theme.accent,
+                      width: 4,
+                    },
+                  ]
+                : []
           }
         />
       ) : (
@@ -101,13 +135,18 @@ export default function GoScreen() {
       )}
       <View style={[styles.footer, { backgroundColor: theme.background }]}>
         <View style={styles.footerText}>
-          <ThemedText type="headline" numberOfLines={1}>
-            {item.title}
+          <ThemedText type="headline" numberOfLines={2}>
+            {next ? next.instruction : item.title}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {meters !== null
-              ? `${formatDistance(meters)} · ${formatWalkTime(Math.round(meters / 1.33))}`
-              : 'Finding you…'}
+            {next && next.metersUntil > 0
+              ? `in ${formatDistance(next.metersUntil)} · ` +
+                `${formatDistance(route!.meters)} · ${formatWalkTime(route!.seconds)}`
+              : route
+                ? `${formatDistance(route.meters)} · ${formatWalkTime(route.seconds)}`
+                : meters !== null
+                  ? `${formatDistance(meters)} · ${formatWalkTime(Math.round(meters / 1.33))}`
+                  : 'Finding you…'}
           </ThemedText>
         </View>
         <Pressable

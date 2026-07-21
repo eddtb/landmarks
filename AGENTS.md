@@ -35,4 +35,5 @@ free-keyed and unmetered — they don't belong in this table.
 | Call (kind)          | Cache                    | Cost |
 |----------------------|--------------------------|------|
 | Gemini telling (ungrounded) | tellings 30d (per story) + device session cache | free tier, 300-calls/day breaker |
+| Valhalla walking route (FOSSGIS) | routes 24h (per ~27m origin bucket + destination) | free community server; 300-calls/day breaker out of politeness |
 | Anthropic (dormant fallback) | n/a — only via explicit AI_PROVIDER=anthropic | paid; assertBudget breaker; boot log asks "is this intended?" |
