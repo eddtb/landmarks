@@ -12,7 +12,7 @@ const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learni
 
 export type StoryPhoto = { imageUrl: string; credit: string };
 
-type CommonsPage = {
+export type CommonsPage = {
   title?: string;
   imageinfo?: {
     thumburl?: string;

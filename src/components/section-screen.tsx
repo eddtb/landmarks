@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AreaGazetteer } from '@/components/area-gazetteer';
 import { HistoryCard } from '@/components/history-card';
 import { LocationPriming } from '@/components/location-priming';
 import { ThemedText } from '@/components/themed-text';
@@ -23,7 +24,7 @@ import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
-import { historyTag, isVanished } from '@/utils/format';
+import { isVanished } from '@/utils/format';
 import { Coordinates, FallbackCoordinates } from '@/utils/geo';
 
 /**
@@ -148,15 +149,19 @@ export function StoriesScreen() {
   );
 }
 
-/** The archive: what happened here, photo optional (Edd's split). */
+/**
+ * The Gazetteer (Edd's pick): the place's own illustrated story with
+ * the relics of its ground beneath. The denied-location header keeps
+ * the manual search available; otherwise the hero IS the header.
+ */
 export function HistoryArchiveScreen() {
   return (
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <SectionHeader {...gate} eyebrow="History" />
-            <HistoryBody center={gate.center} mode="archive" />
+            {gate.locationDenied && <SectionHeader {...gate} eyebrow="History" />}
+            <GazetteerBody center={gate.center} />
             <WalkBar />
           </SafeAreaView>
         </ThemedView>
@@ -165,13 +170,49 @@ export function HistoryArchiveScreen() {
   );
 }
 
-export function HistoryBody({
-  center,
-  mode,
-}: {
-  center: Coordinates;
-  mode: 'nearby' | 'archive';
-}) {
+function GazetteerBody({ center }: { center: Coordinates }) {
+  const [refreshing, setRefreshing] = useState(false);
+  const { state, refresh } = useHistory(center);
+  const areaName = useAreaName(center);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
+
+  if (state.status === 'loading') {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <View style={styles.centered}>
+        <ThemedText type="small" themeColor="textSecondary">
+          Couldn&apos;t load stories right now.
+        </ThemedText>
+        <Pressable accessibilityRole="button" onPress={refresh}>
+          <ThemedText type="linkPrimary">Try again</ThemedText>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const relics = state.items.filter((item) => !item.thumbnailUrl || isVanished(item.extract));
+  return (
+    <AreaGazetteer
+      areaName={areaName}
+      relics={relics}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+    />
+  );
+}
+
+export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }) {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
@@ -205,35 +246,23 @@ export function HistoryBody({
   }
 
   // Nearby = things you can visit AND recognise: a subject photo and
-  // still standing. History = the archive: vanished things (whatever
-  // their photos show — a palace's painting belongs there) plus
-  // stories nothing photographs.
-  const items = state.items.filter((item) =>
-    mode === 'nearby'
-      ? item.thumbnailUrl && !isVanished(item.extract)
-      : !item.thumbnailUrl || isVanished(item.extract)
-  );
-  const vanished =
-    mode === 'archive'
-      ? items.filter((item) => historyTag(item.extract) === 'No longer standing').length
-      : 0;
+  // still standing. The vanished and the unphotographed live in the
+  // Gazetteer next door.
+  const items = state.items.filter((item) => item.thumbnailUrl && !isVanished(item.extract));
 
   return (
     <>
       {items.length > 0 && (
         <View style={styles.controlLine}>
           <ThemedText type="small" themeColor="textSecondary">
-            {mode === 'nearby'
-              ? `${items.length} ${items.length === 1 ? 'story' : 'stories'} within a walk`
-              : `${items.length} ${items.length === 1 ? 'story' : 'stories'} of this ground` +
-                (vanished > 0 ? ` · ${vanished} no longer standing` : '')}
+            {items.length} {items.length === 1 ? 'story' : 'stories'} within a walk
           </ThemedText>
         </View>
       )}
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.pageId)}
-        renderItem={({ item }) => <HistoryCard item={item} archive={mode === 'archive'} />}
+        renderItem={({ item }) => <HistoryCard item={item} />}
         // The deep feed can run to ~150 stories — render the first
         // screenful fast and let virtualisation handle the rest
         initialNumToRender={8}
@@ -246,9 +275,7 @@ export function HistoryBody({
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-            {mode === 'nearby'
-              ? 'No recorded history right here — wander a little.'
-              : 'Nothing hidden here that the records know of.'}
+            No recorded history right here — wander a little.
           </ThemedText>
         }
       />

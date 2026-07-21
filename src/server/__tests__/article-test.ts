@@ -1,4 +1,4 @@
-import { parseArticle } from '@/server/article';
+import { parseArticle, pickImageFiles } from '@/server/article';
 import { wikiTitleFromUrl } from '@/utils/format';
 
 // Shaped like the real thing: the Cutty Sark article's structure,
@@ -52,6 +52,26 @@ describe('parseArticle', () => {
   test('reading time has a one-minute floor', () => {
     expect(article.minutes).toBe(1);
     expect(parseArticle(`${'word '.repeat(2300)}.`).minutes).toBe(10);
+  });
+});
+
+describe('pickImageFiles', () => {
+  test('photographs in, reading furniture out — from the real media-list', () => {
+    expect(
+      pickImageFiles([
+        'File:Old_Royal_Naval_College_2017-08-06.jpg',
+        'File:Greenwich_UK_locator_map.svg',
+        'File:Royal_Borough_of_Greenwich_coat_of_arms.png',
+        'File:Greenwich_Market_-_London.jpg',
+        'File:Commons-logo.svg',
+        'File:Greenwich_Market_-_London.jpg', // dupe
+      ])
+    ).toEqual(['File:Old_Royal_Naval_College_2017-08-06.jpg', 'File:Greenwich_Market_-_London.jpg']);
+  });
+
+  test('caps the haul', () => {
+    const many = Array.from({ length: 20 }, (_, i) => `File:Photo_${i}.jpg`);
+    expect(pickImageFiles(many)).toHaveLength(8);
   });
 });
 
