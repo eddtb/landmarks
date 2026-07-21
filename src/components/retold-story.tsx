@@ -76,13 +76,15 @@ export function RetoldStory({ retold, article }: { retold: Retold; article: Arti
           </Pressable>
         )}
       </View>
-      {retold.timeline.length > 0 && (
+      {/* Belt to the client's braces: hot-reload sessions can hold
+          pre-timeline objects that no boundary ever re-normalised */}
+      {(retold.timeline ?? []).length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.timeline}
           contentContainerStyle={styles.timelineContent}>
-          {retold.timeline.map((stop, index) => (
+          {(retold.timeline ?? []).map((stop, index) => (
             <View key={index} style={[styles.timelineStop, { backgroundColor: theme.accentSoft }]}>
               <ThemedText type="smallBold" themeColor="accent" style={styles.timelineYear}>
                 {stop.year}
