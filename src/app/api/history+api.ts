@@ -8,6 +8,7 @@ import {
   mergeHistorySources,
 } from '@/server/heritage';
 import { resolvePlaqueSubjects } from '@/server/plaque-subject';
+import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
 import { fetchExistenceTags } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
@@ -27,9 +28,14 @@ import { wikiTitleFromUrl } from '@/utils/format';
  * and bypasses the read.
  */
 const ListTtlMs = 60 * 60 * 1000;
+// v5: entries may carry a sparse flag (the compose widened Wikipedia
+// to 3000m) — and a v4 sparse-area entry was composed narrow, so it
+// must not be replayed as if it were the honest wide list;
 // v4: plaque items may carry resolved subject titles (option A);
 // v3 and earlier predate photo rules and existence tags
-const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists-v4');
+const listCache = diskBackedMap<{ items: HistoryItem[]; sparse?: boolean; at: number }>(
+  'history-lists-v5'
+);
 
 function bucketKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
@@ -61,8 +67,8 @@ export async function GET(request: Request) {
   // The photo verdict routes, it doesn't delete: the client puts
   // subject-photo stories in Nearby (findable on arrival — Edd's rule)
   // and the rest in the History archive. The server ships everything.
-  const respond = (items: Awaited<ReturnType<typeof dressWithPhotos>>) =>
-    Response.json({ items });
+  const respond = (items: Awaited<ReturnType<typeof dressWithPhotos>>, sparse?: boolean) =>
+    Response.json(sparse ? { items, sparse: true, horizon: SparseRadiusMeters } : { items });
 
   const key = bucketKey(lat, lng);
   if (!fresh) {
@@ -73,7 +79,7 @@ export async function GET(request: Request) {
       const items = await dressWithPhotos(cached.items, undefined, undefined, 0, 0);
       // …and quietly warm the still-unverdicted tail for the next request
       void dressWithPhotos(cached.items).catch(() => {});
-      return respond(items);
+      return respond(items, cached.sparse);
     }
   }
 
@@ -105,12 +111,33 @@ export async function GET(request: Request) {
       wikipedia.value
     );
 
-    const merged = mergeHistorySources(
+    let merged = mergeHistorySources(
       wikipedia.value,
       listed.status === 'fulfilled' ? listed.value : [],
       resolvedPlaques,
       200
     );
+
+    // Sparse-area mode: a thin merge means a quiet corner, not a bug —
+    // re-ask Wikipedia at the wide horizon and re-merge with the SAME
+    // heritage results (their radii stay; only Wikipedia widens). A
+    // failed widening degrades to the narrow list, never to an error.
+    let sparse = false;
+    if (shouldWiden(merged.length)) {
+      try {
+        const widened = await findNearbyHistory(center, SparseRadiusMeters);
+        merged = mergeHistorySources(
+          widened,
+          listed.status === 'fulfilled' ? listed.value : [],
+          resolvedPlaques,
+          200
+        );
+        sparse = true;
+      } catch (error) {
+        console.warn('Sparse widening degraded:', error);
+      }
+    }
+
     const told = await enrichStandaloneListed(merged);
     // The deep feed: everything within the walk, not a top-40 — the list
     // virtualises client-side, and photo lookups stay capped per request
@@ -136,8 +163,8 @@ export async function GET(request: Request) {
     } catch (error) {
       console.warn('Existence facts degraded:', error);
     }
-    listCache.set(key, { items, at: Date.now() });
-    return respond(items);
+    listCache.set(key, sparse ? { items, sparse, at: Date.now() } : { items, at: Date.now() });
+    return respond(items, sparse);
   } catch (error) {
     console.error('History lookup failed:', error);
     return Response.json({ error: 'History lookup failed' }, { status: 502 });

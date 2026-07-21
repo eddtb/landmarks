@@ -36,10 +36,23 @@ describe('fetchNearbyHistory', () => {
     const second = await fetchNearbyHistory(center);
 
     expect(mockFetch.mock.calls[0][0]).toContain('/api/history?');
-    expect(first).toHaveLength(1);
+    expect(first.items).toHaveLength(1);
+    expect(first.sparse).toBeUndefined();
     expect(second).toEqual(first);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(getCachedHistoryItem(42)?.title).toBe('Borough Compter');
+  });
+
+  test('surfaces the sparse flag when the server widened its search', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [item], sparse: true, horizon: 3000 }),
+    });
+
+    const feed = await fetchNearbyHistory(freshCenter());
+
+    expect(feed.sparse).toBe(true);
+    expect(feed.items).toHaveLength(1);
   });
 
   test('forceRefresh bypasses the cache', async () => {
