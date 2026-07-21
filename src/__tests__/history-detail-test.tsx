@@ -59,7 +59,6 @@ describe('<HistoryDetailScreen />', () => {
 
     // The venue grammar rides under the hero (112m rounds to the 1-min floor)
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
-    expect(screen.getByText('＋ Walk')).toBeOnTheScreen();
     expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
 
     // No retelling exists → the original article stands as the story:

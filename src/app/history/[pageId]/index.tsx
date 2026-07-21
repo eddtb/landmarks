@@ -11,8 +11,6 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { getCachedHistoryItem, getCachedHistoryItems } from '@/data/history-client';
-import { addToWalk, removeFromWalk, walkStopFromStory } from '@/data/plan-store';
-import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { formatWalkTime, storyParagraphs } from '@/utils/format';
@@ -33,10 +31,9 @@ function mapsWalkingUrl(coordinates: Coordinates): string {
   );
 }
 
-/** The venue grammar rides under the hero: one violet Go, the walk toggle. */
+/** The venue grammar rides under the hero: one violet Go. */
 function ActionsLead({ item }: { item: HistoryItem }) {
   const theme = useTheme();
-  const onWalk = usePlan().some((stop) => stop.pageId === item.pageId);
   const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
 
   return (
@@ -56,18 +53,6 @@ function ActionsLead({ item }: { item: HistoryItem }) {
         ]}>
         <ThemedText type="smallBold" style={styles.goText}>
           Go · {formatWalkTime(walkSeconds)}
-        </ThemedText>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => (onWalk ? removeFromWalk(item.pageId) : addToWalk(walkStopFromStory(item)))}
-        style={({ pressed }) => [
-          styles.mini,
-          { backgroundColor: theme.accentSoft },
-          pressed && { opacity: 0.85 },
-        ]}>
-        <ThemedText type="smallBold" themeColor="accent">
-          {onWalk ? '✓ On walk' : '＋ Walk'}
         </ThemedText>
       </Pressable>
       <ThemedText type="small" themeColor="textSecondary" style={styles.leadMeta}>
@@ -109,7 +94,7 @@ function ExtractStory({ item }: { item: HistoryItem }) {
  * A place now gets the same love as the area (Edd's call): the full
  * Gazetteer — hero, gallery, the story retold in parts, timeline,
  * the web of history — pointed at the place's OWN article, with the
- * venue grammar (Go, the walk) riding under the hero. Places without
+ * venue grammar (one violet Go) riding under the hero. Places without
  * an article of their own keep the extract-and-folds story.
  */
 export default function HistoryDetailScreen() {
@@ -182,11 +167,6 @@ const styles = StyleSheet.create({
   },
   goText: {
     color: '#FFFFFF',
-  },
-  mini: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.six,
   },
   leadMeta: {
     flexShrink: 1,
