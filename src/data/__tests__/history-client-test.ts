@@ -30,19 +30,36 @@ const HourMs = 60 * 60 * 1000;
 
 // Seed "last session's" persisted buckets BEFORE the client module
 // loads — its caches hydrate at import, so this is the app relaunching
-// after a force-quit. Keys are the client's own ~11m grid buckets.
+// after a force-quit. Keys are the client's own ~11m grid buckets;
+// values are whole feeds (items plus sparse metadata).
 const store = (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> })
   .__INTERNAL_MOCK_STORAGE__;
-store['cache-history-list-v1'] = JSON.stringify([
-  ['50.1000|-0.0900', { value: [persistedItem(1, 'Persisted Fresh')], at: Date.now() }],
-  ['50.2000|-0.0900', { value: [persistedItem(2, 'Persisted Stale')], at: Date.now() - 2 * HourMs }],
-  ['50.3000|-0.0900', { value: [persistedItem(3, 'Persisted Offline')], at: Date.now() - 2 * HourMs }],
+store['cache-history-feed-v1'] = JSON.stringify([
+  [
+    '50.1000|-0.0900',
+    { value: { items: [persistedItem(1, 'Persisted Fresh')] }, at: Date.now() },
+  ],
+  [
+    '50.2000|-0.0900',
+    { value: { items: [persistedItem(2, 'Persisted Stale')] }, at: Date.now() - 2 * HourMs },
+  ],
+  [
+    '50.3000|-0.0900',
+    { value: { items: [persistedItem(3, 'Persisted Offline')] }, at: Date.now() - 2 * HourMs },
+  ],
+  [
+    '50.4000|-0.0900',
+    {
+      value: { items: [persistedItem(4, 'Persisted Sparse Village')], sparse: true },
+      at: Date.now() - 2 * HourMs,
+    },
+  ],
 ]);
 store['cache-history-item-v1'] = JSON.stringify([
   ['7', { value: persistedItem(7, 'Persisted Detail'), at: Date.now() }],
 ]);
 
-const { fetchNearbyHistory, getCachedHistoryItem } =
+const { fetchNearbyHistory, fetchStory, getCachedHistoryItem } =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/data/history-client') as typeof import('@/data/history-client');
 
@@ -64,9 +81,22 @@ describe('fetchNearbyHistory', () => {
 
     expect(mockFetch.mock.calls[0][0]).toContain('/api/history?');
     expect(first.items).toHaveLength(1);
-    expect(second.items).toEqual(first.items);
+    expect(first.sparse).toBeUndefined();
+    expect(second).toEqual(first);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(getCachedHistoryItem(42)?.title).toBe('Borough Compter');
+  });
+
+  test('surfaces the sparse flag when the server widened its search', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [item], sparse: true, horizon: 3000 }),
+    });
+
+    const feed = await fetchNearbyHistory(freshCenter());
+
+    expect(feed.sparse).toBe(true);
+    expect(feed.items).toHaveLength(1);
   });
 
   test('forceRefresh bypasses the cache', async () => {
@@ -129,6 +159,18 @@ describe('fetchNearbyHistory persistence (relaunch simulated by pre-import seedi
     expect(offline.items[0].title).toBe('Persisted Offline');
   });
 
+  test('a persisted sparse bucket round-trips its flag — offline, the honesty survives', async () => {
+    mockFetch.mockRejectedValue(new TypeError('Network request failed'));
+
+    const result = await fetchNearbyHistory({ latitude: 50.4, longitude: -0.09 });
+    expect(result.items[0].title).toBe('Persisted Sparse Village');
+    expect(result.sparse).toBe(true); // the placeholder already says "we looked further"
+
+    const offline = await result.revalidate!;
+    expect(offline.stale).toBe(true);
+    expect(offline.sparse).toBe(true); // served offline-stale, the sparse copy survives
+  });
+
   test('a failed forced refresh falls back to the saved bucket, flagged', async () => {
     const center = freshCenter();
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [item] }) });
@@ -151,5 +193,38 @@ describe('fetchNearbyHistory persistence (relaunch simulated by pre-import seedi
     // getCachedHistoryItem is sync; give hydration its microtasks
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(getCachedHistoryItem(7)?.title).toBe('Persisted Detail');
+  });
+});
+
+describe('fetchStory', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  test('requests /api/story and populates the item cache', async () => {
+    const story = { ...item, pageId: 4242, title: 'Marshalsea' };
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ item: story }) });
+
+    const first = await fetchStory(4242);
+
+    expect(String(mockFetch.mock.calls[0][0])).toContain('/api/story?pageId=4242');
+    expect(first?.title).toBe('Marshalsea');
+    // The cold-start fetch feeds the same session cache the list fills
+    expect(getCachedHistoryItem(4242)?.title).toBe('Marshalsea');
+
+    // …and a cached story never re-fetches
+    const second = await fetchStory(4242);
+    expect(second).toEqual(first);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('a true 404 is null — the story genuinely does not exist', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 404 });
+
+    expect(await fetchStory(4243)).toBeNull();
+  });
+
+  test('upstream trouble throws, so callers can tell it from a 404', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 502 });
+
+    await expect(fetchStory(4244)).rejects.toThrow('502');
   });
 });

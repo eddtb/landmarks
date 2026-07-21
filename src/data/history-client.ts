@@ -7,8 +7,12 @@ import { Coordinates } from '@/utils/geo';
 
 const HourMs = 60 * 60 * 1000;
 
+/** The feed plus how it was gathered: `sparse` means the server found
+ * a quiet corner and widened the Wikipedia search to fill it. */
+export type HistoryFeed = { items: HistoryItem[]; sparse?: boolean };
+
 // Same session-cache pattern as the places list: keyed on an ~11m grid,
-// individual items kept for the detail screen. Both now persist across
+// individual items kept for the detail screen. Both persist across
 // process death (see persisted-cache.ts) BY THE SAME KEYS — the ~11m
 // bucket keying is what makes persistence safe: movement always lands
 // in a different bucket, so a stored list can never be served for the
@@ -17,15 +21,21 @@ const HourMs = 60 * 60 * 1000;
 // bucket is only ever a placeholder (serve-stale-while-revalidate) or
 // an offline fallback, never a quiet substitute. Items are content by
 // pageId (not location-served), kept a week for the detail screen.
-const listCache = persistedMap<HistoryItem[]>('history-list', HourMs);
+//
+// The list persists the whole HistoryFeed — sparse metadata WITH the
+// items — so a cache-served or offline-stale feed for a quiet village
+// keeps its "we looked further" honesty. Named 'history-feed' (not
+// the earlier 'history-list'): the cached-shape ruling from the
+// sparse-area change applies to persisted entries identically — a
+// bare-array entry predates sparse and must not replay as a feed.
+const listCache = persistedMap<HistoryFeed>('history-feed', HourMs);
 const itemCache = persistedMap<HistoryItem>('history-item', 7 * 24 * HourMs);
 
 function cacheKey(center: Coordinates): string {
   return `${center.latitude.toFixed(4)}|${center.longitude.toFixed(4)}`;
 }
 
-export type HistoryFetchResult = {
-  items: HistoryItem[];
+export type HistoryFetchResult = HistoryFeed & {
   /** A network failure forced serving saved stories — the UI may say so. */
   stale?: boolean;
   /** Present when items are an expired persisted bucket shown instantly
@@ -47,14 +57,14 @@ export async function fetchNearbyHistory(
       cached = listCache.get(key);
     }
     if (cached) {
-      return { items: cached };
+      return { ...cached };
     }
 
     // An expired bucket for this exact spot paints instantly while the
     // re-ask runs — a placeholder, not a substitute
     const expired = listCache.peek(key);
     if (expired) {
-      return { items: expired.value, revalidate: fetchFresh(center, key, options) };
+      return { ...expired.value, revalidate: fetchFresh(center, key, options) };
     }
   }
 
@@ -80,20 +90,23 @@ async function fetchFresh(
       throw new Error(`History request failed with status ${response.status}`);
     }
 
-    const body = (await response.json()) as { items: HistoryItem[] };
-    listCache.set(key, body.items);
+    const body = (await response.json()) as { items: HistoryItem[]; sparse?: boolean };
+    const feed: HistoryFeed = body.sparse
+      ? { items: body.items, sparse: true }
+      : { items: body.items };
+    listCache.set(key, feed);
     for (const item of body.items) {
       itemCache.set(String(item.pageId), item);
     }
-    return { items: body.items };
+    return { ...feed };
   } catch (error) {
     // Offline path: saved stories for this exact bucket (even expired)
-    // beat a spinner in a dead zone. Only real data is ever served —
-    // the failure itself is never cached as an answer.
+    // beat a spinner in a dead zone — sparse honesty riding along. Only
+    // real data is ever served: the failure itself is never cached.
     await listCache.hydrated;
     const saved = listCache.peek(key);
     if (saved) {
-      return { items: saved.value, stale: true };
+      return { ...saved.value, stale: true };
     }
     throw error;
   }
@@ -101,6 +114,31 @@ async function fetchFresh(
 
 export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {
   return itemCache.get(String(pageId));
+}
+
+/**
+ * One story by pageId — the share deep-link cold start, where nothing
+ * has populated the session cache yet. Null means the server is sure
+ * there is no such story (a true 404); upstream trouble throws so the
+ * caller can tell the difference.
+ */
+export async function fetchStory(pageId: number): Promise<HistoryItem | null> {
+  const cached = itemCache.get(String(pageId));
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(apiUrl(`/api/story?pageId=${pageId}`));
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`Story request failed with status ${response.status}`);
+  }
+
+  const body = (await response.json()) as { item: HistoryItem };
+  itemCache.set(String(body.item.pageId), body.item);
+  return body.item;
 }
 
 /** Every story seen recently — the web of history links into them. */

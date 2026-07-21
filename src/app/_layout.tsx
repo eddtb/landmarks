@@ -4,6 +4,7 @@ import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { OnboardingGate } from '@/components/onboarding';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -14,6 +15,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
+      <OnboardingGate>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
@@ -29,6 +31,7 @@ export default function RootLayout() {
           options={{ presentation: 'modal', headerShown: false }}
         />
       </Stack>
+      </OnboardingGate>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

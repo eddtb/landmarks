@@ -373,7 +373,11 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
       {items.length > 0 && (
         <View style={styles.controlLine}>
           <ThemedText type="small" themeColor="textSecondary">
-            {items.length} {items.length === 1 ? 'story' : 'stories'} within a walk
+            {/* Honest in quiet corners: the server widened its search
+                (~3km, sparse-area mode) and the count line says so */}
+            {state.sparse
+              ? `${items.length} ${items.length === 1 ? 'story' : 'stories'} — a quieter corner, so we looked further (up to ~38 min walk)`
+              : `${items.length} ${items.length === 1 ? 'story' : 'stories'} within a walk`}
           </ThemedText>
         </View>
       )}

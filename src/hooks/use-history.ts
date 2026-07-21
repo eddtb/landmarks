@@ -7,7 +7,7 @@ import { Coordinates } from '@/utils/geo';
 export type HistoryState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; items: HistoryItem[]; stale?: boolean };
+  | { status: 'ready'; items: HistoryItem[]; sparse?: boolean; stale?: boolean };
 
 export function useHistory(center: Coordinates): {
   state: HistoryState;
@@ -18,16 +18,18 @@ export function useHistory(center: Coordinates): {
   const requestId = useRef(0);
 
   // An expired persisted bucket paints instantly as a placeholder; the
-  // fresh answer (or the offline-stale flag) follows when it lands
+  // fresh answer (or the offline-stale flag) follows when it lands.
+  // Both honesty flags ride through: sparse (the server looked further)
+  // and stale (a network failure forced serving saved stories).
   const applyResult = useCallback(async (id: number, result: HistoryFetchResult) => {
     if (id === requestId.current) {
-      setState({ status: 'ready', items: result.items, stale: result.stale });
+      setState({ status: 'ready', items: result.items, sparse: result.sparse, stale: result.stale });
     }
     if (result.revalidate) {
       try {
         const fresh = await result.revalidate;
         if (id === requestId.current) {
-          setState({ status: 'ready', items: fresh.items, stale: fresh.stale });
+          setState({ status: 'ready', items: fresh.items, sparse: fresh.sparse, stale: fresh.stale });
         }
       } catch {
         // Nothing newer to show — the placeholder stands
