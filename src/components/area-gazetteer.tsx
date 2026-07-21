@@ -135,6 +135,7 @@ function Hero({
 
 function useRetoldSpeaker(retold: Retold | null) {
   const [speaking, setSpeaking] = useState(false);
+  const [engineFailed, setEngineFailed] = useState(false);
   const cancelled = useRef(false);
 
   useEffect(() => {
@@ -155,12 +156,19 @@ function useRetoldSpeaker(retold: Retold | null) {
       return;
     }
     cancelled.current = false;
+    setEngineFailed(false);
     setSpeaking(true);
     for (const [index, part] of retold.parts.entries()) {
       if (cancelled.current) {
         return;
       }
-      await speakAsync(`Part ${index + 1}: ${part.heading}.`);
+      const outcome = await speakAsync(`Part ${index + 1}: ${part.heading}.`);
+      if (outcome === 'error') {
+        // A broken engine must say so, not mime success
+        setEngineFailed(true);
+        setSpeaking(false);
+        return;
+      }
       if (cancelled.current) {
         return;
       }
@@ -171,7 +179,7 @@ function useRetoldSpeaker(retold: Retold | null) {
     }
   };
 
-  return { speaking, toggle };
+  return { speaking, engineFailed, toggle };
 }
 
 export function AreaGazetteer({
@@ -194,7 +202,7 @@ export function AreaGazetteer({
   const [originalOpen, setOriginalOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [areaFor, setAreaFor] = useState<string | null>(null);
-  const { speaking, toggle } = useRetoldSpeaker(retold);
+  const { speaking, engineFailed, toggle } = useRetoldSpeaker(retold);
 
   // Adjust-during-render: walking into Deptford must not show Greenwich
   if (areaFor !== areaName) {
@@ -274,7 +282,7 @@ export function AreaGazetteer({
             {speechAvailable && (
               <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.two}>
                 <ThemedText type="smallBold" themeColor="accent">
-                  {speaking ? '◼ Stop' : '🔊 Listen'}
+                  {speaking ? '◼ Stop' : engineFailed ? '🔊 Speech failed · retry' : '🔊 Listen'}
                 </ThemedText>
               </Pressable>
             )}

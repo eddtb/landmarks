@@ -51,7 +51,12 @@ async function playTour(stops: WalkStop[]) {
     }
     setPlayingIndex(index);
     const walkStop = tour[index];
-    await speakAsync(`Stop ${index + 1}: ${walkStop.title}.`);
+    const outcome = await speakAsync(`Stop ${index + 1}: ${walkStop.title}.`);
+    if (outcome === 'error') {
+      // A broken engine makes a silent tour — stop honestly
+      setPlayingIndex(null);
+      return;
+    }
     if (cancelled) {
       return;
     }

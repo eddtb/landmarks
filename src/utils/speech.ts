@@ -23,17 +23,24 @@ const Speech = (() => {
 
 export const speechAvailable = Speech !== null;
 
-/** Resolves when the utterance finishes, is stopped, or errors — never rejects. */
-export function speakAsync(text: string): Promise<void> {
+export type SpeechOutcome = 'done' | 'stopped' | 'error' | 'unavailable';
+
+/**
+ * Resolves with what actually happened — never rejects. An engine
+ * error used to resolve indistinguishably from success, which made a
+ * broken device look like "nothing happened" (Edd's three reports of
+ * silent Listen). Callers now get the truth to surface.
+ */
+export function speakAsync(text: string): Promise<SpeechOutcome> {
   return new Promise((resolve) => {
     if (!Speech) {
-      resolve();
+      resolve('unavailable');
       return;
     }
     Speech.speak(text, {
-      onDone: () => resolve(),
-      onStopped: () => resolve(),
-      onError: () => resolve(),
+      onDone: () => resolve('done'),
+      onStopped: () => resolve('stopped'),
+      onError: () => resolve('error'),
     });
   });
 }
