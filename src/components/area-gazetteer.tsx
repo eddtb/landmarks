@@ -10,7 +10,6 @@ import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
 import { usePlan } from '@/hooks/use-plan';
 import { HistoryItem } from '@/types/history';
-import { historyTag } from '@/utils/format';
 
 /**
  * The Gazetteer (Edd's pick, mock direction A): a magazine cover for
@@ -25,27 +24,19 @@ type Row =
   | { kind: 'relic'; key: string; item: HistoryItem };
 
 /**
- * Pure and unit-tested: relics grouped lost-first, with counts.
- * Plaques are their own section — a plaque is a PRESENT, findable
- * artifact whose inscription happens to speak in the past tense
- * ("was cast in 1790…"); grammar tests don't apply to it.
+ * Pure and unit-tested: ONE neutral list ("simply a history of the
+ * greater area" — Edd). No invented buckets: distance order, and each
+ * card carries only what the evidence says — a Wikidata fact tag, a
+ * Plaque mark, or nothing.
  */
 export function gazetteerRows(relics: HistoryItem[]): Row[] {
-  const plaques = relics.filter((item) => item.source.startsWith('Open Plaques'));
-  const articles = relics.filter((item) => !item.source.startsWith('Open Plaques'));
-  const lost = articles.filter((item) => historyTag(item.extract) === 'Lost');
-  const hidden = articles.filter((item) => historyTag(item.extract) !== 'Lost');
-  const rows: Row[] = [];
-  const push = (key: string, title: string, group: HistoryItem[]) => {
-    if (group.length > 0) {
-      rows.push({ kind: 'section', key, title: `${title} · ${group.length}` });
-      rows.push(...group.map((item): Row => ({ kind: 'relic', key: String(item.pageId), item })));
-    }
-  };
-  push('s-lost', 'Lost', lost);
-  push('s-plaques', 'Plaques', plaques);
-  push('s-hidden', 'Hidden history', hidden);
-  return rows;
+  if (relics.length === 0) {
+    return [];
+  }
+  return [
+    { kind: 'section', key: 's-ground', title: `From this ground · ${relics.length}` },
+    ...relics.map((item): Row => ({ kind: 'relic', key: String(item.pageId), item })),
+  ];
 }
 
 function Hero({ areaName, article }: { areaName: string; article: Article }) {

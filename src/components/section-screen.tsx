@@ -24,7 +24,6 @@ import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
-import { isVanished } from '@/utils/format';
 import { Coordinates, FallbackCoordinates } from '@/utils/geo';
 
 /**
@@ -201,7 +200,7 @@ function GazetteerBody({ center }: { center: Coordinates }) {
     );
   }
 
-  const relics = state.items.filter((item) => !item.thumbnailUrl || isVanished(item.extract));
+  const relics = state.items.filter((item) => !item.thumbnailUrl || item.pastTag);
   return (
     <AreaGazetteer
       areaName={areaName}
@@ -246,9 +245,9 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   }
 
   // Nearby = things you can visit AND recognise: a subject photo and
-  // still standing. The vanished and the unphotographed live in the
-  // Gazetteer next door.
-  const items = state.items.filter((item) => item.thumbnailUrl && !isVanished(item.extract));
+  // no structured evidence of pastness. The past and the
+  // unphotographed live in the Gazetteer next door.
+  const items = state.items.filter((item) => item.thumbnailUrl && !item.pastTag);
 
   return (
     <>

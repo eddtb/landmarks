@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { formatWalkTime, historyTag, storyHook } from '@/utils/format';
+import { formatWalkTime, storyHook } from '@/utils/format';
 
 type Props = {
   item: HistoryItem;
@@ -36,9 +36,9 @@ export function HistoryCard({ item, archive }: Props) {
           <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
         )}
         <View style={styles.body}>
-          {archive && (
+          {archive && (item.pastTag || item.source.startsWith('Open Plaques')) && (
             <ThemedText type="eyebrow" themeColor="accent">
-              {item.source.startsWith('Open Plaques') ? 'Plaque' : historyTag(item.extract)}
+              {item.source.startsWith('Open Plaques') ? 'Plaque' : item.pastTag}
             </ThemedText>
           )}
           <ThemedText type="headline" numberOfLines={2}>

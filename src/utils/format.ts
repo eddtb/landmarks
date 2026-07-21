@@ -131,44 +131,11 @@ export function formatRatingCount(count: number): string {
  * sentence carrying both ("…is a church that was designed by…")
  * counts as standing.
  */
-export function isVanished(extract: string | undefined): boolean {
-  if (!extract) {
-    return false;
-  }
-  // Only the DEFINING sentence may testify — extracts narrate their
-  // neighbours ("built on the grounds of the now demolished Greenwich
-  // Palace" describes the palace, not the Queen's House it sits on)
-  const firstSentence = storyHook(extract) ?? '';
-  if (
-    /demolish|destroyed|no longer exist|no longer stand|burned down|torn down|razed/i.test(
-      firstSentence
-    )
-  ) {
-    return true;
-  }
-  // "was cast in 1790", "was unveiled in 1959": creation and biography
-  // speak in the past tense about things still present — only a bare
-  // past copula ("was a royal residence") testifies to pastness
-  const withoutCreation = firstSentence.replace(
-    /\b(was|were)\s+(built|erected|unveiled|designed|sculpted|carved|constructed|completed|installed|founded|established|opened|commissioned|created|made|cast|laid|dedicated|painted|born|launched|listed)\b/gi,
-    ''
-  );
-  return (
-    /\b(was|were)\b/i.test(withoutCreation) &&
-    !/\b(is|are|stands?|remains?|survives?)\b/i.test(firstSentence)
-  );
-}
-
-/**
- * The History archive's honest little tag, derived from what the
- * record already says. "Lost" claims pastness, not rubble — it holds
- * for a razed palace, a dissolved institution and a closed theatre
- * alike, without asserting bricks fell. Never invents: no signal,
- * generic tag.
- */
-export function historyTag(extract: string | undefined): string {
-  return isVanished(extract) ? 'Lost' : 'Hidden history';
-}
+// Grammar-based existence classification (isVanished/historyTag) was
+// retired here after three failed refinements: past-tense prose cannot
+// tell a demolished palace from a dissolved institution in a standing
+// building. Existence facts now come structured from Wikidata
+// (src/server/wikidata.ts) and ride items as `pastTag`.
 
 /** "https://en.wikipedia.org/wiki/Cutty_Sark" → "Cutty Sark", or null. */
 export function wikiTitleFromUrl(url: string): string | null {
