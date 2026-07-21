@@ -99,6 +99,71 @@ describe('persistedMap merge-on-write', () => {
   });
 });
 
+/**
+ * The forgetting rule: without a cutoff a walking app mints a new
+ * persisted ~11m bucket every block, forever, into AsyncStorage's
+ * ~6MB Android ceiling. Entries older than 2× the TTL leave storage
+ * on write-back; between TTL and 2×TTL they survive as peek material.
+ */
+describe('persistedMap pruning', () => {
+  test('an entry past 2×TTL leaves storage on flush; a recently-expired one survives', async () => {
+    raw()['cache-prune-v1'] = JSON.stringify([
+      ['ancient', { value: 'older than 2×TTL', at: Date.now() - 3000 }],
+      ['recent', { value: 'between TTL and 2×TTL', at: Date.now() - 1500 }],
+    ]);
+    const map = persistedMap<string>('prune', 1000);
+    await map.hydrated;
+    map.set('live', 'now');
+    await map.flush();
+
+    const onDisk = new Map(JSON.parse(raw()['cache-prune-v1']) as [string, { value: string }][]);
+    expect(onDisk.has('ancient')).toBe(false); // forgotten
+    expect(onDisk.get('recent')?.value).toBe('between TTL and 2×TTL'); // kept
+    expect(onDisk.get('live')?.value).toBe('now');
+    expect(map.peek('recent')?.value).toBe('between TTL and 2×TTL'); // still placeholder material
+    expect(map.get('recent')).toBeUndefined(); // but never live
+  });
+
+  test("the merge fold does not resurrect what another writer pruned", async () => {
+    const map = persistedMap<string>('prune2', 1000);
+    await map.hydrated;
+    map.set('ours', 'from this process');
+
+    // An ancient foreign entry lands in storage after hydration — the
+    // flush's fold must apply the same cutoff, not resurrect it
+    raw()['cache-prune2-v1'] = JSON.stringify([
+      ['ancient-foreign', { value: 'x', at: Date.now() - 3000 }],
+      ['fresh-foreign', { value: 'y', at: Date.now() }],
+    ]);
+    await map.flush();
+
+    const onDisk = new Map(JSON.parse(raw()['cache-prune2-v1']) as [string, { value: string }][]);
+    expect(onDisk.has('ancient-foreign')).toBe(false); // stayed dead
+    expect(onDisk.get('fresh-foreign')?.value).toBe('y'); // add-never-destroy still holds
+    expect(onDisk.get('ours')?.value).toBe('from this process');
+  });
+});
+
+describe('persistedMap background flush', () => {
+  test('backgrounding flushes the pending debounced write', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { AppState } = require('react-native') as typeof import('react-native');
+    const listeners = jest.spyOn(AppState, 'addEventListener');
+
+    const map = persistedMap<string>('bg', HourMs);
+    map.set('k', 'v');
+    expect(raw()['cache-bg-v1']).toBeUndefined(); // debounced — not yet written
+
+    const handler = listeners.mock.calls.at(-1)![1];
+    handler('background');
+    await map.flush(); // ride the write the handler kicked off
+
+    const onDisk = new Map(JSON.parse(raw()['cache-bg-v1']) as [string, { value: string }][]);
+    expect(onDisk.get('k')?.value).toBe('v');
+    listeners.mockRestore();
+  });
+});
+
 describe('persistedMap corruption and failure tolerance', () => {
   test('garbage JSON hydrates as an empty map, no throw', async () => {
     raw()['cache-bad-v1'] = 'not json {{{';

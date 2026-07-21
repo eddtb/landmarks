@@ -22,8 +22,15 @@
  * AsyncStorage is async, so hydration is too: `hydrated` resolves
  * once persisted entries are folded in — await it before first-paint
  * decisions. Writes are debounced and fire-and-forget with errors
- * swallowed: a failed persist never breaks the app.
+ * swallowed: a failed persist never breaks the app. Backgrounding
+ * flushes the debounce (that's how a walking app's process normally
+ * dies), and every write-back prunes entries older than 2× the TTL:
+ * recently-expired stays peekable offline material, but a walking app
+ * mints a new ~11m bucket every block — without a grace cutoff the
+ * store only ever grows toward AsyncStorage's ceiling.
  */
+import { AppState } from 'react-native';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type PersistedEntry<V> = { value: V; at: number };
@@ -101,9 +108,21 @@ export function persistedMap<V>(name: string, ttlMs: number): PersistedMap<V> {
       // entries this instance never saw before flushing: writers may
       // only add, never destroy. (Folding uses the raw inner map, so
       // merging never re-arms the debounce.)
+      //
+      // "Never destroy" has one carve-out: age. Entries older than
+      // the grace window (2× the TTL) are pruned — from the fold, so
+      // a second writer can't resurrect what the first pruned, and
+      // from this map before serializing. Between TTL and 2×TTL an
+      // entry is dead for `get` but lives on as peek material.
+      const cutoff = Date.now() - 2 * ttlMs;
       for (const [key, entry] of await readStorage()) {
-        if (!map.has(key)) {
+        if (!map.has(key) && entry.at >= cutoff) {
           map.set(key, entry);
+        }
+      }
+      for (const [key, entry] of map) {
+        if (entry.at < cutoff) {
+          map.delete(key);
         }
       }
       await AsyncStorage.setItem(storageKey, JSON.stringify([...map.entries()]));
@@ -156,6 +175,17 @@ export function persistedMap<V>(name: string, ttlMs: number): PersistedMap<V> {
       await writing;
     },
   };
+
+  // Backgrounding is how a walking app's process normally dies — the
+  // OS reaps it from the background sooner or later. Flush the
+  // debounced write on the way out rather than lose the last second
+  // of sets to a force-quit. (One listener per named map, held for
+  // the process's life alongside the registry entry.)
+  AppState.addEventListener('change', (state) => {
+    if (state === 'background' || state === 'inactive') {
+      void api.flush();
+    }
+  });
 
   registry.set(name, api);
   return api;
