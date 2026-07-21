@@ -42,7 +42,6 @@ export function ImageViewer({
   // A fresh open starts from rest — the last exit left dragY at height
   useEffect(() => {
     if (initialIndex !== null) {
-      // eslint-disable-next-line react-hooks/immutability
       dragY.value = 0;
     }
   }, [initialIndex, dragY]);
@@ -94,7 +93,6 @@ export function ImageViewer({
           }
         });
       } else {
-        // eslint-disable-next-line react-hooks/immutability
         dragY.value = withSpring(0);
       }
     });
