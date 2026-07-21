@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
 import { usePlan } from '@/hooks/use-plan';
+import { LinkCandidate, linkifyParagraph } from '@/utils/linkify';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/utils/speech';
@@ -187,11 +189,14 @@ function useRetoldSpeaker(retold: Retold | null) {
 export function AreaGazetteer({
   areaName,
   relics,
+  allStories,
   refreshing,
   onRefresh,
 }: {
   areaName: string | null;
   relics: HistoryItem[];
+  /** Every story of the ground — the web of history links into all of them. */
+  allStories: HistoryItem[];
   refreshing: boolean;
   onRefresh: () => void;
 }) {
@@ -263,6 +268,10 @@ export function AreaGazetteer({
     relics: listRelics,
   });
 
+  const linkCandidates: LinkCandidate[] = allStories
+    .filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase())
+    .map((item) => ({ title: item.title, pageId: item.pageId }));
+
   const jumpToPart = (stop: TimelineStop) => {
     const index = partRowIndex(rows, stop.part);
     if (index >= 0) {
@@ -301,7 +310,7 @@ export function AreaGazetteer({
       case 'timeline':
         return <TimelineStrip stops={row.stops} onStop={jumpToPart} />;
       case 'part':
-        return <PartRow part={row.part} index={row.index} />;
+        return <PartRow part={row.part} index={row.index} links={linkCandidates} />;
       case 'retelling-pending':
         return (
           <ThemedText type="small" themeColor="textSecondary" style={styles.pending}>
@@ -456,7 +465,15 @@ function TimelineStrip({
   );
 }
 
-function PartRow({ part, index }: { part: RetoldPart; index: number }) {
+function PartRow({
+  part,
+  index,
+  links,
+}: {
+  part: RetoldPart;
+  index: number;
+  links: LinkCandidate[];
+}) {
   const theme = useTheme();
   const paragraphs = part.body.split(/\n+/).filter(Boolean);
   const quoteAfter = part.pullQuote ? Math.ceil(paragraphs.length / 2) - 1 : -1;
@@ -474,7 +491,24 @@ function PartRow({ part, index }: { part: RetoldPart; index: number }) {
           <ThemedText
             type="default"
             style={[styles.para, index === 0 && paragraphIndex === 0 && styles.lede]}>
-            {paragraph}
+            {linkifyParagraph(paragraph, links).map((segment, segmentIndex) =>
+              segment.pageId !== undefined ? (
+                <ThemedText
+                  key={segmentIndex}
+                  type="default"
+                  themeColor="accent"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/history/[pageId]',
+                      params: { pageId: String(segment.pageId) },
+                    })
+                  }>
+                  {segment.text}
+                </ThemedText>
+              ) : (
+                segment.text
+              )
+            )}
           </ThemedText>
           {paragraphIndex === quoteAfter && (
             <View style={[styles.pull, { borderLeftColor: theme.accent }]}>

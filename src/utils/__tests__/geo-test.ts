@@ -1,3 +1,4 @@
+import { standingOn } from '@/components/section-screen';
 import { arrowTowards, bearingDegrees, distanceMeters } from '@/utils/geo';
 
 const TowerBridge = { latitude: 51.5055, longitude: -0.0754 };
@@ -52,5 +53,22 @@ describe('arrowTowards', () => {
 
   test('facing east, a northern target is to the left', () => {
     expect(arrowTowards(origin, north, 90)).toBe('←');
+  });
+});
+
+describe('standingOn (imported from section-screen)', () => {
+  // Placed here to keep the pure helper honest without a component test
+  const story = (pageId: number, latitude: number) => ({
+    pageId, title: 'S', coordinates: { latitude, longitude: 0 },
+    distanceMeters: 9999, url: 'https://x', source: 'Wikipedia',
+  });
+  test('the nearest story within reach wins; beyond reach, nothing', () => {
+    const here = { latitude: 51.4, longitude: 0 };
+    const near = story(1, 51.4002);   // ~22m
+    const nearer = story(2, 51.4001); // ~11m
+    const far = story(3, 51.41);      // ~1.1km
+    expect(standingOn([near, far, nearer], here)?.pageId).toBe(2);
+    expect(standingOn([far], here)).toBeNull();
+    // compose-time distanceMeters (9999) is ignored: live position rules
   });
 });
