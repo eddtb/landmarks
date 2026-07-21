@@ -5,7 +5,7 @@ import { useWalkPlayer } from '@/hooks/use-walk-player';
 
 jest.mock('@/utils/speech', () => ({
   speechAvailable: true,
-  speakAsync: jest.fn(() => Promise.resolve()),
+  speakAsync: jest.fn(() => Promise.resolve('done')),
   stopSpeech: jest.fn(() => Promise.resolve()),
 }));
 
@@ -67,6 +67,20 @@ describe('useWalkPlayer', () => {
       'Stop 2: Story 2.',
       'The telling of Story 2.',
     ]);
+  });
+
+  test('a broken engine stops the tour honestly instead of miming it', async () => {
+    speakAsync.mockResolvedValueOnce('error');
+    const stops = [walkStop(1, 'Built in 1443.'), walkStop(2, 'Demolished in 1855.')];
+    const { result } = await renderHook(() => useWalkPlayer(stops));
+
+    await act(async () => {
+      await result.current.play();
+    });
+
+    expect(speakAsync).toHaveBeenCalledTimes(1); // nothing after the failure
+    expect(fetchTelling).not.toHaveBeenCalled();
+    expect(result.current.playingIndex).toBeNull();
   });
 
   test('stop cancels the tour', async () => {
