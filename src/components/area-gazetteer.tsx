@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChapterFolds } from '@/components/chapter-folds';
@@ -160,6 +160,31 @@ export function AreaGazetteer({
         article && areaName ? (
           <View>
             <Hero areaName={areaName} article={article} retold={retold} />
+            {article.images.length > 1 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.gallery}
+                contentContainerStyle={styles.galleryContent}>
+                {article.images.slice(1).map((image, index) => (
+                  <View key={index} style={styles.galleryItem}>
+                    <Image
+                      source={{ uri: image.imageUrl }}
+                      style={styles.galleryImage}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                    />
+                    <ThemedText
+                      type="small"
+                      themeColor="textSecondary"
+                      style={styles.galleryCredit}
+                      numberOfLines={1}>
+                      {image.credit}
+                    </ThemedText>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
             {retold ? (
               <RetoldStory retold={retold} article={article} />
             ) : (
@@ -219,6 +244,26 @@ const styles = StyleSheet.create({
   article: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
+  },
+  // The gallery (Edd's ruling, restored): the article's images
+  // together at the top — never merely NEAR an unrelated part
+  gallery: {
+    marginTop: Spacing.three,
+  },
+  galleryContent: {
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.two,
+  },
+  galleryItem: {
+    width: 168,
+    gap: 2,
+  },
+  galleryImage: {
+    height: 110,
+    borderRadius: Spacing.three - 2,
+  },
+  galleryCredit: {
+    fontSize: 9,
   },
   introPara: {
     marginBottom: Spacing.three,
