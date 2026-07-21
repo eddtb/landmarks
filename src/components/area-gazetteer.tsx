@@ -18,7 +18,7 @@ import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
+import { Article, ArticleImage, fetchArticle, fetchArticleLight } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
 import { LinkCandidate, linkifyParagraph } from '@/utils/linkify';
 import { withoutPullQuote } from '@/utils/pull-quote';
@@ -258,10 +258,26 @@ export function AreaGazetteer({
     }
     let active = true;
     (async () => {
+      // Light first: hero text and reading time paint off the cheap
+      // extract leg (~0.2s cold) instead of waiting ~1.2s more for
+      // the gallery's image legs. The hero simply renders imageless
+      // until the full article replaces it below.
+      const light = await fetchArticleLight(areaName).catch(() => null);
+      if (active && light) {
+        setArticle(light);
+        setArticleStatus('ready');
+      }
       const loaded = await fetchArticle(areaName).catch(() => null);
-      if (active) {
+      if (!active) {
+        return;
+      }
+      if (loaded) {
         setArticle(loaded);
-        setArticleStatus(loaded ? 'ready' : 'none');
+        setArticleStatus('ready');
+      } else if (!light) {
+        // Only a double miss is "none" — a painted light article
+        // never flashes away because the image leg failed
+        setArticleStatus('none');
       }
     })();
     return () => {
