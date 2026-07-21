@@ -19,6 +19,13 @@ export async function fetchRetold(areaName: string): Promise<Retold> {
     throw new Error(`Retold request failed with status ${response.status}`);
   }
   const body = (await response.json()) as { retold: Retold };
-  cache.set(key, body.retold);
-  return body.retold;
+  // Normalise at the boundary: a server mid-deploy (or an old cached
+  // shape) may lack fields the UI renders — never let it crash a screen
+  const retold: Retold = {
+    parts: body.retold.parts ?? [],
+    minutes: body.retold.minutes ?? 1,
+    timeline: body.retold.timeline ?? [],
+  };
+  cache.set(key, retold);
+  return retold;
 }
