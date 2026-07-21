@@ -23,7 +23,7 @@ import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
-import { historyTag } from '@/utils/format';
+import { historyTag, isVanished } from '@/utils/format';
 import { Coordinates, FallbackCoordinates } from '@/utils/geo';
 
 /**
@@ -204,12 +204,15 @@ export function HistoryBody({
     );
   }
 
-  // The photo verdict routes: subject-photo stories are findable
-  // (Nearby); the rest are the archive of what happened here (History)
-  const items =
+  // Nearby = things you can visit AND recognise: a subject photo and
+  // still standing. History = the archive: vanished things (whatever
+  // their photos show — a palace's painting belongs there) plus
+  // stories nothing photographs.
+  const items = state.items.filter((item) =>
     mode === 'nearby'
-      ? state.items.filter((item) => item.thumbnailUrl)
-      : state.items.filter((item) => !item.thumbnailUrl);
+      ? item.thumbnailUrl && !isVanished(item.extract)
+      : !item.thumbnailUrl || isVanished(item.extract)
+  );
   const vanished =
     mode === 'archive'
       ? items.filter((item) => historyTag(item.extract) === 'No longer standing').length
@@ -230,7 +233,7 @@ export function HistoryBody({
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.pageId)}
-        renderItem={({ item }) => <HistoryCard item={item} />}
+        renderItem={({ item }) => <HistoryCard item={item} archive={mode === 'archive'} />}
         // The deep feed can run to ~150 stories — render the first
         // screenful fast and let virtualisation handle the rest
         initialNumToRender={8}

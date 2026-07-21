@@ -23,7 +23,9 @@ import { HistoryItem } from '@/types/history';
  * and bypasses the read.
  */
 const ListTtlMs = 60 * 60 * 1000;
-const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists');
+// v2: v1 entries hold pre-rule blind-photo verdicts (every item
+// dressed, station-on-theatre included) — they must never serve again
+const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists-v2');
 
 function bucketKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
