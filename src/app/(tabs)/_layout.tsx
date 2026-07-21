@@ -11,8 +11,7 @@ const AccentTint: ColorValue =
 /**
  * Two questions, two tabs: what can I go see (Nearby — subject-photo
  * stories, findable on arrival) and what happened here (History — the
- * archive, photo optional). The walk is a STATE, not a place: the
- * violet bar rides above this bar while a walk exists.
+ * archive, photo optional).
  */
 export default function TabsLayout() {
   return (
