@@ -72,12 +72,16 @@ async function bestVoice(): Promise<string | null> {
   }
   try {
     const voices = (await Speech?.getAvailableVoicesAsync?.()) ?? [];
-    const british = voices.filter((voice) => voice.language?.startsWith('en-GB'));
-    const english = british.length
-      ? british
-      : voices.filter((voice) => voice.language?.startsWith('en'));
-    const enhanced = english.find((voice) => /enhanced|premium/i.test(voice.quality ?? ''));
-    chosenVoice = (enhanced ?? english[0])?.identifier ?? null;
+    const english = voices.filter((voice) => voice.language?.startsWith('en'));
+    const isEnhanced = (voice: SpeechVoice) => /enhanced|premium/i.test(voice.quality ?? '');
+    // ANY enhanced English beats the compact British robot: phones
+    // that never downloaded a UK voice usually still carry one
+    // enhanced voice from elsewhere in the anglosphere
+    chosenVoice =
+      (english.find((voice) => voice.language?.startsWith('en-GB') && isEnhanced(voice)) ??
+        english.find(isEnhanced) ??
+        english.find((voice) => voice.language?.startsWith('en-GB')) ??
+        english[0])?.identifier ?? null;
   } catch {
     chosenVoice = null;
   }
