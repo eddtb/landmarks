@@ -57,7 +57,21 @@ export function standingOn(
 
 export function LocationGate({ children }: { children: (props: GateProps) => ReactNode }) {
   const { status, coordinates, requestPermission } = useLocation();
-  const [manualCenter, setManualCenter] = useState<Coordinates | null>(null);
+  // The pin remembers how it was dropped: blind (no fix at the time —
+  // an emergency hatch) or sighted (deliberate exploring with GPS live).
+  const [pin, setPin] = useState<{ center: Coordinates; blind: boolean } | null>(null);
+
+  const onManualCenter = useCallback(
+    (center: Coordinates) => setPin({ center, blind: !coordinates }),
+    [coordinates]
+  );
+  const onBackToNearMe = useCallback(() => setPin(null), []);
+
+  // Location-first: a blind pin only holds while GPS is silent — the
+  // moment a real fix exists it lets go, derived, no effect needed
+  // (coordinates never return to null once set). A sighted pin
+  // outlasts movement — only "Back to near me" clears it.
+  const activePin = pin && pin.blind && coordinates ? null : pin;
 
   if (status === 'priming') {
     return (
@@ -79,29 +93,40 @@ export function LocationGate({ children }: { children: (props: GateProps) => Rea
   }
 
   const denied = status === 'denied';
-  const center = manualCenter ?? coordinates ?? FallbackCoordinates;
+  const center = activePin?.center ?? coordinates ?? FallbackCoordinates;
 
   return children({
     center,
-    locationDenied: denied && !manualCenter,
-    onManualCenter: setManualCenter,
+    locationDenied: denied && !activePin,
+    exploring: activePin !== null,
+    onManualCenter,
+    onBackToNearMe,
   });
 }
 
 export type GateProps = {
   center: Coordinates;
   locationDenied: boolean;
+  /** A manual pin holds the center — the header must admit it. */
+  exploring: boolean;
   onManualCenter: (center: Coordinates) => void;
+  onBackToNearMe: () => void;
 };
 
-/** The eyebrow over the area name with the locator dot. */
+/** The eyebrow over the area name with the locator dot. When a manual
+ * pin holds the center, the header owns the mode (the approved
+ * "Exploring header"): accent eyebrow, hollow dot — you are not
+ * there — and one worded way home. */
 function SectionHeader({
   center,
   locationDenied,
+  exploring,
   onManualCenter,
+  onBackToNearMe,
   eyebrow,
 }: GateProps & { eyebrow: string }) {
   const [searchText, setSearchText] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const areaName = useAreaName(center);
   const theme = useTheme();
 
@@ -116,41 +141,68 @@ function SectionHeader({
       const first = results[0];
       if (first) {
         onManualCenter({ latitude: first.latitude, longitude: first.longitude });
+        setSearchOpen(false);
+        setSearchText('');
       }
     } catch (error) {
       console.warn('Geocoding failed:', error);
     }
   }, [searchText, onManualCenter]);
 
+  const title = areaName ?? 'Near you';
+
   return (
     <View style={styles.header}>
-      <ThemedText type="eyebrow" themeColor="textSecondary">
-        {eyebrow}
+      <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
+        {exploring ? 'Exploring' : eyebrow}
       </ThemedText>
       <View style={styles.titleRow}>
-        <View style={styles.titleGroup}>
-          <View style={[styles.locatorDot, { backgroundColor: theme.accent }]} />
-          <ThemedText type="largeTitle">{areaName ?? 'Near you'}</ThemedText>
-        </View>
-      </View>
-      {locationDenied && (
-        <>
-          <ThemedText
-            type="small"
-            themeColor="textSecondary"
-            onPress={() => Linking.openSettings()}>
-            Location is off — enable it in Settings, or search a place to explore:
-          </ThemedText>
-          <TextInput
-            value={searchText}
-            onChangeText={setSearchText}
-            onSubmitEditing={onSearchSubmit}
-            placeholder="Search near a place…"
-            placeholderTextColor={theme.textSecondary}
-            returnKeyType="search"
-            style={[styles.search, { backgroundColor: theme.backgroundElement, color: theme.text }]}
+        {/* The title is the search affordance: tap to pin anywhere, deliberately */}
+        <Pressable
+          testID="area-title"
+          accessibilityRole="button"
+          accessibilityLabel={`Area: ${title}`}
+          accessibilityHint="Search near another place"
+          onPress={() => setSearchOpen((open) => !open)}
+          style={styles.titleGroup}>
+          <View
+            testID="locator-dot"
+            style={[
+              styles.locatorDot,
+              exploring
+                ? // Hollow: the dot admits you are not there
+                  {
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    borderColor: theme.textSecondary,
+                  }
+                : { backgroundColor: theme.accent },
+            ]}
           />
-        </>
+          <ThemedText type="largeTitle">{title}</ThemedText>
+        </Pressable>
+      </View>
+      {exploring && (
+        <Pressable accessibilityRole="button" onPress={onBackToNearMe}>
+          <ThemedText type="linkPrimary">Back to near me</ThemedText>
+        </Pressable>
+      )}
+      {locationDenied && (
+        <ThemedText type="small" themeColor="textSecondary" onPress={() => Linking.openSettings()}>
+          Location is off — enable it in Settings, or search a place to explore:
+        </ThemedText>
+      )}
+      {(locationDenied || searchOpen) && (
+        <TextInput
+          value={searchText}
+          onChangeText={setSearchText}
+          onSubmitEditing={onSearchSubmit}
+          placeholder="Search near a place…"
+          placeholderTextColor={theme.textSecondary}
+          returnKeyType="search"
+          autoFocus={searchOpen}
+          style={[styles.search, { backgroundColor: theme.backgroundElement, color: theme.text }]}
+        />
       )}
     </View>
   );
@@ -182,7 +234,11 @@ export function HistoryArchiveScreen() {
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            {gate.locationDenied && <SectionHeader {...gate} eyebrow="History" />}
+            {/* Denied keeps the search reachable; exploring must show the
+                header too — the mode lives there, hero or no hero */}
+            {(gate.locationDenied || gate.exploring) && (
+              <SectionHeader {...gate} eyebrow="History" />
+            )}
             <GazetteerBody center={gate.center} />
           </SafeAreaView>
         </ThemedView>
