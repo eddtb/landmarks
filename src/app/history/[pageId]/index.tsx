@@ -67,6 +67,9 @@ function ExtractStory({ item }: { item: HistoryItem }) {
   if (!item.extract) {
     return null;
   }
+  // A plaque's extract IS its inscription, and the lead's "The plaque
+  // reads" block already shows it — saying it twice reads as broken
+  const inscriptionShownAbove = item.source.startsWith('Open Plaques');
   return (
     <View style={styles.section}>
       <ThemedText type="eyebrow" themeColor="textSecondary">
@@ -75,11 +78,12 @@ function ExtractStory({ item }: { item: HistoryItem }) {
       <TellingSection item={item} />
       {/* Reading type (16/24), real paragraphs — an extract is a
           story body, not a meta line */}
-      {storyParagraphs(item.extract).map((paragraph, index) => (
-        <ThemedText key={index} type="default">
-          {paragraph}
-        </ThemedText>
-      ))}
+      {!inscriptionShownAbove &&
+        storyParagraphs(item.extract).map((paragraph, index) => (
+          <ThemedText key={index} type="default">
+            {paragraph}
+          </ThemedText>
+        ))}
       <StoryFolds item={item} />
       <ExternalLink href={item.url as `https://${string}`}>
         <ThemedText type="small" themeColor="accent">

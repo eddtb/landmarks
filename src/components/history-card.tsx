@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { formatWalkTime, storyHook } from '@/utils/format';
+import { formatWalkTime, hookEchoesTitle, storyHook } from '@/utils/format';
 
 type Props = {
   item: HistoryItem;
@@ -46,12 +46,17 @@ export function HistoryCard({ item, archive }: Props) {
             {item.title}
           </ThemedText>
           {/* The hook is the reason to tap — "a nuclear reactor ran
-              here until 1996" — the title alone never says it */}
-          {storyHook(item.extract) && (
-            <ThemedText type="small" numberOfLines={3}>
-              {storyHook(item.extract)}
-            </ThemedText>
-          )}
+              here until 1996" — the title alone never says it. Unless
+              it merely re-says the title (plaque inscriptions): a card
+              repeating itself reads as broken */}
+          {(() => {
+            const hook = storyHook(item.extract);
+            return hook && !hookEchoesTitle(item.title, hook) ? (
+              <ThemedText type="small" numberOfLines={3}>
+                {hook}
+              </ThemedText>
+            ) : null;
+          })()}
           <ThemedText type="small" themeColor="textSecondary">
             {/* Same walking estimate as demo mode: ~1.33 m/s; 🔊 marks a
                 story with enough source text to earn a spoken telling */}

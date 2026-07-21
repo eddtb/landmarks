@@ -1,5 +1,6 @@
 import {
   closesSoonLabel,
+  hookEchoesTitle,
   compactTimeRange,
   formatDistance,
   formatHoursLine,
@@ -189,5 +190,28 @@ describe('liveOpenNow', () => {
 
   test('unknown hours stay unknown', () => {
     expect(liveOpenNow({}, new Date())).toBeUndefined();
+  });
+});
+
+describe('hookEchoesTitle (a card must not say the same thing twice)', () => {
+  test('a truncated plaque title is echoed by its own first sentence', () => {
+    expect(
+      hookEchoesTitle(
+        'This Turkish bronze gun was cast in 1790-91 (AH 1212) in…',
+        'This Turkish bronze gun was cast in 1790-91 (AH 1212) in the reign of Selim III.'
+      )
+    ).toBe(true);
+  });
+
+  test('identical title and hook echo (Gordon of Greenwich)', () => {
+    expect(
+      hookEchoesTitle('Gordon of Greenwich Loved Here ⭐️⭐️⭐️⭐️⭐️', 'Gordon of Greenwich Loved Here ⭐️⭐️⭐️⭐️⭐️')
+    ).toBe(true);
+  });
+
+  test('a real hook that adds information is not an echo', () => {
+    expect(
+      hookEchoesTitle('Greenwich Foot Tunnel', 'The tunnel opened in 1902 and carried a million people a year.')
+    ).toBe(false);
   });
 });
