@@ -50,6 +50,31 @@ export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {
   return itemCache.get(pageId);
 }
 
+/**
+ * One story by pageId — the share deep-link cold start, where nothing
+ * has populated the session cache yet. Null means the server is sure
+ * there is no such story (a true 404); upstream trouble throws so the
+ * caller can tell the difference.
+ */
+export async function fetchStory(pageId: number): Promise<HistoryItem | null> {
+  const cached = itemCache.get(pageId);
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(apiUrl(`/api/story?pageId=${pageId}`));
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`Story request failed with status ${response.status}`);
+  }
+
+  const body = (await response.json()) as { item: HistoryItem };
+  itemCache.set(body.item.pageId, body.item);
+  return body.item;
+}
+
 /** Every story seen this session — the web of history links into them. */
 export function getCachedHistoryItems(): HistoryItem[] {
   return [...itemCache.values()];
