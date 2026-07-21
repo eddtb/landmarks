@@ -6,7 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { formatWalkTime, storyHook } from '@/utils/format';
+import { formatWalkTime, historyTag, storyHook } from '@/utils/format';
 
 type Props = {
   item: HistoryItem;
@@ -23,11 +23,22 @@ export function HistoryCard({ item }: Props) {
         router.push({ pathname: '/history/[pageId]', params: { pageId: String(item.pageId) } })
       }
       // No pressed effect — cards navigate; the transition is the feedback
-      style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
+      style={[
+        styles.card,
+        { backgroundColor: theme.backgroundElement },
+        // Archive cards (no subject photo exists) wear a lavender spine
+        // and an honest tag instead — deliberate, not broken
+        !item.thumbnailUrl && [styles.archive, { borderLeftColor: theme.accentSoft }],
+      ]}>
         {item.thumbnailUrl && (
           <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
         )}
         <View style={styles.body}>
+          {!item.thumbnailUrl && (
+            <ThemedText type="eyebrow" themeColor="accent">
+              {historyTag(item.extract)}
+            </ThemedText>
+          )}
           <ThemedText type="headline" numberOfLines={2}>
             {item.title}
           </ThemedText>
@@ -53,6 +64,9 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: Spacing.three - 2,
     overflow: 'hidden',
+  },
+  archive: {
+    borderLeftWidth: 3,
   },
   photo: {
     width: '100%',

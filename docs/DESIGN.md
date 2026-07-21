@@ -58,19 +58,28 @@ are how drift starts.
 
 ## Navigation
 
-Two tabs: **Nearby** and **Walks**. Nearby keeps the approved header
-identity — NEARBY over the area name with the violet locator dot — and
-a count line, `24 stories within a walk`, fixed with the header, not
-scrolled with the list. Story screens push over the tab bar; dip-in
-tools (the compass) present modally.
+Two tabs, two questions: **Nearby** (what can I go see?) and
+**History** (what happened here?). Nearby holds the subject-photo
+stories — findable, recognisable on arrival — under the approved
+header identity: NEARBY over the area name with the violet locator
+dot, and a count line, `62 stories within a walk`, fixed with the
+header. History is the archive: every story of the ground, photo
+optional, on text-first cards with a lavender spine and an honest tag
+(NO LONGER STANDING · HIDDEN HISTORY) derived from the record; its
+count line reads `41 stories of this ground · 6 no longer standing`.
+Story screens push over the tab bar; dip-in tools (compass, Go)
+present modally.
 
-**Walks are anchor-first.** The user supplies the stops — ＋Walk on any
-story, or the "After this?" doors (nearby stories not yet on the walk,
-conditioned on where the last stop leaves you — zero API calls) — and
-the app supplies order-keeping: straight-line walking legs at ~1.33 m/s,
-your order, nothing invented. ↑↓ to reorder, ✕ to remove. **No clocks,
-no dwell times**: the app cannot know how long you'll linger, so it
-never pretends to. The walk persists until Clear.
+**The walk is a state, not a place.** A violet now-playing bar rides
+above the tab bar only while a walk exists: `Tonight · 3 stops`, the
+next stop's name, and ▶ to play the audio tour from anywhere (shown
+only when the device's speech engine exists). Tap the bar for the
+full builder, which presents modally. **Walks stay anchor-first**: the
+user supplies the stops — ＋Walk on any story, or the "After this?"
+doors (zero API calls) — and the app supplies order-keeping:
+straight-line walking legs at ~1.33 m/s, your order, nothing invented.
+↑↓ to reorder, ✕ to remove. **No clocks, no dwell times.** The walk
+persists until Clear.
 
 Lists scroll under the translucent tab bar but pad their bottom by the
 safe-area inset: the last card must always be able to rest fully above
@@ -136,7 +145,12 @@ the talking.
   forbids invention, and thin sources get short tellings, not padded
   ones. The source extract and link always sit beside it — the reader
   can check the telling against the record.
-- Borrowed photographs carry their credit where they're shown:
+- **Subject photo or no card.** A photo must depict the story it sits
+  on — the article's own image, or a Commons/Geograph photograph whose
+  name matches the story's. A merely-nearby photo is the site, not the
+  subject (a vanished theatre's site looks like a station), and a
+  listing you can't recognise on arrival is dead weight. Borrowed
+  photographs carry their credit where they're shown:
   `Photo: Alan Swain / Geograph (CC BY-SA)`.
 - Walking times are straight-line estimates at ~1.33 m/s and say so by
   saying nothing else: no ETAs, no clocks, no dwell.

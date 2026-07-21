@@ -122,6 +122,20 @@ export function formatRatingCount(count: number): string {
   return `${(count / 1000).toFixed(1).replace(/\.0$/, '')}k`;
 }
 
+/**
+ * The History archive's honest little tag, derived from what the
+ * record already says. Never invents: no signal, generic tag.
+ */
+export function historyTag(extract: string | undefined): string {
+  if (
+    extract &&
+    /demolish|destroyed|no longer exist|no longer stand|burned down|torn down|razed/i.test(extract)
+  ) {
+    return 'No longer standing';
+  }
+  return 'Hidden history';
+}
+
 /** "https://en.wikipedia.org/wiki/Cutty_Sark" → "Cutty Sark", or null. */
 export function wikiTitleFromUrl(url: string): string | null {
   const match = url.match(/wikipedia\.org\/wiki\/([^#?]+)/);

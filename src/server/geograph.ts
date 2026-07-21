@@ -1,5 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
-import { findCommonsPhoto, StoryPhoto } from '@/server/commons';
+import { findCommonsPhoto, matchTokens, StoryPhoto } from '@/server/commons';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
@@ -14,6 +14,7 @@ import { Coordinates, distanceMeters } from '@/utils/geo';
 const Endpoint = 'https://api.geograph.org.uk/syndicator.php';
 
 export type GeographPhoto = {
+  title: string;
   latitude: number;
   longitude: number;
   imageUrl: string;
@@ -42,6 +43,7 @@ export function buildPhotos(items: SyndicatorItem[]): GeographPhoto[] {
     }
     return [
       {
+        title: item.title ?? '',
         latitude: item.lat,
         longitude: item.long,
         imageUrl: fullSizeUrl(item.thumb),
@@ -71,15 +73,27 @@ export async function fetchAreaPhotos(center: Coordinates, perpage = 10): Promis
   return buildPhotos(body.items ?? []);
 }
 
-/** Pure: the nearest photo within range, or null. */
-export function pickPhotoFor(
+/**
+ * Pure: the nearest photo within range whose TITLE names the story —
+ * the same two-shared-tokens rule as Commons. A photo that is merely
+ * near is the SITE, not the subject, and Edd's rule is that a listing
+ * you can't recognise on arrival is dead weight: subject photo or no
+ * card. (The station photo on the Greenwich Playhouse card is why.)
+ */
+export function pickMatchingPhoto(
   item: HistoryItem,
   photos: GeographPhoto[],
   maxMeters = 150
 ): GeographPhoto | null {
+  const storyTokens = matchTokens(item.title);
   let best: GeographPhoto | null = null;
   let bestDistance = maxMeters;
   for (const photo of photos) {
+    const photoTokens = matchTokens(photo.title);
+    const shared = [...storyTokens].filter((token) => photoTokens.has(token)).length;
+    if (shared < 2) {
+      continue;
+    }
     const distance = distanceMeters(item.coordinates, {
       latitude: photo.latitude,
       longitude: photo.longitude,
@@ -101,8 +115,11 @@ export function pickPhotoFor(
  * misses warm up on the next one.
  */
 const PhotoTtlMs = 7 * 24 * 60 * 60 * 1000;
-const photoCache = diskBackedMap<{ photo: StoryPhoto | null; at: number }>('story-photos');
-const MaxLookupsPerRequest = 15;
+// Renamed from story-photos: the old cache holds blind nearest-photo
+// verdicts (a station on a theatre's card) that must not survive
+const photoCache = diskBackedMap<{ photo: StoryPhoto | null; at: number }>('subject-photos');
+// A subject photo is now existential for a card, so converge faster
+const MaxLookupsPerRequest = 20;
 
 export async function dressWithPhotos(
   items: HistoryItem[],
@@ -135,7 +152,7 @@ export async function dressWithPhotos(
           try {
             const commons = await fetchCommons(item.title, item.coordinates).catch(() => null);
             const photo =
-              commons ?? pickPhotoFor(item, await fetchPhotos(item.coordinates)) ?? null;
+              commons ?? pickMatchingPhoto(item, await fetchPhotos(item.coordinates)) ?? null;
             const entry = { photo, at: Date.now() };
             photoCache.set(key, entry);
             return entry;
