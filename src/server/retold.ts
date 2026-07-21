@@ -18,8 +18,15 @@ export type Retold = { parts: RetoldPart[]; minutes: number; timeline: TimelineS
 const ReadingWordsPerMinute = 230;
 const SourceCharCap = 24000;
 const TtlMs = 30 * 24 * 60 * 60 * 1000;
+// A failed or refused retelling is remembered too — every open must
+// NOT re-burn a free-tier call on an article that can't be retold
+const NoRetellTtlMs = 7 * 24 * 60 * 60 * 1000;
+// Stubs don't earn a retelling: their formatted original already
+// reads well, and the call quota goes where the stories are rich
+export const MinSourceChars = 3000;
 // v2: v1 entries predate pull-quotes and the timeline
-const cache = diskBackedMap<{ retold: Retold; at: number }>('retold-v2');
+const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v2');
+const inFlight = new Map<string, Promise<Retold | null>>();
 
 /** Pure and unit-tested: the contract the model must write to. */
 export function retoldPrompt(areaName: string, source: string): string {
@@ -114,10 +121,21 @@ export function parseRetold(text: string): Retold | null {
 export async function getRetold(areaName: string): Promise<Retold | null> {
   const key = areaName.toLowerCase();
   const cached = cache.get(key);
-  if (cached && Date.now() - cached.at < TtlMs) {
+  if (cached && Date.now() - cached.at < (cached.retold ? TtlMs : NoRetellTtlMs)) {
     return cached.retold;
   }
 
+  // Single-flight: concurrent opens of the same story share one call
+  const pending = inFlight.get(key);
+  if (pending) {
+    return pending;
+  }
+  const work = retellUncached(areaName, key).finally(() => inFlight.delete(key));
+  inFlight.set(key, work);
+  return work;
+}
+
+async function retellUncached(areaName: string, key: string): Promise<Retold | null> {
   const article = await getArticle(areaName);
   if (!article || article.chapters.length === 0) {
     return null;
@@ -131,15 +149,23 @@ export async function getRetold(areaName: string): Promise<Retold | null> {
     .join('\n\n')
     .slice(0, SourceCharCap);
 
+  if (source.length < MinSourceChars) {
+    // Not worth a call now, or on the next open
+    cache.set(key, { retold: null, at: Date.now() });
+    return null;
+  }
+
   const text = await research({
     prompt: retoldPrompt(areaName, source),
     maxTokens: 4500,
     grounded: false,
     label: `retold:${areaName}`,
   });
+  // A parse failure is cached as "no retelling" — the call was spent;
+  // spending another on every open would compound the loss. A THROWN
+  // call (budget tripped, replay-only) never reaches here and is
+  // deliberately not cached: we couldn't try, so we may try again.
   const retold = parseRetold(text);
-  if (retold) {
-    cache.set(key, { retold, at: Date.now() });
-  }
+  cache.set(key, { retold, at: Date.now() });
   return retold;
 }
