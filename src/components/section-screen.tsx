@@ -1,16 +1,19 @@
 import * as Location from 'expo-location';
-import { ReactNode, useCallback, useState } from 'react';
+import { ReactNode, useCallback, useState , useEffect } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Linking,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { router } from 'expo-router';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { HistoryCard } from '@/components/history-card';
@@ -24,7 +27,28 @@ import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
-import { Coordinates, FallbackCoordinates } from '@/utils/geo';
+import { HistoryItem } from '@/types/history';
+import { fetchRetold, Retold } from '@/data/retold-client';
+import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
+
+/** Pure and unit-tested: the story you are physically standing on. */
+export function standingOn(
+  items: HistoryItem[],
+  center: Coordinates,
+  maxMeters = 45
+): HistoryItem | null {
+  let best: HistoryItem | null = null;
+  let bestDistance = maxMeters;
+  for (const item of items) {
+    // Live position vs compose-time distances: recompute, always
+    const meters = distanceMeters(center, item.coordinates);
+    if (meters <= bestDistance) {
+      bestDistance = meters;
+      best = item;
+    }
+  }
+  return best;
+}
 
 /**
  * The Storyteller's home: location gating, the NEARBY header with the
@@ -205,9 +229,89 @@ function GazetteerBody({ center }: { center: Coordinates }) {
     <AreaGazetteer
       areaName={areaName}
       relics={relics}
+      allStories={state.items}
       refreshing={refreshing}
       onRefresh={onRefresh}
     />
+  );
+}
+
+/** The magic moment: a story within arm's reach leads the screen. */
+function StandingOnIt({ item, center }: { item: HistoryItem; center: Coordinates }) {
+  const theme = useTheme();
+  const meters = Math.round(distanceMeters(center, item.coordinates));
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() =>
+        router.push({ pathname: '/history/[pageId]', params: { pageId: String(item.pageId) } })
+      }
+      style={({ pressed }) => [
+        styles.standing,
+        { backgroundColor: theme.accentSoft, borderColor: theme.accent },
+        pressed && { opacity: 0.9 },
+      ]}>
+      <ThemedText type="eyebrow" themeColor="accent">
+        You&apos;re standing on it
+      </ThemedText>
+      <ThemedText type="headline">{item.title}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        {meters <= 15 ? 'right here' : `${meters} m from you`} · {item.source}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+/** A taste of the History tab: the area's fun facts, up top (Edd's call). */
+function NearbyFacts({ areaName }: { areaName: string | null }) {
+  const theme = useTheme();
+  const [retold, setRetold] = useState<Retold | null>(null);
+
+  useEffect(() => {
+    if (!areaName) {
+      return;
+    }
+    let active = true;
+    (async () => {
+      const loaded = await fetchRetold(areaName).catch(() => null);
+      if (active) {
+        setRetold(loaded);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [areaName]);
+
+  if (!retold || (retold.timeline ?? []).length === 0) {
+    return null;
+  }
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.factsRail}
+      contentContainerStyle={styles.factsContent}>
+      {retold.timeline.map((stop, index) => (
+        <Pressable
+          key={index}
+          accessibilityRole="button"
+          accessibilityLabel={`${stop.year}: ${stop.label} — read the story of ${areaName}`}
+          onPress={() => router.push('/history')}
+          style={({ pressed }) => [
+            styles.factStop,
+            { backgroundColor: theme.accentSoft },
+            pressed && { opacity: 0.8 },
+          ]}>
+          <ThemedText type="smallBold" themeColor="accent" style={styles.factYear}>
+            {stop.year}
+          </ThemedText>
+          <ThemedText type="small" style={styles.factLabel} numberOfLines={2}>
+            {stop.label}
+          </ThemedText>
+        </Pressable>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -216,6 +320,7 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
   const walkStops = usePlan();
+  const areaName = useAreaName(center);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -249,8 +354,12 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   // unphotographed live in the Gazetteer next door.
   const items = state.items.filter((item) => item.thumbnailUrl && !item.pastTag);
 
+  const standing = state.status === 'ready' ? standingOn(state.items, center) : null;
+
   return (
     <>
+      {standing && <StandingOnIt item={standing} center={center} />}
+      <NearbyFacts areaName={areaName} />
       {items.length > 0 && (
         <View style={styles.controlLine}>
           <ThemedText type="small" themeColor="textSecondary">
@@ -313,6 +422,34 @@ const styles = StyleSheet.create({
     width: 9,
     height: 9,
     borderRadius: 5,
+  },
+  standing: {
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Spacing.three - 2,
+    borderWidth: 1.5,
+    gap: 2,
+  },
+  factsRail: {
+    marginTop: Spacing.two,
+  },
+  factsContent: {
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.two,
+  },
+  factStop: {
+    borderRadius: Spacing.three - 2,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    maxWidth: 150,
+  },
+  factYear: {
+    fontSize: 15,
+  },
+  factLabel: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   controlLine: {
     flexDirection: 'row',
