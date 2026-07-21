@@ -168,12 +168,16 @@ describe('isVanished / historyTag', () => {
   });
 
   test('demolition words in the defining sentence mean gone', () => {
-    expect(historyTag('The palace was demolished in the 17th century.')).toBe(
-      'No longer standing'
-    );
-    expect(historyTag('The theatre building was torn down for the railway.')).toBe(
-      'No longer standing'
-    );
+    expect(historyTag('The palace was demolished in the 17th century.')).toBe('Lost');
+    expect(historyTag('The theatre building was torn down for the railway.')).toBe('Lost');
+  });
+
+  test('creation and biography are not demise — the statue and gun cases', () => {
+    expect(isVanished('This Turkish bronze gun was cast in 1790-91 in Istanbul.')).toBe(false);
+    expect(isVanished('The memorial was unveiled in 1959 by the Ambassador.')).toBe(false);
+    expect(isVanished('The Baltic Exchange Memorial Glass was commissioned in 1920.')).toBe(false);
+    // …but a bare past copula alongside a creation verb still testifies
+    expect(isVanished('The pavilion was built in 1890 and was a concert hall.')).toBe(true);
   });
 
   test('the defining first sentence in the past tense means gone — the real records', () => {

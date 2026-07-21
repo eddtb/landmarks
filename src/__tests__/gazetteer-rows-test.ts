@@ -12,19 +12,26 @@ const relic = (pageId: number, title: string, extract: string): HistoryItem => (
 });
 
 describe('gazetteerRows', () => {
-  test('groups vanished first, with honest counts in the section heads', () => {
+  test('groups lost first, plaques as their own present section, with honest counts', () => {
+    const gunPlaque = {
+      ...relic(4, 'This Turkish bronze gun was cast in 1790-91…', 'This Turkish bronze gun was cast in 1790-91 in Istanbul.'),
+      source: 'Open Plaques',
+    };
     const rows = gazetteerRows([
       relic(1, 'JASON reactor', 'JASON was a low-power nuclear research reactor.'),
       relic(2, 'Palace of Placentia', 'The Palace of Placentia was an English royal residence.'),
-      relic(3, 'Turkish gun', 'This gun sits on the riverfront.'),
+      gunPlaque,
+      relic(3, 'Statue of George II', 'The statue was unveiled in 1959 and sits in the square.'),
     ]);
 
     expect(rows.map((row) => (row.kind === 'section' ? row.title : row.item.title))).toEqual([
-      'No longer standing · 2',
+      'Lost · 2',
       'JASON reactor',
       'Palace of Placentia',
+      'Plaques · 1',
+      'This Turkish bronze gun was cast in 1790-91…',
       'Hidden history · 1',
-      'Turkish gun',
+      'Statue of George II',
     ]);
   });
 
