@@ -37,4 +37,22 @@ jobs:
         run: npm run lint -- --max-warnings 0
 
       - name: Test
-        run: npm test -- --ci
+        run: npm test -- --ci --coverage --coverageReporters=text --coverageReporters=text-summary | tee test-output.txt
+
+      # Coverage is VISIBILITY, never a gate — a threshold would teach
+      # us to write assertion-free tests that execute lines (Goodhart)
+      - name: Publish coverage to the job summary
+        if: always()
+        run: |
+          {
+            echo '## Coverage'
+            echo '```'
+            sed -n '/^=* Coverage summary/,/^=*$/p' test-output.txt
+            echo '```'
+            echo '<details><summary>Per-file table</summary>'
+            echo ''
+            echo '```'
+            grep '|' test-output.txt | head -100
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"

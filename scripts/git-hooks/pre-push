@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Shift left: run CI's checks locally before the push leaves the
+# machine. A lint mistake costs 6 seconds here and a 5-10 minute CI
+# round-trip if it escapes. Skip in emergencies: git push --no-verify
+#
+# Wired up by `npm install` (the prepare script points
+# core.hooksPath at this folder).
+
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-push: typecheck…"
+npm run --silent typecheck
+echo "pre-push: lint…"
+npm run --silent lint -- --max-warnings 0
+echo "pre-push: tests…"
+npx jest --silent
+echo "pre-push: all green — pushing."
