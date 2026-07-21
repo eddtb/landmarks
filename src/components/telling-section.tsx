@@ -10,7 +10,7 @@ import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
 
 /** The telling, spoken — or read, on clients without the native module. */
 
-type Status = 'idle' | 'writing' | 'ready' | 'speaking' | 'error';
+type Status = 'idle' | 'writing' | 'ready' | 'speaking' | 'error' | 'engine-failed';
 
 export function TellingSection({ item }: { item: HistoryItem }) {
   const theme = useTheme();
@@ -30,8 +30,8 @@ export function TellingSection({ item }: { item: HistoryItem }) {
       return;
     }
     setStatus('speaking');
-    await speakAsync(text);
-    setStatus('ready');
+    const outcome = await speakAsync(text);
+    setStatus(outcome === 'error' ? 'engine-failed' : 'ready');
   };
 
   const onPress = async () => {
@@ -58,6 +58,8 @@ export function TellingSection({ item }: { item: HistoryItem }) {
       ? 'Writing the telling…'
       : status === 'speaking'
         ? '◼ Stop'
+        : status === 'engine-failed'
+          ? 'The speech engine failed — tap to retry (is silent mode on?)'
         : status === 'error'
           ? 'Couldn’t write the telling — try again'
           : telling && speechAvailable
