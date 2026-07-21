@@ -132,12 +132,26 @@ export default function HistoryDetailScreen() {
         }}
       />
       <AreaGazetteer
-        areaName={item.title}
+        areaName={item.subject ?? item.title}
         relics={[]}
         allStories={others}
         refreshing={false}
         onRefresh={() => {}}
-        lead={<ActionsLead item={item} />}
+        lead={
+          <>
+            <ActionsLead item={item} />
+            {/* A resolved plaque keeps its inscription in view — the
+                primary source you are physically standing at */}
+            {item.source.startsWith('Open Plaques') && item.extract && (
+              <View style={styles.inscription}>
+                <ThemedText type="eyebrow" themeColor="accent">
+                  The plaque reads
+                </ThemedText>
+                <ThemedText type="default">{item.extract}</ThemedText>
+              </View>
+            )}
+          </>
+        }
         empty={<ExtractStory item={item} />}
       />
     </ThemedView>
@@ -170,6 +184,11 @@ const styles = StyleSheet.create({
   },
   leadMeta: {
     flexShrink: 1,
+  },
+  inscription: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    gap: Spacing.one,
   },
   section: {
     padding: Spacing.four,

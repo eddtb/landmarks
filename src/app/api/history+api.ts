@@ -6,6 +6,7 @@ import {
   fetchPlaques,
   mergeHistorySources,
 } from '@/server/heritage';
+import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { fetchExistenceTags } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
@@ -25,8 +26,9 @@ import { wikiTitleFromUrl } from '@/utils/format';
  * and bypasses the read.
  */
 const ListTtlMs = 60 * 60 * 1000;
-// v3: earlier entries predate photo rules (v1) and existence tags (v2)
-const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists-v3');
+// v4: plaque items may carry resolved subject titles (option A);
+// v3 and earlier predate photo rules and existence tags
+const listCache = diskBackedMap<{ items: HistoryItem[]; at: number }>('history-lists-v4');
 
 function bucketKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
@@ -85,10 +87,18 @@ export async function GET(request: Request) {
     // Merge generously, THEN drop the story-less register cards, THEN
     // cap — so a dropped gate-pier backfills with a real story instead
     // of shrinking the feed
+    // Plaques resolve their real subject first (evidence-gated: the
+    // article must be geolocated at the plaque and named in the
+    // inscription) so Deptford Creek earns a Gazetteer, not a stub
+    const resolvedPlaques = await resolvePlaqueSubjects(
+      plaques.status === 'fulfilled' ? plaques.value : [],
+      wikipedia.value
+    );
+
     const merged = mergeHistorySources(
       wikipedia.value,
       listed.status === 'fulfilled' ? listed.value : [],
-      plaques.status === 'fulfilled' ? plaques.value : [],
+      resolvedPlaques,
       200
     );
     const told = await enrichStandaloneListed(merged);
