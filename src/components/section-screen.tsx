@@ -21,12 +21,10 @@ import { HistoryCard } from '@/components/history-card';
 import { LocationPriming } from '@/components/location-priming';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WalkBar } from '@/components/walk-bar';
 import { Spacing } from '@/constants/theme';
 import { useAreaName } from '@/hooks/use-area-name';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
-import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { featuredStories } from '@/utils/featured';
@@ -166,7 +164,6 @@ export function StoriesScreen() {
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <SectionHeader {...gate} eyebrow="Nearby" />
             <HistoryBody center={gate.center} mode="nearby" />
-            <WalkBar />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -187,7 +184,6 @@ export function HistoryArchiveScreen() {
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             {gate.locationDenied && <SectionHeader {...gate} eyebrow="History" />}
             <GazetteerBody center={gate.center} />
-            <WalkBar />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -327,7 +323,6 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
-  const walkStops = usePlan();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -393,7 +388,7 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
         contentContainerStyle={[
           styles.list,
           // Room for the walk bar riding above the tab bar
-          { paddingBottom: Spacing.four + insets.bottom + (walkStops.length > 0 ? 64 : 0) },
+          { paddingBottom: Spacing.four + insets.bottom },
         ]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
