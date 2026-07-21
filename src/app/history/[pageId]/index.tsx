@@ -1,19 +1,20 @@
-import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Platform, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 
+import { AreaGazetteer } from '@/components/area-gazetteer';
 import { ExternalLink } from '@/components/external-link';
 import { OverflowMenu } from '@/components/overflow-menu';
 import { StoryFolds } from '@/components/story-folds';
 import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { getCachedHistoryItem } from '@/data/history-client';
+import { Spacing } from '@/constants/theme';
+import { getCachedHistoryItem, getCachedHistoryItems } from '@/data/history-client';
 import { addToWalk, removeFromWalk, walkStopFromStory } from '@/data/plan-store';
 import { usePlan } from '@/hooks/use-plan';
 import { useTheme } from '@/hooks/use-theme';
+import { HistoryItem } from '@/types/history';
 import { formatWalkTime, storyParagraphs } from '@/utils/format';
 import { Coordinates } from '@/utils/geo';
 
@@ -32,16 +33,88 @@ function mapsWalkingUrl(coordinates: Coordinates): string {
   );
 }
 
+/** The venue grammar rides under the hero: one violet Go, the walk toggle. */
+function ActionsLead({ item }: { item: HistoryItem }) {
+  const theme = useTheme();
+  const onWalk = usePlan().some((stop) => stop.pageId === item.pageId);
+  const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
+
+  return (
+    <View style={styles.lead}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() =>
+          router.push({
+            pathname: '/history/[pageId]/go',
+            params: { pageId: String(item.pageId) },
+          })
+        }
+        style={({ pressed }) => [
+          styles.go,
+          { backgroundColor: theme.accent },
+          pressed && { opacity: 0.85 },
+        ]}>
+        <ThemedText type="smallBold" style={styles.goText}>
+          Go · {formatWalkTime(walkSeconds)}
+        </ThemedText>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => (onWalk ? removeFromWalk(item.pageId) : addToWalk(walkStopFromStory(item)))}
+        style={({ pressed }) => [
+          styles.mini,
+          { backgroundColor: theme.accentSoft },
+          pressed && { opacity: 0.85 },
+        ]}>
+        <ThemedText type="smallBold" themeColor="accent">
+          {onWalk ? '✓ On walk' : '＋ Walk'}
+        </ThemedText>
+      </Pressable>
+      <ThemedText type="small" themeColor="textSecondary" style={styles.leadMeta}>
+        {item.source}
+      </ThemedText>
+    </View>
+  );
+}
+
+/** No Wikipedia article of its own: the extract-and-folds story stands. */
+function ExtractStory({ item }: { item: HistoryItem }) {
+  if (!item.extract) {
+    return null;
+  }
+  return (
+    <View style={styles.section}>
+      <ThemedText type="eyebrow" themeColor="textSecondary">
+        Story
+      </ThemedText>
+      <TellingSection item={item} />
+      {/* Reading type (16/24), real paragraphs — an extract is a
+          story body, not a meta line */}
+      {storyParagraphs(item.extract).map((paragraph, index) => (
+        <ThemedText key={index} type="default">
+          {paragraph}
+        </ThemedText>
+      ))}
+      <StoryFolds item={item} />
+      <ExternalLink href={item.url as `https://${string}`}>
+        <ThemedText type="small" themeColor="accent">
+          From {item.source}
+        </ThemedText>
+      </ExternalLink>
+    </View>
+  );
+}
+
 /**
- * A history site is somewhere you can walk to, not something you read
- * about — so this is the venue grammar: large title, one violet Go,
- * the STORY section, honest attribution.
+ * A place now gets the same love as the area (Edd's call): the full
+ * Gazetteer — hero, gallery, the story retold in parts, timeline,
+ * the web of history — pointed at the place's OWN article, with the
+ * venue grammar (Go, the walk) riding under the hero. Places without
+ * an article of their own keep the extract-and-folds story.
  */
 export default function HistoryDetailScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
-  const theme = useTheme();
-  const onWalk = usePlan().some((stop) => stop.pageId === Number(pageId));
 
   if (!item) {
     return (
@@ -52,7 +125,7 @@ export default function HistoryDetailScreen() {
     );
   }
 
-  const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
+  const others = getCachedHistoryItems().filter((story) => story.pageId !== item.pageId);
 
   return (
     <ThemedView style={styles.container} testID="story-screen">
@@ -73,86 +146,15 @@ export default function HistoryDetailScreen() {
           ),
         }}
       />
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}>
-        {item.thumbnailUrl && (
-          <Image
-            source={{ uri: item.thumbnailUrl }}
-            style={styles.photo}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-          />
-        )}
-        {item.thumbnailCredit && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.credit}>
-            {item.thumbnailCredit}
-          </ThemedText>
-        )}
-        <View style={styles.body}>
-          <View>
-            <ThemedText type="largeTitle">{item.title}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.meta}>
-              History · {formatWalkTime(walkSeconds)} · {item.source}
-            </ThemedText>
-          </View>
-
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() =>
-                router.push({
-                  pathname: '/history/[pageId]/go',
-                  params: { pageId: String(item.pageId) },
-                })
-              }
-              style={({ pressed }) => [
-                styles.go,
-                { backgroundColor: theme.accent },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold" style={styles.goText}>
-                Go · {formatWalkTime(walkSeconds)}
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => (onWalk ? removeFromWalk(item.pageId) : addToWalk(walkStopFromStory(item)))}
-              style={({ pressed }) => [
-                styles.mini,
-                { backgroundColor: theme.accentSoft },
-                pressed && { opacity: 0.85 },
-              ]}>
-              <ThemedText type="smallBold" themeColor="accent">
-                {onWalk ? '✓ On walk' : '＋ Walk'}
-              </ThemedText>
-            </Pressable>
-          </View>
-
-          {item.extract && (
-            <View style={styles.section}>
-              <ThemedText type="eyebrow" themeColor="textSecondary">
-                Story
-              </ThemedText>
-              <TellingSection item={item} />
-              {/* Reading type (16/24), real paragraphs — an extract is a
-                  story body, not a meta line */}
-              {storyParagraphs(item.extract).map((paragraph, index) => (
-                <ThemedText key={index} type="default">
-                  {paragraph}
-                </ThemedText>
-              ))}
-              <StoryFolds item={item} />
-              <ExternalLink href={item.url as `https://${string}`}>
-                <ThemedText type="small" themeColor="accent">
-                  From {item.source}
-                </ThemedText>
-              </ExternalLink>
-            </View>
-          )}
-        </View>
-      </ScrollView>
+      <AreaGazetteer
+        areaName={item.title}
+        relics={[]}
+        allStories={others}
+        refreshing={false}
+        onRefresh={() => {}}
+        lead={<ActionsLead item={item} />}
+        empty={<ExtractStory item={item} />}
+      />
     </ThemedView>
   );
 }
@@ -166,51 +168,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scrollView: {
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: MaxContentWidth,
-  },
-  scroll: {
-    paddingBottom: Spacing.six,
-  },
-  photo: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-  },
-  credit: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.one,
-    fontSize: 11,
-  },
-  body: {
-    padding: Spacing.four,
-    gap: Spacing.four,
-  },
-  meta: {
-    marginTop: Spacing.one,
-  },
-  actions: {
+  lead: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
   },
   go: {
-    flex: 2,
-    alignItems: 'center',
-    paddingVertical: Spacing.two + Spacing.half,
-    borderRadius: Spacing.three - Spacing.one,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.six,
   },
   goText: {
-    // White holds on the accent in both modes
     color: '#FFFFFF',
   },
   mini: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: Spacing.two + Spacing.half,
-    borderRadius: Spacing.three - Spacing.one,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.six,
+  },
+  leadMeta: {
+    flexShrink: 1,
   },
   section: {
-    gap: Spacing.two,
+    padding: Spacing.four,
+    gap: Spacing.three,
   },
 });
