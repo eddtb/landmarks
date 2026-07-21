@@ -366,6 +366,15 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   return (
     <>
       {standing && <StandingOnIt item={standing} center={center} />}
+      {/* The count stays pinned — Edd asked for the FEATURED items to
+          scroll away, nothing else */}
+      {items.length > 0 && (
+        <View style={styles.controlLine}>
+          <ThemedText type="small" themeColor="textSecondary">
+            {items.length} {items.length === 1 ? 'story' : 'stories'} within a walk
+          </ThemedText>
+        </View>
+      )}
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.pageId)}
@@ -376,13 +385,6 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
         ListHeaderComponent={
           <View style={styles.listHeader}>
             <FeaturedRail items={state.items} excludePageId={standing?.pageId} />
-            {items.length > 0 && (
-              <View style={styles.controlLine}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {items.length} {items.length === 1 ? 'story' : 'stories'} within a walk
-                </ThemedText>
-              </View>
-            )}
           </View>
         }
         // The deep feed can run to ~150 stories — render the first

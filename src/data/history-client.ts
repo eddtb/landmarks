@@ -50,6 +50,11 @@ export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {
   return itemCache.get(pageId);
 }
 
+/** Every story seen this session — the web of history links into them. */
+export function getCachedHistoryItems(): HistoryItem[] {
+  return [...itemCache.values()];
+}
+
 /** Test seam. */
 export function cacheHistoryItems(items: HistoryItem[]) {
   for (const item of items) {
