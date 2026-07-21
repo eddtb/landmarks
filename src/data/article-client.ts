@@ -1,26 +1,45 @@
 import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
+import { persistedMap } from '@/data/persisted-cache';
 
 export type ArticleChapter = { title: string; paragraphs: string[] };
 export type ArticleImage = { imageUrl: string; credit: string };
 export type Article = { chapters: ArticleChapter[]; minutes: number; images: ArticleImage[] };
 
-const articleCache = new Map<string, Article>();
+// Only the COMPLETE article persists (mirroring the server rule below:
+// a cached light article would hide the images behind it). Keyed by
+// title — content by name, not location-served — with the server's own
+// 7d article TTL (src/server/article.ts ArticleTtlMs) mirrored client-side.
+const articleCache = persistedMap<Article>('article', 7 * 24 * 60 * 60 * 1000);
 const metaCache = new Map<string, number>();
 
 export async function fetchArticle(title: string): Promise<Article> {
-  const cached = articleCache.get(title);
+  let cached = articleCache.get(title);
+  if (cached === undefined) {
+    await articleCache.hydrated; // a miss may just be pre-hydration
+    cached = articleCache.get(title);
+  }
   if (cached) {
     return cached;
   }
-  const response = await fetch(apiUrl(`/api/article?title=${encodeURIComponent(title)}`));
-  if (!response.ok) {
-    throw new Error(`Article request failed with status ${response.status}`);
+  try {
+    const response = await fetch(apiUrl(`/api/article?title=${encodeURIComponent(title)}`));
+    if (!response.ok) {
+      throw new Error(`Article request failed with status ${response.status}`);
+    }
+    const body = (await response.json()) as { article: Article };
+    articleCache.set(title, body.article);
+    return body.article;
+  } catch (error) {
+    // Offline: a saved article (even past its TTL) beats no article.
+    // Failures themselves are never cached.
+    const saved = articleCache.peek(title);
+    if (saved) {
+      return saved.value;
+    }
+    throw error;
   }
-  const body = (await response.json()) as { article: Article };
-  articleCache.set(title, body.article);
-  return body.article;
 }
 
 /**
@@ -31,7 +50,11 @@ export async function fetchArticle(title: string): Promise<Article> {
  * cached here would hide the images that are seconds behind it).
  */
 export async function fetchArticleLight(title: string): Promise<Article> {
-  const cached = articleCache.get(title);
+  let cached = articleCache.get(title);
+  if (cached === undefined) {
+    await articleCache.hydrated;
+    cached = articleCache.get(title);
+  }
   if (cached) {
     return cached; // complete beats light
   }

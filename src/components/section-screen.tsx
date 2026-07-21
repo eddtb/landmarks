@@ -361,6 +361,13 @@ export function HistoryBody({ center }: { center: Coordinates; mode?: 'nearby' }
   return (
     <>
       {standing && <StandingOnIt item={standing} center={center} />}
+      {state.stale && (
+        <View style={styles.controlLine}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Showing saved stories — you&apos;re offline
+          </ThemedText>
+        </View>
+      )}
       {/* The count stays pinned — Edd asked for the FEATURED items to
           scroll away, nothing else */}
       {items.length > 0 && (
