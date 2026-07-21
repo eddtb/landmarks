@@ -20,7 +20,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle, fetchArticleLight } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
-import { LinkCandidate, linkifyParagraph } from '@/utils/linkify';
+import { LinkCandidate, linkifyParagraph, planStoryLinks } from '@/utils/linkify';
 import { withoutPullQuote } from '@/utils/pull-quote';
 import { readingProgress } from '@/utils/reading-progress';
 import { useTheme } from '@/hooks/use-theme';
@@ -318,6 +318,13 @@ export function AreaGazetteer({
     .filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase())
     .map((item) => ({ title: item.title, pageId: item.pageId }));
 
+  // Story-level, once: the pull-quote excision and the link plan
+  // (first mention per STORY — a repeated name is prose, not a door)
+  const partParagraphs = (retold?.parts ?? []).map((part) =>
+    withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote)
+  );
+  const linkPlan = planStoryLinks(partParagraphs, linkCandidates);
+
   const jumpToPart = (stop: TimelineStop) => {
     const index = partRowIndex(rows, stop.part);
     if (index >= 0) {
@@ -356,7 +363,14 @@ export function AreaGazetteer({
       case 'timeline':
         return <TimelineStrip stops={row.stops} onStop={jumpToPart} />;
       case 'part':
-        return <PartRow part={row.part} index={row.index} links={linkCandidates} />;
+        return (
+          <PartRow
+            part={row.part}
+            index={row.index}
+            paragraphs={partParagraphs[row.index] ?? []}
+            paragraphLinks={linkPlan[row.index] ?? []}
+          />
+        );
       case 'retelling-pending':
         return (
           <ThemedText type="small" themeColor="textSecondary" style={styles.pending}>
@@ -563,20 +577,24 @@ function TimelineStrip({
 function PartRow({
   part,
   index,
-  links,
+  paragraphs,
+  paragraphLinks,
 }: {
   part: RetoldPart;
   index: number;
-  links: LinkCandidate[];
+  /** Pull-quote already excised; computed once at story level. */
+  paragraphs: string[];
+  /** The story-level link plan for this part: first mentions only. */
+  paragraphLinks: LinkCandidate[][];
 }) {
   const theme = useTheme();
-  // The highlight replaces its origin sentence, never repeats it
-  const paragraphs = withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote);
   const quoteAfter = part.pullQuote ? Math.ceil(paragraphs.length / 2) - 1 : -1;
   return (
     <View style={styles.partWrap}>
       {index > 0 && <View style={[styles.rule, { backgroundColor: theme.backgroundElement }]} />}
-      <ThemedText type="eyebrow" themeColor="accent" style={styles.partNum} testID="part-eyebrow">
+      {/* Grey, not violet: labels aren't tappable, and violet must
+          keep meaning "tappable" (the theme's own no-third-case rule) */}
+      <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.partNum} testID="part-eyebrow">
         Part {PartWords[index] ?? index + 1}
       </ThemedText>
       <ThemedText type="headline" style={styles.partHead}>
@@ -587,7 +605,7 @@ function PartRow({
           <ThemedText
             type="default"
             style={[styles.para, index === 0 && paragraphIndex === 0 && styles.lede]}>
-            {linkifyParagraph(paragraph, links).map((segment, segmentIndex) =>
+            {linkifyParagraph(paragraph, paragraphLinks[paragraphIndex] ?? []).map((segment, segmentIndex) =>
               segment.pageId !== undefined ? (
                 <ThemedText
                   key={segmentIndex}
@@ -608,7 +626,9 @@ function PartRow({
           </ThemedText>
           {paragraphIndex === quoteAfter && (
             <View style={[styles.pull, { borderLeftColor: theme.accent }]}>
-              <ThemedText type="headline" themeColor="accent" style={styles.pullText}>
+              {/* The accent border is the flourish; the words stay ink —
+                  violet text is reserved for things a finger can press */}
+              <ThemedText type="headline" style={styles.pullText}>
                 {part.pullQuote}
               </ThemedText>
             </View>
