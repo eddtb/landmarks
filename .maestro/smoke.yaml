@@ -1,0 +1,42 @@
+# The smoke flow: launch → Nearby renders stories → open one → the
+# story screen shows → History tab shows the gazetteer hero.
+#
+# Anchors are testIDs (stable), never story titles (data-dependent).
+# Locally: scripts/e2e-local.sh boots the sim, pins location to
+# Greenwich, and runs this against the dev build + running Metro.
+appId: com.eddtb.landmarks
+---
+- launchApp
+# The dev client needs pointing at Metro; a release/CI build ignores
+# this link and is already the app.
+- runFlow:
+    when:
+      visible: 'Development servers'
+    commands:
+      - openLink: exp+landmarks://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081
+
+# Nearby: the list renders real story cards
+- extendedWaitUntil:
+    visible:
+      id: 'history-card'
+    timeout: 45000
+
+# Open the first story and expect the story screen
+- tapOn:
+    id: 'history-card'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'story-screen'
+    timeout: 20000
+# iOS has no back button — the edge swipe is the back gesture
+- swipe:
+    start: 2%, 50%
+    end: 90%, 50%
+
+# History tab: the gazetteer hero appears
+- tapOn: 'History'
+- extendedWaitUntil:
+    visible:
+      id: 'gazetteer-hero'
+    timeout: 45000

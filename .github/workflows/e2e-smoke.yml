@@ -1,0 +1,64 @@
+# The E2E smoke: does the app actually run, end to end, through the UI?
+#
+# Nightly + on-demand, deliberately NOT per-PR: this is a ~25-minute
+# macOS job (free on a public repo, but slow), and the per-PR gate is
+# unit tests + typecheck + review. Maestro drives the same topology we
+# verify locally — dev build + Metro with REPLAY_ONLY=1 — because the
+# API routes have no production origin; data upstreams (Wikipedia,
+# Historic England, Geograph) are keyless and unmetered, and REPLAY_ONLY
+# guarantees no AI call can bill from CI (it refuses even free ones).
+name: E2E smoke (Maestro)
+
+on:
+  schedule:
+    - cron: '30 5 * * *' # nightly, 05:30 UTC
+  workflow_dispatch: {}
+
+jobs:
+  smoke:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Build and install the dev app on a simulator
+        run: npx expo run:ios --no-bundler
+
+      - name: Start Metro (replay-only — no AI call can bill from CI)
+        run: |
+          REPLAY_ONLY=1 npx expo start --port 8081 &> metro.log &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:8081/status && exit 0
+            sleep 2
+          done
+          echo "Metro never came up" >&2
+          tail -50 metro.log >&2
+          exit 1
+
+      - name: Pin the simulator to Greenwich
+        run: xcrun simctl location booted set 51.4826,-0.0077
+
+      - name: Run the smoke flow
+        run: maestro test --debug-output e2e-debug .maestro/
+
+      - name: Keep the evidence when it fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-debug
+          path: |
+            e2e-debug
+            metro.log
+          retention-days: 14

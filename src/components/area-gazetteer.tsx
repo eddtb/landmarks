@@ -103,7 +103,7 @@ function Hero({
 }) {
   const lead: ArticleImage | undefined = article.images[0];
   return (
-    <View style={styles.hero}>
+    <View style={styles.hero} testID="gazetteer-hero">
       {lead && (
         <Image
           source={{ uri: lead.imageUrl }}
@@ -389,6 +389,7 @@ export function AreaGazetteer({
                     key={index}
                     accessibilityRole="imagebutton"
                     accessibilityLabel="Open photo"
+                    testID="gallery-photo"
                     onPress={() => setViewerIndex(index + 1)}
                     style={({ pressed }) => [styles.galleryItem, pressed && { opacity: 0.85 }]}>
                     <Image
@@ -447,6 +448,7 @@ function TimelineStrip({
           key={index}
           accessibilityRole="button"
           accessibilityLabel={`${stop.year}: ${stop.label} — read part ${stop.part}`}
+          testID="timeline-stop"
           onPress={() => onStop(stop)}
           style={({ pressed }) => [
             styles.timelineStop,
@@ -480,7 +482,7 @@ function PartRow({
   return (
     <View style={styles.partWrap}>
       {index > 0 && <View style={[styles.rule, { backgroundColor: theme.backgroundElement }]} />}
-      <ThemedText type="eyebrow" themeColor="accent" style={styles.partNum}>
+      <ThemedText type="eyebrow" themeColor="accent" style={styles.partNum} testID="part-eyebrow">
         Part {PartWords[index] ?? index + 1}
       </ThemedText>
       <ThemedText type="headline" style={styles.partHead}>

@@ -1,0 +1,28 @@
+# The timeline flow: tap a fun-fact chip, land in the story.
+# jumpToPart drives FlatList.scrollToIndex against an index computed
+# in buildGazetteerRows — every new row type can silently drift it.
+# This catches dead taps and scroll crashes; exact part-targeting is
+# pinned by unit tests (the chip's target index), not E2E.
+appId: com.eddtb.landmarks
+---
+- launchApp
+- runFlow:
+    when:
+      visible: 'Development servers'
+    commands:
+      - openLink: exp+landmarks://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081
+
+- tapOn: 'History'
+- extendedWaitUntil:
+    visible:
+      id: 'timeline-stop'
+    timeout: 45000
+
+# Tap the first chip — the one that always exists
+- tapOn:
+    id: 'timeline-stop'
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: 'part-eyebrow'
+    timeout: 10000

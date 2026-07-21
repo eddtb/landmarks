@@ -21,6 +21,7 @@ export function HistoryCard({ item, archive }: Props) {
     // router.push, not Link asChild — asChild drops function-styles
     <Pressable
       accessibilityRole="button"
+      testID="history-card"
       onPress={() =>
         router.push({ pathname: '/history/[pageId]', params: { pageId: String(item.pageId) } })
       }
