@@ -1,23 +1,25 @@
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AreaShortVersion } from '@/components/area-short-version';
 import { ChapterFolds } from '@/components/chapter-folds';
 import { HistoryCard } from '@/components/history-card';
+import { RetoldStory } from '@/components/retold-story';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
+import { fetchRetold, Retold } from '@/data/retold-client';
 import { usePlan } from '@/hooks/use-plan';
 import { HistoryItem } from '@/types/history';
 
 /**
  * The Gazetteer: a magazine cover for the place. Hero from the
- * article's lead image, the gallery of its remaining images (together
- * at the top — Edd's call — never merely NEAR an unrelated chapter),
- * the full story as folds, and beneath it one neutral list of what
- * this ground remembers, tagged only by evidence.
+ * article's lead image, then the RETOLD STORY as the main event
+ * (Edd's design — parts, images between them, original behind a
+ * door), and beneath it one neutral list of what this ground
+ * remembers, tagged only by evidence. No retelling available →
+ * the original article stands as before.
  */
 
 type Row =
@@ -40,7 +42,15 @@ export function gazetteerRows(relics: HistoryItem[]): Row[] {
   ];
 }
 
-function Hero({ areaName, article }: { areaName: string; article: Article }) {
+function Hero({
+  areaName,
+  article,
+  retold,
+}: {
+  areaName: string;
+  article: Article;
+  retold: Retold | null;
+}) {
   const lead: ArticleImage | undefined = article.images[0];
   return (
     <View style={styles.hero}>
@@ -61,7 +71,9 @@ function Hero({ areaName, article }: { areaName: string; article: Article }) {
           {areaName}
         </ThemedText>
         <ThemedText type="small" style={styles.heroDim}>
-          {article.minutes} min read · {article.chapters.length} chapters
+          {retold
+            ? `${retold.parts.length} parts · about ${retold.minutes} min · retold from Wikipedia`
+            : `${article.minutes} min read · ${article.chapters.length} chapters`}
         </ThemedText>
       </View>
     </View>
@@ -82,12 +94,14 @@ export function AreaGazetteer({
   const insets = useSafeAreaInsets();
   const walkStops = usePlan();
   const [article, setArticle] = useState<Article | null>(null);
+  const [retold, setRetold] = useState<Retold | null>(null);
   const [articleFor, setArticleFor] = useState<string | null>(null);
 
   // Adjust-during-render: walking into Deptford must not show Greenwich
   if (articleFor !== areaName) {
     setArticleFor(areaName);
     setArticle(null);
+    setRetold(null);
   }
 
   useEffect(() => {
@@ -96,9 +110,16 @@ export function AreaGazetteer({
     }
     let active = true;
     (async () => {
-      const loaded = await fetchArticle(areaName).catch(() => null);
+      // The retelling is the main event; the article is its source,
+      // its image supply, and its fallback when the retelling fails
+      // (a REPLAY_ONLY server can't write new ones)
+      const [loadedArticle, loadedRetold] = await Promise.all([
+        fetchArticle(areaName).catch(() => null),
+        fetchRetold(areaName).catch(() => null),
+      ]);
       if (active) {
-        setArticle(loaded);
+        setArticle(loadedArticle);
+        setRetold(loadedRetold);
       }
     })();
     return () => {
@@ -113,9 +134,6 @@ export function AreaGazetteer({
   const rows = gazetteerRows(listRelics);
   const intro = article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [];
   const chapters = article?.chapters.filter((chapter) => chapter.title !== '') ?? [];
-  // The gallery (Edd's call): the article's remaining images together
-  // at the top, credited — never merely NEAR an unrelated chapter
-  const spare = article?.images.slice(1) ?? [];
 
   return (
     <FlatList
@@ -141,43 +159,20 @@ export function AreaGazetteer({
       ListHeaderComponent={
         article && areaName ? (
           <View>
-            <Hero areaName={areaName} article={article} />
-            {intro.length > 0 && (
-              <AreaShortVersion areaName={areaName} extract={intro.join('\n')} />
-            )}
-            {spare.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.gallery}
-                contentContainerStyle={styles.galleryContent}>
-                {spare.map((image, index) => (
-                  <View key={index} style={styles.galleryItem}>
-                    <Image
-                      source={{ uri: image.imageUrl }}
-                      style={styles.galleryImage}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                    />
-                    <ThemedText
-                      type="small"
-                      themeColor="textSecondary"
-                      style={styles.galleryCredit}
-                      numberOfLines={1}>
-                      {image.credit}
-                    </ThemedText>
-                  </View>
+            <Hero areaName={areaName} article={article} retold={retold} />
+            {retold ? (
+              <RetoldStory retold={retold} article={article} />
+            ) : (
+              // No retelling (yet): the original article stands as before
+              <View style={styles.article}>
+                {intro.map((paragraph, index) => (
+                  <ThemedText key={index} type="default" style={styles.introPara}>
+                    {paragraph}
+                  </ThemedText>
                 ))}
-              </ScrollView>
+                <ChapterFolds chapters={chapters} />
+              </View>
             )}
-            <View style={styles.article}>
-              {intro.map((paragraph, index) => (
-                <ThemedText key={index} type="default" style={styles.introPara}>
-                  {paragraph}
-                </ThemedText>
-              ))}
-              <ChapterFolds chapters={chapters} />
-            </View>
           </View>
         ) : null
       }
@@ -227,24 +222,6 @@ const styles = StyleSheet.create({
   },
   introPara: {
     marginBottom: Spacing.three,
-  },
-  gallery: {
-    marginTop: Spacing.three,
-  },
-  galleryContent: {
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.two,
-  },
-  galleryItem: {
-    width: 168,
-    gap: 2,
-  },
-  galleryImage: {
-    height: 110,
-    borderRadius: Spacing.three - 2,
-  },
-  galleryCredit: {
-    fontSize: 9,
   },
   sectionHead: {
     paddingHorizontal: Spacing.four,
