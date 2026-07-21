@@ -221,6 +221,12 @@ export function AreaGazetteer({
   const theme = useTheme();
   // Lazy state, not a ref: stable identity, render-safe under the compiler
   const [readProgress] = useState(() => new Animated.Value(0));
+  // The bar earns its place: the track shows only when the story is
+  // taller than the screen — the same "nothing to read, no bar" rule
+  // readingProgress enforces for the fill
+  const [scrollable, setScrollable] = useState(false);
+  const frame = useRef({ content: 0, viewport: 0 });
+  const remeasure = () => setScrollable(frame.current.content - frame.current.viewport > 0);
   const listRef = useRef<FlatList<GazetteerRow>>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [articleStatus, setArticleStatus] = useState<'pending' | 'ready' | 'none'>('pending');
@@ -239,6 +245,8 @@ export function AreaGazetteer({
     setRetold(null);
     setRetoldStatus('pending');
     setOriginalOpen(false);
+    // …and must not inherit its reading progress
+    readProgress.setValue(0);
   }
 
   // Two INDEPENDENT fetches: the hero paints the moment the article
@@ -385,6 +393,14 @@ export function AreaGazetteer({
         );
       }}
       scrollEventThrottle={32}
+      onContentSizeChange={(_, height) => {
+        frame.current.content = height;
+        remeasure();
+      }}
+      onLayout={(event) => {
+        frame.current.viewport = event.nativeEvent.layout.height;
+        remeasure();
+      }}
       contentContainerStyle={{
         paddingBottom: Spacing.four + insets.bottom,
       }}
@@ -458,21 +474,29 @@ export function AreaGazetteer({
       }
     />
     {/* The violet reading bar (Edd's ask, returned): how far through
-        the story you are, riding the top edge of the scroll */}
-    <View pointerEvents="none" style={styles.progressTrack} testID="reading-progress">
-      <Animated.View
-        style={[
-          styles.progressFill,
-          {
-            backgroundColor: theme.accent,
-            width: readProgress.interpolate({
-              inputRange: [0, 1],
-              outputRange: ['0%', '100%'],
-            }),
-          },
-        ]}
-      />
-    </View>
+        the story you are, riding the top edge of the scroll. The soft
+        track is the fix for "hasn't been built": a bare fill is zero
+        pixels before you scroll, and violet alone vanished into the
+        hero's shade — the track says the bar exists from the start */}
+    {scrollable && (
+      <View
+        pointerEvents="none"
+        style={[styles.progressTrack, { backgroundColor: theme.accentSoft }]}
+        testID="reading-progress">
+        <Animated.View
+          style={[
+            styles.progressFill,
+            {
+              backgroundColor: theme.accent,
+              width: readProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', '100%'],
+              }),
+            },
+          ]}
+        />
+      </View>
+    )}
     <ImageViewer
       images={article?.images ?? []}
       initialIndex={viewerIndex}
@@ -612,15 +636,17 @@ const styles = StyleSheet.create({
   wrap: {
     flex: 1,
   },
+  // 4px, not 3: thick enough to register at a glance, thin enough to
+  // stay a bar and not a banner
   progressTrack: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 3,
+    height: 4,
   },
   progressFill: {
-    height: 3,
+    height: 4,
   },
   hero: {
     height: 220,
