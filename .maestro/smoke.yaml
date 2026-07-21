@@ -14,6 +14,13 @@ appId: com.eddtb.landmarks
       visible: 'Development servers'
     commands:
       - openLink: exp+landmarks://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081
+# Belt to the workflow's defaults-write braces: a fresh install's dev
+# menu onboarding sheet covers the app (run 7's welcome mat)
+- runFlow:
+    when:
+      visible: 'This is the developer menu'
+    commands:
+      - tapOn: 'Continue'
 
 # Nearby: the list renders real story cards
 - extendedWaitUntil:
