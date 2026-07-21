@@ -120,7 +120,11 @@ export async function findStory(
   const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
   const summaryResponse = await fetch(summaryUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(5000) });
   if (!summaryResponse.ok) {
-    return null;
+    // A rate-limit is not a verdict: null means "no such story" and
+    // gets cached by callers — an upstream failure must THROW so the
+    // next request may try again (20 parallel lookups 429ing quietly
+    // poisoned the plaque-subject cache with false "no subject"s)
+    throw new Error(`Wikipedia summary failed with status ${summaryResponse.status}`);
   }
   const summary = (await summaryResponse.json()) as SummaryResponse;
 
