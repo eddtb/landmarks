@@ -47,7 +47,28 @@ function writeSoon(name: string, map: Map<string, unknown>) {
   const timer = setTimeout(() => {
     try {
       fs!.mkdirSync(CacheDir, { recursive: true });
-      fs!.writeFileSync(`${CacheDir}/${name}.json`, JSON.stringify([...map.entries()]));
+      const path = `${CacheDir}/${name}.json`;
+      // Merge-on-write: a whole-map dump is last-writer-wins, and two
+      // processes sharing .ai-cache were watched erasing each other's
+      // entries — including retellings that cost real quota. Fold in
+      // any disk entries this process never saw before flushing:
+      // writers may only add, never destroy. (Prototype set bypasses
+      // the patched set — merging must not re-arm this debounce.)
+      try {
+        if (fs!.existsSync(path)) {
+          for (const [key, value] of JSON.parse(fs!.readFileSync(path, 'utf8')) as [
+            string,
+            unknown,
+          ][]) {
+            if (!map.has(key)) {
+              Map.prototype.set.call(map, key, value);
+            }
+          }
+        }
+      } catch {
+        // Unreadable disk state never blocks the write of good state
+      }
+      fs!.writeFileSync(path, JSON.stringify([...map.entries()]));
     } catch (error) {
       console.warn(`AI cache write failed (${name}):`, error);
     }
