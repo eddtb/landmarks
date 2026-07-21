@@ -56,6 +56,14 @@ describe('getTelling', () => {
     );
   });
 
+  test('areas cache by name, apart from any pageId', async () => {
+    await getTelling({ ...subject, pageId: 0, title: 'Greenwich' }, 'area:greenwich');
+    await getTelling({ ...subject, pageId: 0, title: 'Deptford' }, 'area:deptford');
+    expect(research).toHaveBeenCalledTimes(2); // no collision on pageId 0
+    await getTelling({ ...subject, pageId: 0, title: 'Greenwich' }, 'area:greenwich');
+    expect(research).toHaveBeenCalledTimes(2); // second Greenwich from cache
+  });
+
   test('an empty answer is not cached — the next press retries', async () => {
     research.mockResolvedValueOnce('');
     await expect(getTelling({ ...subject, pageId: 9002 })).resolves.toBe('');

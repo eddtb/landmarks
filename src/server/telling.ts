@@ -39,8 +39,12 @@ export function tellingPrompt(subject: TellingSubject): string {
   ].join('\n');
 }
 
-export async function getTelling(subject: TellingSubject): Promise<string> {
-  const key = String(subject.pageId);
+export async function getTelling(
+  subject: TellingSubject,
+  // Areas have no pageId — they cache under "area:greenwich"
+  cacheKey = String(subject.pageId)
+): Promise<string> {
+  const key = cacheKey;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < TtlMs) {
     return cached.text;

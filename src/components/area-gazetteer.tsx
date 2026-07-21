@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AreaShortVersion } from '@/components/area-short-version';
 import { ChapterFolds } from '@/components/chapter-folds';
 import { HistoryCard } from '@/components/history-card';
 import { ThemedText } from '@/components/themed-text';
@@ -141,6 +142,9 @@ export function AreaGazetteer({
         article && areaName ? (
           <View>
             <Hero areaName={areaName} article={article} />
+            {intro.length > 0 && (
+              <AreaShortVersion areaName={areaName} extract={intro.join('\n')} />
+            )}
             {spare.length > 0 && (
               <ScrollView
                 horizontal
