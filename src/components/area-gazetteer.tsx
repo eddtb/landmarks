@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,9 +12,10 @@ import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
 import { usePlan } from '@/hooks/use-plan';
+import { LinkCandidate, linkifyParagraph } from '@/utils/linkify';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
+import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/utils/speech';
 
 /**
  * The Gazetteer: a magazine cover for the place. Hero and gallery in
@@ -136,6 +138,7 @@ function Hero({
 function useRetoldSpeaker(retold: Retold | null) {
   const [speaking, setSpeaking] = useState(false);
   const [engineFailed, setEngineFailed] = useState(false);
+  const [spokeOnce, setSpokeOnce] = useState(false);
   const cancelled = useRef(false);
 
   useEffect(() => {
@@ -157,6 +160,7 @@ function useRetoldSpeaker(retold: Retold | null) {
     }
     cancelled.current = false;
     setEngineFailed(false);
+    setSpokeOnce(true);
     setSpeaking(true);
     for (const [index, part] of retold.parts.entries()) {
       if (cancelled.current) {
@@ -179,17 +183,20 @@ function useRetoldSpeaker(retold: Retold | null) {
     }
   };
 
-  return { speaking, engineFailed, toggle };
+  return { speaking, engineFailed, spokeOnce, toggle };
 }
 
 export function AreaGazetteer({
   areaName,
   relics,
+  allStories,
   refreshing,
   onRefresh,
 }: {
   areaName: string | null;
   relics: HistoryItem[];
+  /** Every story of the ground — the web of history links into all of them. */
+  allStories: HistoryItem[];
   refreshing: boolean;
   onRefresh: () => void;
 }) {
@@ -202,7 +209,7 @@ export function AreaGazetteer({
   const [originalOpen, setOriginalOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [areaFor, setAreaFor] = useState<string | null>(null);
-  const { speaking, engineFailed, toggle } = useRetoldSpeaker(retold);
+  const { speaking, engineFailed, spokeOnce, toggle } = useRetoldSpeaker(retold);
 
   // Adjust-during-render: walking into Deptford must not show Greenwich
   if (areaFor !== areaName) {
@@ -261,6 +268,10 @@ export function AreaGazetteer({
     relics: listRelics,
   });
 
+  const linkCandidates: LinkCandidate[] = allStories
+    .filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase())
+    .map((item) => ({ title: item.title, pageId: item.pageId }));
+
   const jumpToPart = (stop: TimelineStop) => {
     const index = partRowIndex(rows, stop.part);
     if (index >= 0) {
@@ -275,6 +286,7 @@ export function AreaGazetteer({
     switch (row.kind) {
       case 'ai-label':
         return (
+          <View>
           <View style={styles.aiLabel}>
             <ThemedText type="small" themeColor="textSecondary" style={styles.aiLabelText}>
               ✦ Retold by AI from Wikipedia — original below
@@ -287,11 +299,18 @@ export function AreaGazetteer({
               </Pressable>
             )}
           </View>
+          {spokeOnce && !speaking && !usingEnhancedVoice() && (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.voiceHint}>
+              A nicer voice is one download away: Settings › Accessibility › Spoken Content ›
+              Voices › English (UK)
+            </ThemedText>
+          )}
+          </View>
         );
       case 'timeline':
         return <TimelineStrip stops={row.stops} onStop={jumpToPart} />;
       case 'part':
-        return <PartRow part={row.part} index={row.index} />;
+        return <PartRow part={row.part} index={row.index} links={linkCandidates} />;
       case 'retelling-pending':
         return (
           <ThemedText type="small" themeColor="textSecondary" style={styles.pending}>
@@ -446,7 +465,15 @@ function TimelineStrip({
   );
 }
 
-function PartRow({ part, index }: { part: RetoldPart; index: number }) {
+function PartRow({
+  part,
+  index,
+  links,
+}: {
+  part: RetoldPart;
+  index: number;
+  links: LinkCandidate[];
+}) {
   const theme = useTheme();
   const paragraphs = part.body.split(/\n+/).filter(Boolean);
   const quoteAfter = part.pullQuote ? Math.ceil(paragraphs.length / 2) - 1 : -1;
@@ -464,7 +491,24 @@ function PartRow({ part, index }: { part: RetoldPart; index: number }) {
           <ThemedText
             type="default"
             style={[styles.para, index === 0 && paragraphIndex === 0 && styles.lede]}>
-            {paragraph}
+            {linkifyParagraph(paragraph, links).map((segment, segmentIndex) =>
+              segment.pageId !== undefined ? (
+                <ThemedText
+                  key={segmentIndex}
+                  type="default"
+                  themeColor="accent"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/history/[pageId]',
+                      params: { pageId: String(segment.pageId) },
+                    })
+                  }>
+                  {segment.text}
+                </ThemedText>
+              ) : (
+                segment.text
+              )
+            )}
           </ThemedText>
           {paragraphIndex === quoteAfter && (
             <View style={[styles.pull, { borderLeftColor: theme.accent }]}>
@@ -564,6 +608,11 @@ const styles = StyleSheet.create({
   },
   aiLabelText: {
     flex: 1,
+    fontSize: 11,
+  },
+  voiceHint: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
     fontSize: 11,
   },
   pending: {
