@@ -1,4 +1,4 @@
-import { EntityClaims, existenceTag } from '@/server/wikidata';
+import { EntityClaims, existenceTag, isEventArticle } from '@/server/wikidata';
 
 /**
  * THE GOLDEN SENTINEL SUITE. Every shape below is a real place whose
@@ -62,5 +62,43 @@ describe('existenceTag — the golden sentinels', () => {
 
   test('unknown class labels never classify', () => {
     expect(existenceTag(claims({ p31: ['Q999999'] }), new Map())).toBeNull();
+  });
+});
+
+/**
+ * The event sentinels (events-are-history ruling): P31 shapes recorded
+ * from live Wikidata (2026-07-22). Articles ABOUT events route to the
+ * archive; places that HOSTED events never do.
+ */
+describe('isEventArticle — events belong to the archive, not Nearby', () => {
+  test('Lewisham rail crash: train wreck / SPAD / rear-end collision → event', () => {
+    // Q1312322's actual P31 values
+    expect(isEventArticle(claims({ p31: ['Q1078765', 'Q2811650', 'Q375102'] }))).toBe(true);
+  });
+
+  test('1898 St Johns rail accident: bare train wreck → event', () => {
+    expect(isEventArticle(claims({ p31: ['Q1078765'] }))).toBe(true);
+  });
+
+  test('the places that HOSTED events carry place classes — never routed', () => {
+    // St Johns railway station: railway station
+    expect(isEventArticle(claims({ p31: ['Q55488'] }))).toBe(false);
+    // Lewisham station: DLR station, Keilbahnhof, terminus, station in a cut
+    expect(
+      isEventArticle(claims({ p31: ['Q18516630', 'Q55677', 'Q20202072', 'Q98280550'] }))
+    ).toBe(false);
+    // A statue, a clipper, a historic building (the standing sentinels)
+    expect(isEventArticle(claims({ p31: ['Q179700', 'Q273081', 'Q35112127'] }))).toBe(false);
+  });
+
+  test('battles and disasters from the probes: battle, maritime disaster, aviation accident', () => {
+    expect(isEventArticle(claims({ p31: ['Q178561'] }))).toBe(true); // Battle of Lewisham
+    expect(isEventArticle(claims({ p31: ['Q2192508', 'Q2620513'] }))).toBe(true); // Marchioness
+    expect(isEventArticle(claims({ p31: ['Q744913'] }))).toBe(true); // 1958 Dove crash
+  });
+
+  test('precision over recall: an unknown or event-ish-but-uncurated class never routes', () => {
+    expect(isEventArticle(claims({ p31: ['Q26132862'] }))).toBe(false); // Olympic sports discipline event
+    expect(isEventArticle(claims({}))).toBe(false);
   });
 });

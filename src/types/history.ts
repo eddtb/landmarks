@@ -18,6 +18,11 @@ export type HistoryItem = {
   /** A structured existence fact from Wikidata — "Demolished 1936",
    * "Until 1675", "Former hospital" — or absent: honest silence. */
   pastTag?: string;
+  /** The article is ABOUT an event — a crash, a battle, a fire
+   * (Wikidata P31 in the curated event set, src/server/wikidata.ts).
+   * Events live in the History archive, never the Nearby feed (Edd's
+   * ruling), photo or no photo — you can't walk to a happening. */
+  event?: true;
   /** A plaque's resolved subject when the feed already tells that
    * story under its own card: the story screen opens the subject's
    * Gazetteer while the card keeps the honest inscription. */

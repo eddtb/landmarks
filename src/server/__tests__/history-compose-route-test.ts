@@ -13,7 +13,7 @@
  */
 import { GET } from '@/app/api/history+api';
 import { dressWithPhotos } from '@/server/geograph';
-import { fetchExistenceTags } from '@/server/wikidata';
+import { fetchExistenceFacts } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 
@@ -40,7 +40,7 @@ jest.mock('@/server/plaque-subject', () => ({
   resolvePlaqueSubjects: jest.fn(async (plaques: HistoryItem[]) => plaques),
 }));
 jest.mock('@/server/wikidata', () => ({
-  fetchExistenceTags: jest.fn(async () => new Map()),
+  fetchExistenceFacts: jest.fn(async () => new Map()),
 }));
 jest.mock('@/server/wikipedia', () => ({ findNearbyHistory: jest.fn() }));
 jest.mock('@/server/heritage', () => {
@@ -55,12 +55,12 @@ jest.mock('@/server/heritage', () => {
 
 const mockFindNearby = findNearbyHistory as jest.Mock;
 const mockDress = dressWithPhotos as jest.Mock;
-const mockTags = fetchExistenceTags as jest.Mock;
+const mockTags = fetchExistenceFacts as jest.Mock;
 
 const cacheMaps = (
   jest.requireMock('@/server/ai-cache') as { __maps: Map<string, Map<string, unknown>> }
 ).__maps;
-const listMap = () => cacheMaps.get('history-lists-v5')!;
+const listMap = () => cacheMaps.get('history-lists-v6')!;
 
 function story(pageId: number, title: string): HistoryItem {
   return {
@@ -106,17 +106,22 @@ describe('GET /api/history cold-compose early serve', () => {
     // Tags resolve on a real tick — dressing stays pending past them
     mockTags.mockImplementation(async () => {
       await flush();
-      return new Map([['Story 1', 'Demolished 1936']]);
+      return new Map([
+        ['Story 1', { tag: 'Demolished 1936' }],
+        ['Story 3', { event: true }], // events-are-history: the flag rides the same facts leg
+      ]);
     });
 
     const request = freshRequest();
     const response = await GET(request);
     const body = (await response.json()) as FeedBody;
 
-    // Served before the photo leg: flagged, text-complete, tags applied
+    // Served before the photo leg: flagged, text-complete, facts applied
     expect(body.dressing).toBe(true);
     expect(body.items).toHaveLength(30);
     expect(body.items[0].pastTag).toBe('Demolished 1936');
+    expect(body.items[2].event).toBe(true);
+    expect(body.items[1].event).toBeUndefined();
     expect(body.items.some((item) => item.thumbnailUrl)).toBe(false);
     // The undressed list is serve-once: NOT the bucket's cached verdict
     expect(listMap().size).toBe(0);
@@ -128,6 +133,7 @@ describe('GET /api/history cold-compose early serve', () => {
     const cached = [...listMap().values()][0] as { items: HistoryItem[] };
     expect(cached.items.every((item) => item.thumbnailUrl)).toBe(true);
     expect(cached.items[0].pastTag).toBe('Demolished 1936');
+    expect(cached.items[2].event).toBe(true);
 
     // The upgrade re-fetch (same bucket, no fresh): dressed, unflagged
     const upgraded = (await (await GET(request)).json()) as FeedBody;
@@ -183,7 +189,7 @@ describe('GET /api/history cold-compose early serve', () => {
     );
     mockTags.mockImplementation(async () => {
       await flush(); // dressing settles first — the race picks it
-      return new Map([['Story 2', 'Until 1675']]);
+      return new Map([['Story 2', { tag: 'Until 1675' }]]);
     });
 
     const body = (await (await GET(freshRequest())).json()) as FeedBody;

@@ -9,7 +9,7 @@ import {
 } from '@/server/heritage';
 import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
-import { fetchExistenceTags } from '@/server/wikidata';
+import { ExistenceFacts, fetchExistenceFacts } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryFeed, HistoryItem } from '@/types/history';
 import { wikiTitleFromUrl } from '@/utils/format';
@@ -34,13 +34,17 @@ import { distanceMeters } from '@/utils/geo';
  * once and collects the dressed verdict from this bucket's cache.
  */
 const ListTtlMs = 60 * 60 * 1000;
+// v6: items may carry event:true (Edd's ruling: articles ABOUT events
+// — crashes, battles, fires — live in the History archive, never
+// Nearby) — a v5 list lacks the flag and would keep leaking events
+// into Nearby for its TTL;
 // v5: entries may carry a sparse flag (the compose widened Wikipedia
 // to 3000m) — and a v4 sparse-area entry was composed narrow, so it
 // must not be replayed as if it were the honest wide list;
 // v4: plaque items may carry resolved subject titles (option A);
 // v3 and earlier predate photo rules and existence tags
 const listCache = diskBackedMap<{ items: HistoryItem[]; sparse?: boolean; at: number }>(
-  'history-lists-v5'
+  'history-lists-v6'
 );
 
 function bucketKey(lat: number, lng: number): string {
@@ -62,18 +66,18 @@ const pendingCompose = new Map<string, { items: HistoryItem[]; sparse?: boolean 
 // cold legs (measured 1.5-3.5s) never make it — and shouldn't.
 const ServeGraceMs = 150;
 
-/** Existence tags keyed by pageId; failure degrades to an empty map —
- * fewer tags, never fewer stories. */
-async function existenceTagsByPageId(items: HistoryItem[]): Promise<Map<number, string>> {
+/** Existence facts (tag + event verdict) keyed by pageId; failure
+ * degrades to an empty map — fewer facts, never fewer stories. */
+async function existenceFactsByPageId(items: HistoryItem[]): Promise<Map<number, ExistenceFacts>> {
   try {
     const wikiTitled = items.flatMap((item) => {
       const title = wikiTitleFromUrl(item.url);
       return title ? [[item, title] as const] : [];
     });
-    const tags = await fetchExistenceTags(wikiTitled.map(([, title]) => title));
+    const facts = await fetchExistenceFacts(wikiTitled.map(([, title]) => title));
     return new Map(
       wikiTitled.flatMap(([item, title]) =>
-        tags.has(title) ? [[item.pageId, tags.get(title)!] as const] : []
+        facts.has(title) ? [[item.pageId, facts.get(title)!] as const] : []
       )
     );
   } catch (error) {
@@ -82,13 +86,21 @@ async function existenceTagsByPageId(items: HistoryItem[]): Promise<Map<number, 
   }
 }
 
-function applyTags(items: HistoryItem[], tags: Map<number, string>): HistoryItem[] {
-  if (tags.size === 0) {
+function applyFacts(items: HistoryItem[], facts: Map<number, ExistenceFacts>): HistoryItem[] {
+  if (facts.size === 0) {
     return items;
   }
-  return items.map((item) =>
-    tags.has(item.pageId) ? { ...item, pastTag: tags.get(item.pageId) } : item
-  );
+  return items.map((item) => {
+    const fact = facts.get(item.pageId);
+    if (!fact) {
+      return item;
+    }
+    return {
+      ...item,
+      ...(fact.tag ? { pastTag: fact.tag } : {}),
+      ...(fact.event ? { event: true as const } : {}),
+    };
+  });
 }
 
 // The CI pin (and the fixtures' home): anything asked near here gets
@@ -252,13 +264,13 @@ export async function GET(request: Request) {
     // Structured existence facts from Wikidata — grammar retired (#137's
     // ceiling); failure degrades (in the helper) to fewer tags, never
     // fewer stories
-    let tagsSoFar = new Map<number, string>();
-    const tagging = existenceTagsByPageId(capped).then((tags) => (tagsSoFar = tags));
+    let factsSoFar = new Map<number, ExistenceFacts>();
+    const tagging = existenceFactsByPageId(capped).then((facts) => (factsSoFar = facts));
 
     // Cache only the final dressed verdict — the disk cache's bucket
     // answer must never be an undressed list
-    const finalize = ([dressedItems, tags]: [HistoryItem[], Map<number, string>]) => {
-      const items = applyTags(dressedItems, tags);
+    const finalize = ([dressedItems, facts]: [HistoryItem[], Map<number, ExistenceFacts>]) => {
+      const items = applyFacts(dressedItems, facts);
       listCache.set(key, sparse ? { items, sparse, at: Date.now() } : { items, at: Date.now() });
       return items;
     };
@@ -286,8 +298,8 @@ export async function GET(request: Request) {
       return respond(finalize(settled), sparse);
     }
 
-    // Tags that beat the grace still ride the early response
-    const snapshot = { items: applyTags(capped, tagsSoFar), ...(sparse ? { sparse } : {}) };
+    // Facts that beat the grace still ride the early response
+    const snapshot = { items: applyFacts(capped, factsSoFar), ...(sparse ? { sparse } : {}) };
     pendingCompose.set(key, snapshot);
     const settle = () => {
       // Identity-checked like the client's in-flight map: a fresh=1
