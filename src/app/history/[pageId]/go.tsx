@@ -1,6 +1,6 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -22,7 +22,7 @@ import { fetchRoute, WalkingRoute } from '@/data/route-client';
 import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDistance, formatWalkTime } from '@/utils/format';
-import { guidanceFor } from '@/utils/guidance';
+import { guidanceFor, needsReroute, RouteCorridor } from '@/utils/guidance';
 
 /**
  * Liquid glass chrome where supported (iOS 26+); the themed solid
@@ -69,8 +69,19 @@ export default function GoScreen() {
   const longitude = coordinates?.longitude;
   const target = item?.coordinates;
 
+  // The route the user is currently walking, kept in a ref so GPS
+  // ticks can be judged against it without re-running the effect
+  const corridorRef = useRef<RouteCorridor | null>(null);
+
   useEffect(() => {
     if (latitude === undefined || longitude === undefined || !target) {
+      return;
+    }
+    // A tick inside the current route's corridor is handled locally —
+    // guidanceFor re-renders the live step; the router is only asked
+    // again when the user has actually left the route (or the
+    // destination changed). Issue #197: this used to fire ~every 27m.
+    if (!needsReroute(corridorRef.current, { latitude, longitude }, target)) {
       return;
     }
     let cancelled = false;
@@ -78,6 +89,7 @@ export default function GoScreen() {
       try {
         const route = await fetchRoute({ latitude, longitude }, target);
         if (!cancelled) {
+          corridorRef.current = { route, target };
           setRouteState({ status: 'ready', route });
         }
       } catch (error) {
