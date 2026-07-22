@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import HistoryDetailScreen from '@/app/history/[pageId]';
 import { fetchArticle } from '@/data/article-client';
@@ -66,10 +66,21 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
     expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
 
-    // No retelling exists → the original article stands as the story:
-    // intro first, then the folds (first chapter open, the rest peeking)
+    // No retelling exists → the lede stands as the story, labelled,
+    // with the rest of the chapters behind the same "Read the original
+    // article" door the retold screens use
     expect(await screen.findByText('The intro, the surprising true thing.')).toBeOnTheScreen();
-    expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
+    expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
+    expect(screen.getByText(/Read the original article/)).toBeOnTheScreen();
+    // Closed by default: the chapters aren't on screen yet
+    expect(screen.queryByText('Built by the Borough in 1791.')).not.toBeOnTheScreen();
+
+    // Tap the door → the rest of the article unfolds (first chapter
+    // open, the rest peeking)
+    await act(async () => {
+      fireEvent.press(screen.getByText(/Read the original article/));
+    });
+    expect(await screen.findByText('Built by the Borough in 1791.')).toBeOnTheScreen();
     expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen();
   });
 
