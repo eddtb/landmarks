@@ -14,8 +14,13 @@ import { Coordinates } from '@/utils/geo';
  * derives that) or deliberately with GPS live (holds until "Back to
  * near me"). Deliberately in-memory only: location-first says never
  * freeze the user's position, so a pin must not outlive the process.
+ *
+ * `label` is the place name the user actually TYPED to drop the pin —
+ * the area-name cascade's first candidate. The searcher knows what
+ * they meant better than the reverse geocoder, which answers with the
+ * ward ("Dorking North" for Dorking) and strands the gazetteer.
  */
-export type Pin = { center: Coordinates; blind: boolean };
+export type Pin = { center: Coordinates; blind: boolean; label?: string };
 
 let pin: Pin | null = null;
 const listeners = new Set<() => void>();

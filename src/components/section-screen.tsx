@@ -84,7 +84,7 @@ export function LocationGate({ children }: { children: (props: GateProps) => Rea
   const pin = usePin();
 
   const onManualCenter = useCallback(
-    (center: Coordinates) => setPin({ center, blind: !coordinates }),
+    (center: Coordinates, label?: string) => setPin({ center, blind: !coordinates, label }),
     [coordinates]
   );
   const onBackToNearMe = useCallback(() => setPin(null), []);
@@ -139,7 +139,9 @@ export type GateProps = {
   locationDenied: boolean;
   /** A manual pin holds the center — the header must admit it. */
   exploring: boolean;
-  onManualCenter: (center: Coordinates) => void;
+  /** `label`: the searched place name, riding the pin so the area-name
+   * cascade can try the user's own word for the place first. */
+  onManualCenter: (center: Coordinates, label?: string) => void;
   onBackToNearMe: () => void;
 };
 
@@ -157,7 +159,8 @@ function SectionHeader({
 }: GateProps & { eyebrow: string }) {
   const [searchText, setSearchText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const areaName = useAreaName(center);
+  // The cascade winner — "Dorking", never the ward "Dorking North"
+  const { name: areaName } = useAreaName(center);
   const theme = useTheme();
 
   const onSearchSubmit = useCallback(async () => {
@@ -170,7 +173,10 @@ function SectionHeader({
       const results = await Location.geocodeAsync(query);
       const first = results[0];
       if (first) {
-        onManualCenter({ latitude: first.latitude, longitude: first.longitude });
+        // The RAW typed string rides the pin (trimmed): the geocode
+        // result carries coordinates, not a better name — and the
+        // typed name is the one the user expects to lead the screen
+        onManualCenter({ latitude: first.latitude, longitude: first.longitude }, query);
         setSearchOpen(false);
         setSearchText('');
       }
@@ -285,7 +291,7 @@ export function HistoryArchiveScreen() {
 function GazetteerBody({ center }: { center: Coordinates }) {
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
-  const areaName = useAreaName(center);
+  const { name: areaName, settled: areaSettled } = useAreaName(center);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -313,6 +319,7 @@ function GazetteerBody({ center }: { center: Coordinates }) {
   return (
     <AreaGazetteer
       areaName={areaName}
+      areaSettled={areaSettled}
       relics={relics}
       allStories={state.items}
       refreshing={refreshing}
@@ -435,7 +442,7 @@ export function HistoryBody({
   const theme = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
-  const areaName = useAreaName(center);
+  const { name: areaName } = useAreaName(center);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

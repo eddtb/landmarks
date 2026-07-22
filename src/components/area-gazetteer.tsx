@@ -52,6 +52,7 @@ export type RetoldStatus = 'pending' | 'ready' | 'none';
 
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
+  | { kind: 'no-story'; key: string }
   | { kind: 'timeline'; key: string; stops: TimelineStop[] }
   | { kind: 'part'; key: string; part: RetoldPart; index: number }
   | { kind: 'retelling-pending'; key: string }
@@ -64,13 +65,24 @@ export type GazetteerRow =
 /** Pure and unit-tested: the whole scroll as data. */
 export function buildGazetteerRows(options: {
   hasArticle: boolean;
+  /** Probed and genuinely absent (never while loading): the area has a
+   * name, but no article answers to it. */
+  storyMissing?: boolean;
   retoldStatus: RetoldStatus;
   retold: Retold | null;
   originalOpen: boolean;
   relics: HistoryItem[];
 }): GazetteerRow[] {
-  const { hasArticle, retoldStatus, retold, originalOpen, relics } = options;
+  const { hasArticle, storyMissing, retoldStatus, retold, originalOpen, relics } = options;
   const rows: GazetteerRow[] = [];
+
+  if (!hasArticle && storyMissing && relics.length > 0) {
+    // The wordless miss gets words: a named area whose article simply
+    // doesn't exist must say so — bare relics with no explanation read
+    // as broken (device-triaged, pre-cascade Dorking). With no relics
+    // either, the list's own empty state already speaks.
+    rows.push({ kind: 'no-story', key: 'no-story' });
+  }
 
   if (hasArticle) {
     if (retoldStatus === 'ready' && retold) {
@@ -205,6 +217,7 @@ function useRetoldSpeaker(retold: Retold | null) {
 
 export function AreaGazetteer({
   areaName,
+  areaSettled = true,
   relics,
   allStories,
   refreshing,
@@ -213,6 +226,12 @@ export function AreaGazetteer({
   empty,
 }: {
   areaName: string | null;
+  /** False while the area-name cascade is still resolving: a null
+   * areaName then means "wait", not "nowhere". Once settled, a null
+   * name lets the fetch effects declare "none" instead of pending
+   * forever (#217's mid-sea spinner). Place screens always pass a
+   * name, so the default is settled. */
+  areaSettled?: boolean;
   relics: HistoryItem[];
   /** Every story of the ground — the web of history links into all of them. */
   allStories: HistoryItem[];
@@ -327,13 +346,22 @@ export function AreaGazetteer({
     };
   }, [areaName]);
 
+  // #217: settled on NO name at all (mid-sea) — the fetch effects
+  // above never run, so no status would ever leave 'pending' by
+  // itself. Derived, not set: the moment a name appears, the real
+  // statuses lead again.
+  const areaMissing = areaName === null && areaSettled;
+  const resolvedArticleStatus = areaMissing ? 'none' : articleStatus;
+  const resolvedRetoldStatus = areaMissing ? 'none' : retoldStatus;
+
   // The area's own article leads the screen, not the list
   const listRelics = relics.filter(
     (item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase()
   );
   const rows = buildGazetteerRows({
     hasArticle: article !== null,
-    retoldStatus,
+    storyMissing: resolvedArticleStatus === 'none' && areaName !== null,
+    retoldStatus: resolvedRetoldStatus,
     retold,
     originalOpen,
     relics: listRelics,
@@ -362,6 +390,13 @@ export function AreaGazetteer({
 
   const renderRow = (row: GazetteerRow) => {
     switch (row.kind) {
+      case 'no-story':
+        // Honest, in the house voice — where the hero would have stood
+        return (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.noStory}>
+            No recorded story for this area yet — its relics are below.
+          </ThemedText>
+        );
       case 'ai-label':
         return (
           <View>
@@ -513,7 +548,7 @@ export function AreaGazetteer({
         ) : null
       }
       ListEmptyComponent={
-        article ? null : articleStatus === 'pending' ? (
+        article ? null : resolvedArticleStatus === 'pending' ? (
           <ActivityIndicator style={styles.empty} />
         ) : empty ? (
           <>{empty}</>
@@ -746,6 +781,10 @@ const styles = StyleSheet.create({
   },
   galleryCredit: {
     fontSize: 9,
+  },
+  noStory: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
   },
   aiLabel: {
     flexDirection: 'row',

@@ -95,6 +95,30 @@ describe('buildGazetteerRows', () => {
     });
     expect(rows.map((row) => row.kind)).toEqual(['section', 'relic', 'relic']);
   });
+
+  test('a story probed and MISSING leads the relics with words, not silence', () => {
+    const rows = buildGazetteerRows({
+      hasArticle: false,
+      storyMissing: true,
+      retoldStatus: 'none',
+      retold: null,
+      originalOpen: false,
+      relics: [relic(1, 'Palace of Placentia')],
+    });
+    expect(rows.map((row) => row.kind)).toEqual(['no-story', 'section', 'relic']);
+  });
+
+  test('a missing story with no relics leaves the list empty — its empty state speaks', () => {
+    const rows = buildGazetteerRows({
+      hasArticle: false,
+      storyMissing: true,
+      retoldStatus: 'none',
+      retold: null,
+      originalOpen: false,
+      relics: [],
+    });
+    expect(rows).toEqual([]);
+  });
 });
 
 describe('partRowIndex (a tapped year finds its part)', () => {
