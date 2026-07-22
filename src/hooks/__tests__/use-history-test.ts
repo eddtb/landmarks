@@ -96,6 +96,101 @@ describe('useHistory setState bail', () => {
   });
 });
 
+describe('useHistory dressing upgrade (the early-serve contract, #201)', () => {
+  const flush = () => act(async () => {});
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockFetchNearbyHistory.mockReset();
+    mockHasCachedFeed.mockReset();
+    mockHasCachedFeed.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('a dressing result fires EXACTLY one upgrade re-fetch at ~4s, and the dressed items replace the undressed', async () => {
+    const dressedItems = [{ ...item, thumbnailUrl: 'https://img/1.jpg' }];
+    mockFetchNearbyHistory
+      .mockResolvedValueOnce({ items: [item], dressing: true })
+      .mockResolvedValueOnce({ items: dressedItems });
+    const { result } = await renderHook(() =>
+      useHistory({ latitude: 51.5041, longitude: -0.0902 })
+    );
+    await flush();
+    expect(result.current.state).toMatchObject({ status: 'ready', items: [item] });
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(1);
+
+    // Nothing fires early…
+    await act(async () => {
+      jest.advanceTimersByTime(3999);
+    });
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(1);
+
+    // …the one-shot fires at 4s as an upgrade (client-cache bypass, no fresh=1)
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    await flush();
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(2);
+    expect(mockFetchNearbyHistory).toHaveBeenLastCalledWith(
+      { latitude: 51.504, longitude: -0.09 },
+      { upgrade: true }
+    );
+    expect(result.current.state).toMatchObject({ status: 'ready', items: dressedItems });
+
+    // …and never again: no loop, no poll storm
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+    });
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(2);
+  });
+
+  test('an upgrade that comes back still dressing does NOT schedule another — the flag is one-shot, not a loop', async () => {
+    mockFetchNearbyHistory.mockResolvedValue({ items: [item], dressing: true });
+    await renderHook(() => useHistory({ latitude: 51.5041, longitude: -0.0902 }));
+    await flush();
+
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    await flush();
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+    });
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(2);
+  });
+
+  test('leaving the bucket cancels the pending upgrade', async () => {
+    mockFetchNearbyHistory
+      .mockResolvedValueOnce({ items: [item], dressing: true })
+      .mockResolvedValue({ items: [item] }); // the new bucket answers dressed
+    const { rerender } = await renderHook(
+      ({ center }: { center: Coordinates }) => useHistory(center),
+      { initialProps: { center: { latitude: 51.5041, longitude: -0.0902 } } }
+    );
+    await flush();
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(1);
+
+    // Walk into the next bucket before the 4s lands
+    await rerender({ center: { latitude: 51.5061, longitude: -0.0902 } });
+    await flush();
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(2); // the new bucket's own fetch
+
+    await act(async () => {
+      jest.advanceTimersByTime(60000);
+    });
+    // The old bucket's upgrade never fires: no call carries upgrade:true
+    expect(mockFetchNearbyHistory).toHaveBeenCalledTimes(2);
+    expect(
+      mockFetchNearbyHistory.mock.calls.some(([, options]) => options?.upgrade)
+    ).toBe(false);
+  });
+});
+
 describe('useHistory loading honesty on a bucket jump', () => {
   beforeEach(() => {
     mockFetchNearbyHistory.mockReset();

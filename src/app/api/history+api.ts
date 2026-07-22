@@ -27,6 +27,11 @@ import { distanceMeters } from '@/utils/geo';
  * TTLs govern re-asking about the SAME spot, movement always busts
  * (the standing location-first rule). Pull-to-refresh sends fresh=1
  * and bypasses the read.
+ *
+ * Cold composes serve early (#201): once the story text is complete,
+ * the response goes out flagged `dressing: true` while the decoration
+ * legs (photos, existence tags) finish behind it — the client re-asks
+ * once and collects the dressed verdict from this bucket's cache.
  */
 const ListTtlMs = 60 * 60 * 1000;
 // v5: entries may carry a sparse flag (the compose widened Wikipedia
@@ -40,6 +45,50 @@ const listCache = diskBackedMap<{ items: HistoryItem[]; sparse?: boolean; at: nu
 
 function bucketKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
+}
+
+// Serve-once state for a cold compose whose photo leg is still in
+// flight: the text-complete list lives HERE, never in listCache — the
+// disk cache may only ever hold the final dressed verdict. A request
+// arriving inside the dressing window (the client's one-shot upgrade
+// re-fetch, a second device) gets this snapshot again instead of
+// re-firing four upstreams; the entry clears when the leg settles,
+// success or failure alike.
+const pendingCompose = new Map<string, { items: HistoryItem[]; sparse?: boolean }>();
+
+// How long a cold compose waits for the decoration legs (photos +
+// existence tags) before serving the text-complete list flagged
+// `dressing: true`. Warm caches settle both legs well inside this;
+// cold legs (measured 1.5-3.5s) never make it — and shouldn't.
+const ServeGraceMs = 150;
+
+/** Existence tags keyed by pageId; failure degrades to an empty map —
+ * fewer tags, never fewer stories. */
+async function existenceTagsByPageId(items: HistoryItem[]): Promise<Map<number, string>> {
+  try {
+    const wikiTitled = items.flatMap((item) => {
+      const title = wikiTitleFromUrl(item.url);
+      return title ? [[item, title] as const] : [];
+    });
+    const tags = await fetchExistenceTags(wikiTitled.map(([, title]) => title));
+    return new Map(
+      wikiTitled.flatMap(([item, title]) =>
+        tags.has(title) ? [[item.pageId, tags.get(title)!] as const] : []
+      )
+    );
+  } catch (error) {
+    console.warn('Existence facts degraded:', error);
+    return new Map();
+  }
+}
+
+function applyTags(items: HistoryItem[], tags: Map<number, string>): HistoryItem[] {
+  if (tags.size === 0) {
+    return items;
+  }
+  return items.map((item) =>
+    tags.has(item.pageId) ? { ...item, pastTag: tags.get(item.pageId) } : item
+  );
 }
 
 // The CI pin (and the fixtures' home): anything asked near here gets
@@ -87,8 +136,16 @@ export async function GET(request: Request) {
   // The photo verdict routes, it doesn't delete: the client puts
   // subject-photo stories in Nearby (findable on arrival — Edd's rule)
   // and the rest in the History archive. The server ships everything.
-  const respond = (items: Awaited<ReturnType<typeof dressWithPhotos>>, sparse?: boolean) =>
-    Response.json(sparse ? { items, sparse: true, horizon: SparseRadiusMeters } : { items });
+  const respond = (
+    items: Awaited<ReturnType<typeof dressWithPhotos>>,
+    sparse?: boolean,
+    dressing?: boolean
+  ) =>
+    Response.json({
+      items,
+      ...(sparse ? { sparse: true, horizon: SparseRadiusMeters } : {}),
+      ...(dressing ? { dressing: true } : {}),
+    });
 
   const key = bucketKey(lat, lng);
   if (!fresh) {
@@ -101,9 +158,17 @@ export async function GET(request: Request) {
       void dressWithPhotos(cached.items).catch(() => {});
       return respond(items, cached.sparse);
     }
+    // A cold compose for this bucket is mid-dress: serve its snapshot
+    // again (still flagged — the caller may re-ask once more later)
+    // rather than re-firing the whole upstream fan-out
+    const pending = pendingCompose.get(key);
+    if (pending) {
+      return respond(pending.items, pending.sparse, true);
+    }
   }
 
   try {
+    const sourcesStart = Date.now();
     const [wikipedia, listed, plaques] = await Promise.allSettled([
       findNearbyHistory(center),
       fetchListedBuildings(center),
@@ -126,6 +191,7 @@ export async function GET(request: Request) {
     // Plaques resolve their real subject first (evidence-gated: the
     // article must be geolocated at the plaque and named in the
     // inscription) so Deptford Creek earns a Gazetteer, not a stub
+    const plaquesStart = Date.now();
     const resolvedPlaques = await resolvePlaqueSubjects(
       plaques.status === 'fulfilled' ? plaques.value : [],
       wikipedia.value
@@ -158,33 +224,87 @@ export async function GET(request: Request) {
       }
     }
 
+    const enrichStart = Date.now();
     const told = await enrichStandaloneListed(merged);
     // The deep feed: everything within the walk, not a top-40 — the list
     // virtualises client-side, and photo lookups stay capped per request
     // (the deep tail warms up across requests), so length ≠ load time
-    const dressed = await dressWithPhotos(told.slice(0, 150));
+    const capped = told.slice(0, 150);
+
+    // The two remaining network stages hit DIFFERENT hosts (Commons +
+    // Geograph vs Wikidata) — per-host politeness allows them to
+    // overlap, so together they cost the longer of the two, not the
+    // sum. The Wikipedia-bound stages above stay ordered: they share a
+    // host AND enrichment consumes the merge that plaque resolution
+    // feeds. And neither leg holds the response past the grace below:
+    // measured cold (2026-07-22, Greenwich), tags are 3.5s and dressing
+    // is deadline-bounded at 1.5s — both decoration (the eyebrow tag,
+    // the thumbnail), neither worth staring at a spinner for. The story
+    // text itself is complete at this point.
+    const decorateStart = Date.now();
+    const dressing = dressWithPhotos(capped);
     // Structured existence facts from Wikidata — grammar retired (#137's
-    // ceiling); failure degrades to fewer tags, never fewer stories
-    let items = dressed;
-    try {
-      const wikiTitled = dressed.flatMap((item) => {
-        const title = wikiTitleFromUrl(item.url);
-        return title ? [[item, title] as const] : [];
-      });
-      const tags = await fetchExistenceTags(wikiTitled.map(([, title]) => title));
-      const tagByPageId = new Map(
-        wikiTitled.flatMap(([item, title]) =>
-          tags.has(title) ? [[item.pageId, tags.get(title)!] as const] : []
-        )
-      );
-      items = dressed.map((item) =>
-        tagByPageId.has(item.pageId) ? { ...item, pastTag: tagByPageId.get(item.pageId) } : item
-      );
-    } catch (error) {
-      console.warn('Existence facts degraded:', error);
+    // ceiling); failure degrades (in the helper) to fewer tags, never
+    // fewer stories
+    let tagsSoFar = new Map<number, string>();
+    const tagging = existenceTagsByPageId(capped).then((tags) => (tagsSoFar = tags));
+
+    // Cache only the final dressed verdict — the disk cache's bucket
+    // answer must never be an undressed list
+    const finalize = ([dressedItems, tags]: [HistoryItem[], Map<number, string>]) => {
+      const items = applyTags(dressedItems, tags);
+      listCache.set(key, sparse ? { items, sparse, at: Date.now() } : { items, at: Date.now() });
+      return items;
+    };
+
+    const timings = () =>
+      `sources ${plaquesStart - sourcesStart}ms, plaques+merge ${enrichStart - plaquesStart}ms, ` +
+      `enrich ${decorateStart - enrichStart}ms, decorate ${Date.now() - decorateStart}ms` +
+      ` (${capped.length} items, sparse=${sparse})`;
+
+    // The grace: warm caches settle both legs in a few ms — answer
+    // complete and unflagged, cached, done. A cold compose won't make
+    // it; the text-complete list is served NOW and the dressed verdict
+    // is cached when the legs land. A failed photo leg caches NOTHING:
+    // couldn't-try is not tried-and-failed.
+    const final = Promise.all([dressing, tagging]);
+    const settled = await Promise.race([
+      final,
+      new Promise<null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), ServeGraceMs);
+        (timer as { unref?: () => void }).unref?.();
+      }),
+    ]).catch(() => null);
+    if (settled) {
+      console.log(`[history] cold compose ${key}: ${timings()}, decoration made the grace`);
+      return respond(finalize(settled), sparse);
     }
-    listCache.set(key, sparse ? { items, sparse, at: Date.now() } : { items, at: Date.now() });
-    return respond(items, sparse);
+
+    // Tags that beat the grace still ride the early response
+    const snapshot = { items: applyTags(capped, tagsSoFar), ...(sparse ? { sparse } : {}) };
+    pendingCompose.set(key, snapshot);
+    const settle = () => {
+      // Identity-checked like the client's in-flight map: a fresh=1
+      // recompose may have replaced this entry — don't clear its snapshot
+      if (pendingCompose.get(key) === snapshot) {
+        pendingCompose.delete(key);
+      }
+    };
+    final.then(
+      (finished) => {
+        finalize(finished);
+        settle();
+        console.log(
+          `[history] dressed ${key}: decoration landed ${Date.now() - decorateStart}ms after start`
+        );
+      },
+      (error) => {
+        settle();
+        console.warn('Photo dressing degraded (verdict not cached):', error);
+      }
+    );
+    console.log(`[history] cold compose ${key}: ${timings()}, served undressed`);
+    return respond(snapshot.items, sparse, true);
   } catch (error) {
     console.error('History lookup failed:', error);
     return Response.json({ error: 'History lookup failed' }, { status: 502 });
