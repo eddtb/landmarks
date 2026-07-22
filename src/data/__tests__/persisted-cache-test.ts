@@ -50,6 +50,7 @@ describe('persistedMap TTL', () => {
     expect(map.get('bucket')).toBeUndefined(); // stale: not a substitute
     expect(map.values()).toEqual([]); // live views exclude it too
     expect(map.peek('bucket')?.value).toBe('old answer'); // placeholder material
+    expect(map.peekValues()).toEqual(['old answer']); // the scanning view keeps peek's grade
     expect(map.peek('bucket')?.at).toBeLessThan(Date.now() - 1000);
 
     map.set('bucket', 'fresh answer'); // re-asking overwrites in place

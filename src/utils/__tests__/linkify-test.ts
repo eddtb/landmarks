@@ -74,3 +74,52 @@ describe('planStoryLinks (a door opens once per story)', () => {
     expect(plan).toEqual([[[]], [[], []]]);
   });
 });
+
+/**
+ * The #202 bound, measured: the planner's worst case is one regex
+ * execution per multi-word candidate per paragraph (an unmatched title
+ * scans the whole story). Candidates used to be the persisted item
+ * store — up to 500 titles after a week of wandering; bounding them to
+ * the current feed (a Greenwich-sized ~25) is a 20× cut for the same
+ * story. Counted for real via a RegExp.prototype.test tap, not argued
+ * from arithmetic.
+ */
+describe('planStoryLinks cost (the feed-scoped bound)', () => {
+  test('a representative story: 500 store candidates → 9000 regex runs; 25 feed candidates → 450', () => {
+    // 6 parts × 3 paragraphs — a typical retelling
+    const partParagraphs = Array.from({ length: 6 }, () => [
+      'The mill stood by the creek for two centuries.',
+      'Fire took the east wing in the long drought.',
+      'What remains is the wall the towpath follows.',
+    ]);
+    // Multi-word titles that match nothing: every one pays the full scan
+    const storeCandidates = Array.from({ length: 500 }, (_, i) => ({
+      title: `Cached Elsewhere ${i}`,
+      pageId: i,
+    }));
+    const feedCandidates = storeCandidates.slice(0, 25);
+
+    const realTest = RegExp.prototype.test;
+    let executions = 0;
+    // eslint-disable-next-line no-extend-native
+    RegExp.prototype.test = function (text: string) {
+      executions += 1;
+      return realTest.call(this, text);
+    };
+    try {
+      executions = 0;
+      planStoryLinks(partParagraphs, storeCandidates);
+      const wholeStore = executions;
+
+      executions = 0;
+      planStoryLinks(partParagraphs, feedCandidates);
+      const currentFeed = executions;
+
+      expect(wholeStore).toBe(500 * 18); // 9000 — the item-store bill
+      expect(currentFeed).toBe(25 * 18); // 450 — the feed-scoped bill
+    } finally {
+      // eslint-disable-next-line no-extend-native
+      RegExp.prototype.test = realTest;
+    }
+  });
+});
