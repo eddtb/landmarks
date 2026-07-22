@@ -35,7 +35,7 @@ const HourMs = 60 * 60 * 1000;
 // sparse metadata).
 const store = (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> })
   .__INTERNAL_MOCK_STORAGE__;
-store['cache-history-feed-v1'] = JSON.stringify([
+store['cache-history-feed-v2-v1'] = JSON.stringify([
   [
     '50.100|-0.090',
     { value: { items: [persistedItem(1, 'Persisted Fresh')] }, at: Date.now() },
