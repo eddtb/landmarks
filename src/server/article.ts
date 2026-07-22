@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { CommonsPage, creditLine } from '@/server/commons';
+import { Article, ArticleChapter, ArticleImage } from '@/types/article';
 import { storyParagraphs } from '@/utils/format';
 
 /**
@@ -10,10 +11,6 @@ import { storyParagraphs } from '@/utils/format';
  */
 
 const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
-
-export type ArticleChapter = { title: string; paragraphs: string[] };
-export type ArticleImage = { imageUrl: string; credit: string };
-export type Article = { chapters: ArticleChapter[]; minutes: number; images: ArticleImage[] };
 
 // The reference apparatus reads as junk in a reading app
 const JunkSections = new Set([

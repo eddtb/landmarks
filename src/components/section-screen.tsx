@@ -29,7 +29,7 @@ import { setPin, usePin } from '@/hooks/use-pin';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { featuredStories } from '@/utils/featured';
-import { formatWalkTime } from '@/utils/format';
+import { formatWalkTimeForMeters } from '@/utils/format';
 import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
 
 /** Pure and unit-tested: the story you are physically standing on. */
@@ -380,7 +380,7 @@ export function FeaturedRail({
               {item.title}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.featuredMeta}>
-              {formatWalkTime(Math.round(item.distanceMeters / 1.33))}
+              {formatWalkTimeForMeters(item.distanceMeters)}
             </ThemedText>
           </Pressable>
         ))}
@@ -388,6 +388,13 @@ export function FeaturedRail({
     </View>
   );
 }
+
+// A sparse feed persisted before the horizon rode along (an additive,
+// optional field — no storage-key bump) lacks the number. Every such
+// entry in the wild was composed at the server's 3000m sparse radius,
+// so this fallback phrases exactly the truth those feeds were built
+// on; entries minted from now on carry their own horizon.
+const LegacySparseHorizonMeters = 3000;
 
 export function HistoryBody({
   center,
@@ -452,9 +459,11 @@ export function HistoryBody({
         <View style={styles.controlLine}>
           <ThemedText type="small" themeColor="textSecondary">
             {/* Honest in quiet corners: the server widened its search
-                (~3km, sparse-area mode) and the count line says so */}
+                (sparse-area mode) and the count line says so — with a
+                walk time derived from the horizon the server actually
+                searched, so a radius change can't make this copy lie */}
             {state.sparse
-              ? `${items.length} ${items.length === 1 ? 'story' : 'stories'} — a quieter corner, so we looked further (up to ~38 min walk)`
+              ? `${items.length} ${items.length === 1 ? 'story' : 'stories'} — a quieter corner, so we looked further (up to ~${formatWalkTimeForMeters(state.horizon ?? LegacySparseHorizonMeters)})`
               : `${items.length} ${items.length === 1 ? 'story' : 'stories'} within a walk`}
           </ThemedText>
         </View>

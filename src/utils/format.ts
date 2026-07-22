@@ -12,6 +12,16 @@ export function formatWalkTime(seconds: number): string {
   return `${minutes} min walk`;
 }
 
+/** The walking pace the app quotes times at: 1.33 m/s ≈ 4.8 km/h —
+ * the same figure the server's sparse horizon comment reasons with. */
+export const WalkingSpeedMps = 1.33;
+
+/** 3000 -> "38 min walk": meters at walking pace, for copy that
+ * derives from a distance rather than a routed duration. */
+export function formatWalkTimeForMeters(meters: number): string {
+  return formatWalkTime(meters / WalkingSpeedMps);
+}
+
 // Grammar-based existence classification (isVanished/historyTag) was
 // retired here after three failed refinements: past-tense prose cannot
 // tell a demolished palace from a dissolved institution in a standing

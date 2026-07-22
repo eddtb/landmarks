@@ -1,6 +1,7 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { research } from '@/server/anthropic';
 import { getArticle } from '@/server/article';
+import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
 
 /**
  * The retold story: the History tab's main event (Edd's call —
@@ -10,10 +11,6 @@ import { getArticle } from '@/server/article';
  * authorship is labelled at the top, and facts may come only from the
  * source — the same trust contract as the tellings, at length.
  */
-
-export type RetoldPart = { heading: string; body: string; pullQuote?: string };
-export type TimelineStop = { year: string; label: string; part: number };
-export type Retold = { parts: RetoldPart[]; minutes: number; timeline: TimelineStop[] };
 
 const ReadingWordsPerMinute = 230;
 const SourceCharCap = 24000;

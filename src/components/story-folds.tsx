@@ -4,7 +4,8 @@ import { StyleSheet, View } from 'react-native';
 import { ChapterFolds } from '@/components/chapter-folds';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { Article, fetchArticle } from '@/data/article-client';
+import { fetchArticle } from '@/data/article-client';
+import { Article } from '@/types/article';
 import { HistoryItem } from '@/types/history';
 import { wikiTitleFromUrl } from '@/utils/format';
 
