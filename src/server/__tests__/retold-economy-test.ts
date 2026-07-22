@@ -18,17 +18,22 @@ const validRetoldText = JSON.stringify({
 
 function loadRetold(options: { chapters: Chapter[] | null; researchImpl?: jest.Mock }) {
   jest.resetModules();
-  const research =
-    options.researchImpl ?? jest.fn(async () => validRetoldText);
+  // The call now travels the streaming transport — one researchStream
+  // generator per spend, whole answer as a single delta by default
+  const researchStream =
+    options.researchImpl ??
+    jest.fn(async function* () {
+      yield validRetoldText;
+    });
   const getArticle = jest.fn(async () =>
     options.chapters ? { minutes: 3, images: [], chapters: options.chapters } : null
   );
-  jest.doMock('@/server/anthropic', () => ({ research }));
+  jest.doMock('@/server/anthropic', () => ({ researchStream }));
   jest.doMock('@/server/article', () => ({ getArticle }));
   jest.doMock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map() }));
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const retold = require('@/server/retold') as typeof import('@/server/retold');
-  return { retold, research, getArticle };
+  return { retold, research: researchStream, getArticle };
 }
 
 const richChapters: Chapter[] = [
@@ -47,7 +52,9 @@ describe('getRetold call economy', () => {
   });
 
   test('a failed parse is remembered: one call, not one per open', async () => {
-    const research = jest.fn(async () => 'not json at all');
+    const research = jest.fn(async function* () {
+      yield 'not json at all';
+    });
     const { retold } = loadRetold({ chapters: richChapters, researchImpl: research });
     expect(await retold.getRetold('Greenwich')).toBeNull();
     expect(await retold.getRetold('Greenwich')).toBeNull();
@@ -55,7 +62,7 @@ describe('getRetold call economy', () => {
   });
 
   test('a THROWN call (breaker, replay-only) is not cached — we may try again', async () => {
-    const research = jest.fn(async () => {
+    const research = jest.fn(async function* (): AsyncGenerator<string> {
       throw new Error('REPLAY_ONLY refuses');
     });
     const { retold } = loadRetold({ chapters: richChapters, researchImpl: research });

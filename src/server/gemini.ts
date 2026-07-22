@@ -19,6 +19,7 @@ import { makeBudget } from '@/server/spend-budget';
 
 const Model = 'gemini-2.5-flash';
 const Endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${Model}:generateContent`;
+const StreamEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${Model}:streamGenerateContent`;
 
 const budget = makeBudget({
   provider: 'Gemini (free-tier calls)',
@@ -59,28 +60,35 @@ export function extractAnswerText(parts: GeminiPart[]): string {
   return (fenced[0] ?? answer).trim();
 }
 
-export async function generateWithGemini(options: {
+type GenerateOptions = {
   apiKey: string;
   prompt: string;
   maxTokens: number;
   grounded: boolean;
   label: string;
-}): Promise<string> {
+};
+
+/** One request body for both transports — the call is the same call. */
+function requestBody(options: GenerateOptions): string {
+  return JSON.stringify({
+    contents: [{ parts: [{ text: options.prompt }] }],
+    ...(options.grounded ? { tools: [{ google_search: {} }] } : {}),
+    generationConfig: {
+      // Grounded answers carry huge redirect URLs — budget for them,
+      // and turn thinking off (it silently eats the output budget:
+      // measured 36 answer tokens from a 900 cap before this)
+      maxOutputTokens: options.grounded ? Math.max(2048, options.maxTokens * 2) : options.maxTokens,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+}
+
+export async function generateWithGemini(options: GenerateOptions): Promise<string> {
   budget.assert();
   const response = await fetch(`${Endpoint}?key=${options.apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: options.prompt }] }],
-      ...(options.grounded ? { tools: [{ google_search: {} }] } : {}),
-      generationConfig: {
-        // Grounded answers carry huge redirect URLs — budget for them,
-        // and turn thinking off (it silently eats the output budget:
-        // measured 36 answer tokens from a 900 cap before this)
-        maxOutputTokens: options.grounded ? Math.max(2048, options.maxTokens * 2) : options.maxTokens,
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
+    body: requestBody(options),
   });
 
   if (!response.ok) {
@@ -97,4 +105,104 @@ export async function generateWithGemini(options: {
       `(today: ${today.dollars} of ${budget.cap()} free calls)`
   );
   return extractAnswerText(body.candidates?.[0]?.content?.parts ?? []);
+}
+
+/**
+ * Pure and unit-tested: the wire decoder for streamGenerateContent's
+ * alt=sse framing. Each `data:` line is one complete GenerateContent
+ * chunk; feed() takes network chunks (which may split a line anywhere)
+ * and returns the text deltas that completed. Thought parts are
+ * dropped exactly as in the non-streaming path; an error chunk throws.
+ */
+export function makeGeminiSseDecoder(): {
+  feed(chunk: string): string[];
+  usage(): GeminiResponse['usageMetadata'];
+} {
+  let buffer = '';
+  let usage: GeminiResponse['usageMetadata'];
+  return {
+    usage: () => usage,
+    feed(chunk: string): string[] {
+      buffer += chunk;
+      const deltas: string[] = [];
+      let newline: number;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith('data:')) {
+          continue;
+        }
+        const payload = line.slice(5).trim();
+        if (!payload) {
+          continue;
+        }
+        let parsed: GeminiResponse;
+        try {
+          parsed = JSON.parse(payload) as GeminiResponse;
+        } catch {
+          // A line that isn't JSON isn't a delta; the end-of-stream
+          // validation is the verdict on anything lost here
+          continue;
+        }
+        if (parsed.error?.message) {
+          throw new Error(`Gemini stream error: ${parsed.error.message.slice(0, 500)}`);
+        }
+        usage = parsed.usageMetadata ?? usage;
+        for (const part of parsed.candidates?.[0]?.content?.parts ?? []) {
+          if (!part.thought && part.text) {
+            deltas.push(part.text);
+          }
+        }
+      }
+      return deltas;
+    },
+  };
+}
+
+/**
+ * The SAME telling call over the streaming transport: one request, one
+ * quota unit, text deltas as the model writes. The breaker gates the
+ * stream exactly as it gates generateContent — assert() runs before
+ * anything opens, so REPLAY_ONLY and a tripped budget refuse without
+ * a byte sent. The call is recorded the moment Gemini accepts it: a
+ * stream cut short still burned a call.
+ */
+export async function* streamWithGemini(options: GenerateOptions): AsyncGenerator<string, void, void> {
+  budget.assert();
+  const response = await fetch(`${StreamEndpoint}?alt=sse&key=${options.apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: requestBody(options),
+  });
+  if (!response.ok || !response.body) {
+    const detail = response.ok ? 'no response body' : await response.text();
+    throw new Error(`Gemini API ${response.status}: ${detail.slice(0, 500)}`);
+  }
+  budget.record(1);
+
+  const decoder = makeGeminiSseDecoder();
+  const reader = response.body.getReader();
+  const bytes = new TextDecoder();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      for (const delta of decoder.feed(bytes.decode(value, { stream: true }))) {
+        yield delta;
+      }
+    }
+  } finally {
+    // An abandoned consumer (client disconnect) lands here too —
+    // release the upstream socket rather than draining it
+    void reader.cancel().catch(() => {});
+    const usage = decoder.usage();
+    const today = budget.todays();
+    console.log(
+      `[gemini] ${options.label}: ${usage?.promptTokenCount ?? 0} in / ` +
+        `${usage?.candidatesTokenCount ?? 0} out, streamed, grounded=${options.grounded} ` +
+        `(today: ${today.dollars} of ${budget.cap()} free calls)`
+    );
+  }
 }

@@ -76,6 +76,47 @@ describe('extractAnswerText truncation handling', () => {
   });
 });
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { makeGeminiSseDecoder } = require('@/server/gemini') as {
+  makeGeminiSseDecoder: () => {
+    feed: (chunk: string) => string[];
+    usage: () => { candidatesTokenCount?: number } | undefined;
+  };
+};
+
+describe('makeGeminiSseDecoder (streamGenerateContent alt=sse framing)', () => {
+  const dataLine = (text: string, extra = '') =>
+    `data: {"candidates": [{"content": {"parts": [{"text": ${JSON.stringify(text)}}]}}]${extra}}\n\n`;
+
+  test('deltas surface per complete data line, across any network chunking', () => {
+    const wire = dataLine('The palace ') + dataLine('stood here.');
+    const decoder = makeGeminiSseDecoder();
+    const deltas = [...wire].flatMap((char) => decoder.feed(char));
+    expect(deltas).toEqual(['The palace ', 'stood here.']);
+  });
+
+  test('thought parts are dropped, exactly as in the one-shot path', () => {
+    const decoder = makeGeminiSseDecoder();
+    const deltas = decoder.feed(
+      'data: {"candidates": [{"content": {"parts": [{"text": "hmm", "thought": true}, {"text": "answer"}]}}]}\n\n'
+    );
+    expect(deltas).toEqual(['answer']);
+  });
+
+  test('usage metadata is kept from the last chunk that carried it', () => {
+    const decoder = makeGeminiSseDecoder();
+    decoder.feed(dataLine('a', ', "usageMetadata": {"candidatesTokenCount": 42}'));
+    expect(decoder.usage()?.candidatesTokenCount).toBe(42);
+  });
+
+  test('an error chunk throws instead of vanishing into the buffer', () => {
+    const decoder = makeGeminiSseDecoder();
+    expect(() => decoder.feed('data: {"error": {"message": "quota exceeded"}}\n\n')).toThrow(
+      'quota exceeded'
+    );
+  });
+});
+
 /**
  * The clobber regression: two processes sharing .ai-cache must never
  * erase each other's entries. Simulated by writing a "foreign" entry

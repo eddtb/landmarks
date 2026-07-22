@@ -24,6 +24,7 @@ import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
 import { fetchArticle, fetchArticleLight } from '@/data/article-client';
+import { ApiError } from '@/data/cached-get';
 import { fetchRetold } from '@/data/retold-client';
 import { Article, ArticleImage } from '@/types/article';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
@@ -48,7 +49,7 @@ const PartWords = [
   'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
 ];
 
-export type RetoldStatus = 'pending' | 'ready' | 'none';
+export type RetoldStatus = 'pending' | 'streaming' | 'ready' | 'halted' | 'none';
 
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
@@ -56,6 +57,7 @@ export type GazetteerRow =
   | { kind: 'timeline'; key: string; stops: TimelineStop[] }
   | { kind: 'part'; key: string; part: RetoldPart; index: number }
   | { kind: 'retelling-pending'; key: string }
+  | { kind: 'retelling-halted'; key: string }
   | { kind: 'fallback-article'; key: string }
   | { kind: 'door'; key: string; open: boolean }
   | { kind: 'original'; key: string }
@@ -70,10 +72,13 @@ export function buildGazetteerRows(options: {
   storyMissing?: boolean;
   retoldStatus: RetoldStatus;
   retold: Retold | null;
+  /** Complete parts landed so far by a live (or halted) stream. */
+  streamedParts?: RetoldPart[];
   originalOpen: boolean;
   relics: HistoryItem[];
 }): GazetteerRow[] {
   const { hasArticle, storyMissing, retoldStatus, retold, originalOpen, relics } = options;
+  const streamedParts = options.streamedParts ?? [];
   const rows: GazetteerRow[] = [];
 
   if (!hasArticle && storyMissing && relics.length > 0) {
@@ -98,6 +103,30 @@ export function buildGazetteerRows(options: {
       rows.push({ kind: 'door', key: 'door', open: originalOpen });
       if (originalOpen) {
         rows.push({ kind: 'original', key: 'original' });
+      }
+    } else if (retoldStatus === 'streaming' || retoldStatus === 'halted') {
+      // A live stream: the label lands with the first part; the story
+      // grows part by complete part. No timeline, no door yet — both
+      // are end-of-telling business. A halted stream keeps what
+      // arrived and offers the rest.
+      if (streamedParts.length === 0) {
+        rows.push(
+          retoldStatus === 'streaming'
+            ? { kind: 'retelling-pending', key: 'retelling-pending' }
+            : { kind: 'fallback-article', key: 'fallback-article' }
+        );
+      } else {
+        rows.push({ kind: 'ai-label', key: 'ai-label' });
+        rows.push(
+          ...streamedParts.map(
+            (part, index): GazetteerRow => ({ kind: 'part', key: `part-${index}`, part, index })
+          )
+        );
+        rows.push(
+          retoldStatus === 'streaming'
+            ? { kind: 'retelling-pending', key: 'retelling-pending' }
+            : { kind: 'retelling-halted', key: 'retelling-halted' }
+        );
       }
     } else if (retoldStatus === 'pending') {
       rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
@@ -269,6 +298,13 @@ export function AreaGazetteer({
   const [articleStatus, setArticleStatus] = useState<'pending' | 'ready' | 'none'>('pending');
   const [retold, setRetold] = useState<Retold | null>(null);
   const [retoldStatus, setRetoldStatus] = useState<RetoldStatus>('pending');
+  // A cold generation streams: complete parts land here one by one.
+  // The ref mirrors the state so the error path can ask "did anything
+  // arrive?" without a stale closure.
+  const [streamedParts, setStreamedParts] = useState<RetoldPart[]>([]);
+  const streamedRef = useRef<RetoldPart[]>([]);
+  const streamedFor = useRef<string | null>(null);
+  const [retoldAttempt, setRetoldAttempt] = useState(0);
   const [originalOpen, setOriginalOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [areaFor, setAreaFor] = useState<string | null>(null);
@@ -281,6 +317,10 @@ export function AreaGazetteer({
     setArticleStatus('pending');
     setRetold(null);
     setRetoldStatus('pending');
+    // The ref mirror resets in the fetch effect below — a ref write
+    // during render trips the hooks rules, and the effect runs before
+    // any new part could land
+    setStreamedParts([]);
     setOriginalOpen(false);
   }
 
@@ -333,18 +373,45 @@ export function AreaGazetteer({
     if (!areaName) {
       return;
     }
+    // A new area starts from nothing; a RETRY of the same area keeps
+    // what arrived (the mirror matches the state the adjust block set)
+    if (streamedFor.current !== areaName) {
+      streamedFor.current = areaName;
+      streamedRef.current = [];
+    }
     let active = true;
     (async () => {
-      const loaded = await fetchRetold(areaName).catch(() => null);
-      if (active) {
-        setRetold(loaded);
-        setRetoldStatus(loaded ? 'ready' : 'none');
+      try {
+        // A server cache hit resolves in one hop; a cold generation
+        // streams — each complete part renders the moment it lands
+        const loaded = await fetchRetold(areaName, (part, index) => {
+          if (!active) {
+            return;
+          }
+          streamedRef.current = [...streamedRef.current.slice(0, index), part];
+          setStreamedParts(streamedRef.current);
+          setRetoldStatus('streaming');
+        });
+        if (active) {
+          setRetold(loaded);
+          setRetoldStatus(loaded ? 'ready' : 'none');
+        }
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        // A 404 is the server's verdict ("no retelling") — fall back to
+        // the original article. Anything else mid-stream keeps what
+        // arrived and offers a retry; with nothing arrived, the
+        // original article stands, as it always has.
+        const verdict = error instanceof ApiError && error.status === 404;
+        setRetoldStatus(!verdict && streamedRef.current.length > 0 ? 'halted' : 'none');
       }
     })();
     return () => {
       active = false;
     };
-  }, [areaName]);
+  }, [areaName, retoldAttempt]);
 
   // #217: settled on NO name at all (mid-sea) — the fetch effects
   // above never run, so no status would ever leave 'pending' by
@@ -363,6 +430,7 @@ export function AreaGazetteer({
     storyMissing: resolvedArticleStatus === 'none' && areaName !== null,
     retoldStatus: resolvedRetoldStatus,
     retold,
+    streamedParts,
     originalOpen,
     relics: listRelics,
   });
@@ -371,9 +439,13 @@ export function AreaGazetteer({
     .filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase())
     .map((item) => ({ title: item.title, pageId: item.pageId }));
 
+  // The parts on screen: the finished telling once ready, the live
+  // stream's complete parts while it writes (or stands halted)
+  const partsShown = resolvedRetoldStatus === 'ready' && retold ? retold.parts : streamedParts;
+
   // Story-level, once: the pull-quote excision and the link plan
   // (first mention per STORY — a repeated name is prose, not a door)
-  const partParagraphs = (retold?.parts ?? []).map((part) =>
+  const partParagraphs = partsShown.map((part) =>
     withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote)
   );
   const linkPlan = planStoryLinks(partParagraphs, linkCandidates);
@@ -404,7 +476,7 @@ export function AreaGazetteer({
             <ThemedText type="small" themeColor="textSecondary" style={styles.aiLabelText}>
               ✦ Retold by AI from Wikipedia — original below
             </ThemedText>
-            {speechAvailable && (
+            {speechAvailable && retold && (
               <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.two}>
                 <ThemedText type="smallBold" themeColor="accent">
                   {speaking ? '◼ Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
@@ -436,6 +508,28 @@ export function AreaGazetteer({
           <ThemedText type="small" themeColor="textSecondary" style={styles.pending}>
             ✦ Retelling this place…
           </ThemedText>
+        );
+      case 'retelling-halted':
+        // The stream broke: honest words, and the offer to finish —
+        // a re-ask restarts the whole generation (still one call site)
+        return (
+          <View style={styles.halted}>
+            <ThemedText type="small" themeColor="textSecondary">
+              The retelling stopped partway.
+            </ThemedText>
+            <Pressable
+              accessibilityRole="button"
+              testID="retell-retry"
+              onPress={() => {
+                setRetoldStatus('streaming');
+                setRetoldAttempt((attempt) => attempt + 1);
+              }}
+              hitSlop={Spacing.two}>
+              <ThemedText type="smallBold" themeColor="accent">
+                Retell the rest
+              </ThemedText>
+            </Pressable>
+          </View>
         );
       case 'fallback-article':
       case 'original':
@@ -803,6 +897,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   pending: {
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+  },
+  halted: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
   },

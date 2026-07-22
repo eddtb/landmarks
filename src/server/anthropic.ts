@@ -1,5 +1,5 @@
 import { assertBudget, dailyBudgetUsd, recordSpend, todaysSpend } from '@/server/ai-budget';
-import { generateWithGemini } from '@/server/gemini';
+import { generateWithGemini, streamWithGemini } from '@/server/gemini';
 
 /**
  * The AI research router. Gemini's free tier is the default for
@@ -55,6 +55,34 @@ function announceProviderOnce() {
         ? 'ANTHROPIC — PAID, is this intended?'
         : 'none (AI features disabled)';
   console.log(`[ai] provider: ${provider}`);
+}
+
+/**
+ * Route a generation to the free tier's STREAMING transport — text
+ * deltas as the model writes. Same providers, same breakers, same one
+ * call as research(); only the transport differs. The dormant Anthropic
+ * fallback stays non-streaming and answers as a single whole-text
+ * delta — no second call site, no new wire path for the paid provider.
+ */
+export async function* researchStream(options: {
+  prompt: string;
+  maxTokens: number;
+  grounded: boolean;
+  label: string;
+}): AsyncGenerator<string, void, void> {
+  announceProviderOnce();
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey && process.env.AI_PROVIDER !== 'anthropic') {
+    yield* streamWithGemini({
+      apiKey: geminiKey,
+      prompt: options.prompt,
+      maxTokens: options.maxTokens,
+      grounded: options.grounded,
+      label: options.label,
+    });
+    return;
+  }
+  yield await research(options);
 }
 
 /** Route a generation to the free tier, or the paid fallback by flip. */
