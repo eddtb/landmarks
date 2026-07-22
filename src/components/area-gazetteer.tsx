@@ -17,6 +17,7 @@ import { ChapterFolds } from '@/components/chapter-folds';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { ThemedText } from '@/components/themed-text';
+import { WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
 import { Article, ArticleImage, fetchArticle, fetchArticleLight } from '@/data/article-client';
 import { fetchRetold, Retold, RetoldPart, TimelineStop } from '@/data/retold-client';
@@ -497,9 +498,14 @@ export function AreaGazetteer({
         ) : empty ? (
           <>{empty}</>
         ) : (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-            Nothing hidden here that the records know of.
-          </ThemedText>
+          // Mock 1: the History-tab empty gets the same quiet accent
+          // wander line as the feed's — static, above the words
+          <View style={styles.empty}>
+            <WanderLine arcSpan={52} stroke={6} count={4} color={theme.accent} />
+            <ThemedText type="small" themeColor="textSecondary" style={styles.emptyCopy}>
+              Nothing hidden here that the records know of.
+            </ThemedText>
+          </View>
         )
       }
     />
@@ -830,7 +836,11 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.three,
   },
   empty: {
-    textAlign: 'center',
+    alignItems: 'center',
     paddingTop: Spacing.six,
+    gap: Spacing.three,
+  },
+  emptyCopy: {
+    textAlign: 'center',
   },
 });

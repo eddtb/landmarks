@@ -42,8 +42,8 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#6A4BDB",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "image": "./assets/images/splash-wander.png",
+          "imageWidth": 200
         }
       ],
       "expo-maps",
