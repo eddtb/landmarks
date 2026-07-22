@@ -1,4 +1,10 @@
-import { guidanceFor, stepsFrom } from '@/utils/guidance';
+import {
+  distanceToRouteMeters,
+  guidanceFor,
+  needsReroute,
+  RouteCorridorMeters,
+  stepsFrom,
+} from '@/utils/guidance';
 
 // A two-leg route: north up a street, then east to the corner —
 // shaped like the Valhalla client type (shape points + maneuvers)
@@ -49,5 +55,44 @@ describe('guidanceFor (satnav logic, venue-era, back on free routes)', () => {
 
   test('an empty route guides nobody', () => {
     expect(guidanceFor({ ...route, coordinates: [], maneuvers: [] }, route.coordinates[0])).toBeNull();
+  });
+});
+
+describe('the route corridor (issue #197 — refetch only on leaving the route)', () => {
+  const destination = route.coordinates[route.coordinates.length - 1];
+  const corridor = { route, target: destination };
+  // At 51.4°N a degree of longitude is ~69.5km, so 0.0003° ≈ 21m
+  // off the north-running leg and 0.0006° ≈ 42m off it.
+
+  test('distance to the polyline: on the line is ~0, beside it is the offset', () => {
+    expect(distanceToRouteMeters(route, { latitude: 51.401, longitude: 0 })).toBeLessThan(1);
+    const beside = distanceToRouteMeters(route, { latitude: 51.401, longitude: 0.0003 });
+    expect(beside).toBeGreaterThan(15);
+    expect(beside).toBeLessThan(RouteCorridorMeters);
+  });
+
+  test('a tick on the route asks for nothing', () => {
+    expect(needsReroute(corridor, { latitude: 51.4005, longitude: 0.0001 }, destination)).toBe(
+      false,
+    );
+  });
+
+  test('GPS jitter inside the corridor (~21m off) asks for nothing', () => {
+    expect(needsReroute(corridor, { latitude: 51.401, longitude: 0.0003 }, destination)).toBe(
+      false,
+    );
+  });
+
+  test('drifting past the corridor (~42m off) is due a re-route', () => {
+    expect(needsReroute(corridor, { latitude: 51.401, longitude: 0.0006 }, destination)).toBe(true);
+  });
+
+  test('a changed destination is due a re-route even on the old route', () => {
+    const elsewhere = { latitude: 51.41, longitude: 0.01 };
+    expect(needsReroute(corridor, { latitude: 51.401, longitude: 0 }, elsewhere)).toBe(true);
+  });
+
+  test('no route yet: always ask', () => {
+    expect(needsReroute(null, { latitude: 51.4, longitude: 0 }, destination)).toBe(true);
   });
 });
