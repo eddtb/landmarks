@@ -236,9 +236,38 @@ export async function fetchStory(pageId: number): Promise<HistoryItem | null> {
   return body.item;
 }
 
-/** Every story seen recently — the web of history links into them. */
-export function getCachedHistoryItems(): HistoryItem[] {
-  return itemCache.values();
+/** Stable "no neighbourhood": one shared reference, so render-time
+ * callers memoizing on identity never see a fresh [] per call. */
+const NoStories: readonly HistoryItem[] = Object.freeze([]);
+
+/**
+ * The stories AROUND a story: the items of the cached feed bucket that
+ * contains it — its own neighbourhood. The web of history links a
+ * story to the stories around it, not to whatever the 500-item store
+ * remembers from another town last week — so candidates come from the
+ * (at most 8) feed buckets, newest-minted first, expired placeholders
+ * included: offline, the feed on screen IS an expired bucket, and its
+ * stories keep their doors.
+ *
+ * Identity contract: the answer is the stored feed's items array
+ * ITSELF — a repeated call returns the IDENTICAL array until the
+ * bucket is replaced — so render-time derivations (React Compiler)
+ * can memoize on reference instead of recomputing the link plan every
+ * render. Nothing mutates feed items downstream; keep it that way.
+ * A story no cached feed contains (a cold-start deep link) gets the
+ * shared empty array: no known neighbourhood, no doors.
+ */
+export function getStoriesAround(pageId: number): readonly HistoryItem[] {
+  const feeds = listCache.peekValues();
+  // Reversed: insertion order tracks minting order, so the last bucket
+  // is the one nearest to where the user is walking now
+  for (let index = feeds.length - 1; index >= 0; index--) {
+    const { items } = feeds[index];
+    if (items.some((item) => item.pageId === pageId)) {
+      return items;
+    }
+  }
+  return NoStories;
 }
 
 /** Test seam. */
