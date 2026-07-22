@@ -1,6 +1,6 @@
 import { buildGazetteerRows, partRowIndex } from '@/components/area-gazetteer';
-import { Retold } from '@/data/retold-client';
 import { HistoryItem } from '@/types/history';
+import { Retold } from '@/types/retold';
 
 const relic = (pageId: number, title: string): HistoryItem => ({
   pageId,

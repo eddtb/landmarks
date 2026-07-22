@@ -18,9 +18,10 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { getCachedHistoryItem } from '@/data/history-client';
-import { fetchRoute, WalkingRoute } from '@/data/route-client';
+import { fetchRoute } from '@/data/route-client';
 import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
+import { WalkingRoute } from '@/types/route';
 import { formatDistance, formatWalkTime } from '@/utils/format';
 import { guidanceFor, needsReroute, RouteCorridor } from '@/utils/guidance';
 

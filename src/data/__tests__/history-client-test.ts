@@ -97,6 +97,7 @@ describe('fetchNearbyHistory', () => {
     const feed = await fetchNearbyHistory(freshCenter());
 
     expect(feed.sparse).toBe(true);
+    expect(feed.horizon).toBe(3000); // how far it looked rides along
     expect(feed.items).toHaveLength(1);
   });
 

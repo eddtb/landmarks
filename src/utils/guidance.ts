@@ -1,4 +1,4 @@
-import { WalkingRoute } from '@/data/route-client';
+import { WalkingRoute } from '@/types/route';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /** Within this range of a maneuver point, the step counts as completed. */
