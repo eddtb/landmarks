@@ -5,17 +5,18 @@
 # of their own. Maestro doesn't recurse by default; this makes the
 # exclusion explicit rather than incidental.
 #
-# executionOrder: onboarding runs first (it IS the fresh-install
-# path — clearState, dev-client relink, welcome mat, cards), then
-# onboarding-return proves the dismissal persisted across a relaunch.
-# The rest run in a fixed order so failures reproduce: without this
-# the order is filesystem-dependent (observed non-alphabetical).
+# executionOrder: one-door runs first (it IS the fresh-install path —
+# clearState, dev-client relink, welcome mat, the denied-state
+# fallback). Its `location: never` doesn't leak into later flows:
+# launchApp auto-grants every permission unless told otherwise (see
+# sparse.yaml, which relies on the same recovery mid-suite). The rest
+# run in a fixed order so failures reproduce: without this the order
+# is filesystem-dependent (observed non-alphabetical).
 flows:
   - '*.yaml'
 executionOrder:
   flowsOrder:
-    - onboarding
-    - onboarding-return
+    - one-door
     - deeplink
     - lightbox
     - offline-stale

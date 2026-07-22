@@ -38,6 +38,21 @@ export const Colors = {
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
+/**
+ * The one-door gate's ground — the light theme's accent worn full-bleed
+ * in BOTH colour schemes. Deliberately single-look: the dark theme's
+ * accent (#A18BF5) fails contrast under white text, and a brand moment
+ * may commit to one look.
+ */
+export const BrandPurple = Colors.light.accent;
+/**
+ * The gate's one warm action — the light accentWarm in both schemes
+ * (same single-look rule), with dark ink text on it.
+ */
+export const BrandWarm = Colors.light.accentWarm;
+/** The ink that sits on BrandWarm. */
+export const BrandWarmInk = '#2B1F07';
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */

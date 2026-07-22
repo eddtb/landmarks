@@ -84,14 +84,14 @@ jobs:
 
       # The whole suite, one Maestro invocation (the flows share the
       # 25-minute build — separate steps would only add teardown).
-      # Running the full folder also fixes a live bug the old
-      # smoke-only scoping hid: `maestro test .maestro/` would have
-      # run flows WITHOUT the dev-menu/onboarding guards before
-      # smoke.yaml on a fresh install and died on the first-run
-      # overlay — now every flow runs subflows/setup.yaml (or
-      # boot.yaml) first and .maestro/config.yaml pins the order.
+      # Every flow runs subflows/setup.yaml (the shared boot guards)
+      # first and .maestro/config.yaml pins the order. There is no
+      # first-run overlay any more: the one door only exists while
+      # location permission is undetermined, and this job grants it
+      # above — a fresh install boots straight to the feed. The
+      # denied-state fallback is driven by one-door.yaml.
       # METRO_URL rides in via -e (URL-encoded origin for the
-      # dev-client relink after onboarding's clearState); local
+      # dev-client relink after one-door's clearState); local
       # worktree runs pass their own port via scripts/e2e-local.sh.
       - name: Run the E2E suite
         run: maestro test --debug-output e2e-debug -e METRO_URL=http%3A%2F%2Flocalhost%3A8081 .maestro/

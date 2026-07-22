@@ -7,7 +7,7 @@ appId: com.eddtb.landmarks
 ---
 - launchApp
 # Alphabetically this flow can run before smoke on a fresh install —
-# the shared setup keeps its first tap off the onboarding overlay
+# the shared setup keeps the boot guards ahead of its first tap
 - runFlow: subflows/setup.yaml
 
 - runFlow: subflows/open-history-tab.yaml

@@ -1,6 +1,5 @@
-# Boot guards ONLY — no onboarding dismissal. Consumed directly by
-# onboarding.yaml (which must SEE the cards) and via setup.yaml by
-# every other flow.
+# Boot guards ONLY — dev-client relink and the dev-menu welcome mat.
+# Consumed via setup.yaml by every flow.
 #
 # Lives in subflows/ because `maestro test .maestro/` executes every
 # YAML at the top level of the directory (alphabetically) and does not

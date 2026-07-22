@@ -4,7 +4,7 @@ import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { OnboardingGate } from '@/components/onboarding';
+import { OneDoorBackdrop, OneDoorGate } from '@/components/one-door';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -15,7 +15,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
-      <OnboardingGate>
+      {/* The backdrop takes the whole app out of the accessibility
+          tree while the door is up — the gate stops touches, this
+          stops VoiceOver reaching the tab items beneath */}
+      <OneDoorBackdrop>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
@@ -27,7 +30,11 @@ export default function RootLayout() {
           options={{ presentation: 'modal', headerShown: false }}
         />
       </Stack>
-      </OnboardingGate>
+      </OneDoorBackdrop>
+      {/* The one door covers EVERYTHING (tab pill included) while
+          location permission is undetermined — inside a tab's
+          LocationGate the pill floated on top of it (sim-caught) */}
+      <OneDoorGate />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

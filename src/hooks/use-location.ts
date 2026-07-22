@@ -1,12 +1,12 @@
 import * as Location from 'expo-location';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { Coordinates } from '@/utils/geo';
 
 export type LocationStatus =
   /** Permission state not yet known (first render). */
   | 'loading'
-  /** Never asked — show the priming explanation before the system dialog. */
+  /** Never asked — the root one-door gate owns this state. */
   | 'priming'
   /** Permission granted, waiting for a position fix. */
   | 'locating'
@@ -15,15 +15,79 @@ export type LocationStatus =
   /** Position available. */
   | 'ready';
 
+/**
+ * ONE permission truth for the whole app (the use-pin primitive: a
+ * value, a listener set, useSyncExternalStore). Expo's
+ * useForegroundPermissions keeps PER-INSTANCE state — each hook
+ * fetches once on mount and only updates on its own request — so the
+ * root one-door gate granting location would never reach the tabs'
+ * own instances and they'd prime forever. A module store means
+ * whoever requests, every subscriber learns.
+ */
+let permission: Location.PermissionResponse | null = null;
+let fetchStarted = false;
+const listeners = new Set<() => void>();
+
+function setPermission(next: Location.PermissionResponse | null) {
+  permission = next;
+  for (const listener of listeners) {
+    listener();
+  }
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getSnapshot() {
+  return permission;
+}
+
+function ensurePermissionFetched() {
+  if (fetchStarted) {
+    return;
+  }
+  fetchStarted = true;
+  Location.getForegroundPermissionsAsync()
+    .then(setPermission)
+    // Status stays 'loading'; the next mount may try again
+    .catch(() => {
+      fetchStarted = false;
+    });
+}
+
+/**
+ * THE one request path — the one-door gate's Enable and nobody else,
+ * so a launch can never show two system prompts. The dialog's answer
+ * lands in the shared store and every mounted hook moves on together.
+ */
+export async function requestLocationPermission(): Promise<void> {
+  setPermission(await Location.requestForegroundPermissionsAsync());
+}
+
+/** The shared permission state; null while the first read is in flight. */
+export function useLocationPermission(): Location.PermissionResponse | null {
+  useEffect(ensurePermissionFetched, []);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** Tests only: the store is module-level and must not leak between them. */
+export function resetLocationPermissionForTests() {
+  permission = null;
+  fetchStarted = false;
+}
+
 export function useLocation(): {
   status: LocationStatus;
   coordinates: Coordinates | null;
-  requestPermission: () => Promise<void>;
 } {
-  const [permission, requestPermission] = Location.useForegroundPermissions();
+  const currentPermission = useLocationPermission();
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
 
-  const granted = permission?.granted ?? false;
+  const granted = currentPermission?.granted ?? false;
 
   useEffect(() => {
     if (!granted) {
@@ -60,21 +124,15 @@ export function useLocation(): {
   }, [granted]);
 
   let status: LocationStatus;
-  if (!permission) {
+  if (!currentPermission) {
     status = 'loading';
   } else if (granted) {
     status = coordinates ? 'ready' : 'locating';
-  } else if (permission.status === 'undetermined') {
+  } else if (currentPermission.status === 'undetermined') {
     status = 'priming';
   } else {
     status = 'denied';
   }
 
-  return {
-    status,
-    coordinates,
-    requestPermission: async () => {
-      await requestPermission();
-    },
-  };
+  return { status, coordinates };
 }

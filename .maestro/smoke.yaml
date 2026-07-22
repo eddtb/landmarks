@@ -7,8 +7,8 @@
 appId: com.eddtb.landmarks
 ---
 - launchApp
-# Dev-client link, dev-menu welcome mat, first-run onboarding cards —
-# every flow must survive being the FIRST on a fresh install
+# Dev-client link, dev-menu welcome mat — every flow must survive
+# being the FIRST on a fresh install
 - runFlow: subflows/setup.yaml
 
 # Nearby: the list renders real story cards
