@@ -2,8 +2,8 @@ import { AppleMaps, GoogleMaps } from 'expo-maps';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
-import { WalkingRoute } from '@/data/route-client';
 import { useTheme } from '@/hooks/use-theme';
+import { WalkingRoute } from '@/types/route';
 import { Coordinates } from '@/utils/geo';
 import { cameraForRoute } from '@/utils/route-camera';
 

@@ -2,17 +2,10 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 import { persistedMap } from '@/data/persisted-cache';
-import { HistoryItem } from '@/types/history';
+import { HistoryFeed, HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 const HourMs = 60 * 60 * 1000;
-
-/** The feed plus how it was gathered: `sparse` means the server found
- * a quiet corner and widened the Wikipedia search to fill it;
- * `dressing` means the server answered before its photo leg finished —
- * the text is complete, thumbnails are still being fetched, and one
- * delayed re-ask (useHistory's job) will collect them. */
-export type HistoryFeed = { items: HistoryItem[]; sparse?: boolean; dressing?: boolean };
 
 // Same session-cache pattern as the places list: keyed on the server's
 // own ~111m grid (3 dp — see cacheKey), individual items kept for the
@@ -171,14 +164,15 @@ async function requestFeed(
       throw new Error(`History request failed with status ${response.status}`);
     }
 
-    const body = (await response.json()) as {
-      items: HistoryItem[];
-      sparse?: boolean;
-      dressing?: boolean;
-    };
+    const body = (await response.json()) as HistoryFeed;
     const feed: HistoryFeed = {
       items: body.items,
       ...(body.sparse ? { sparse: true } : {}),
+      // The horizon rides with sparse — and persists with the feed, so
+      // an offline-stale sparse bucket keeps saying how far it looked.
+      // (Entries persisted before this field simply lack it; the UI
+      // falls back to phrasing for the radius they were composed at.)
+      ...(body.sparse && typeof body.horizon === 'number' ? { horizon: body.horizon } : {}),
       ...(body.dressing ? { dressing: true } : {}),
     };
     // A dressing:true feed IS persisted — flag included, never as
@@ -236,9 +230,38 @@ export async function fetchStory(pageId: number): Promise<HistoryItem | null> {
   return body.item;
 }
 
-/** Every story seen recently — the web of history links into them. */
-export function getCachedHistoryItems(): HistoryItem[] {
-  return itemCache.values();
+/** Stable "no neighbourhood": one shared reference, so render-time
+ * callers memoizing on identity never see a fresh [] per call. */
+const NoStories: readonly HistoryItem[] = Object.freeze([]);
+
+/**
+ * The stories AROUND a story: the items of the cached feed bucket that
+ * contains it — its own neighbourhood. The web of history links a
+ * story to the stories around it, not to whatever the 500-item store
+ * remembers from another town last week — so candidates come from the
+ * (at most 8) feed buckets, newest-minted first, expired placeholders
+ * included: offline, the feed on screen IS an expired bucket, and its
+ * stories keep their doors.
+ *
+ * Identity contract: the answer is the stored feed's items array
+ * ITSELF — a repeated call returns the IDENTICAL array until the
+ * bucket is replaced — so render-time derivations (React Compiler)
+ * can memoize on reference instead of recomputing the link plan every
+ * render. Nothing mutates feed items downstream; keep it that way.
+ * A story no cached feed contains (a cold-start deep link) gets the
+ * shared empty array: no known neighbourhood, no doors.
+ */
+export function getStoriesAround(pageId: number): readonly HistoryItem[] {
+  const feeds = listCache.peekValues();
+  // Reversed: insertion order tracks minting order, so the last bucket
+  // is the one nearest to where the user is walking now
+  for (let index = feeds.length - 1; index >= 0; index--) {
+    const { items } = feeds[index];
+    if (items.some((item) => item.pageId === pageId)) {
+      return items;
+    }
+  }
+  return NoStories;
 }
 
 /** Test seam. */

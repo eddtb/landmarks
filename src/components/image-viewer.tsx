@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { ArticleImage } from '@/data/article-client';
+import { ArticleImage } from '@/types/article';
 
 /**
  * The proper look: tap any of the place's images and it opens

@@ -30,13 +30,35 @@ const items = [story(1, 'The Old Mill'), story(2, 'Village Cross'), story(3, 'Ti
 describe('HistoryBody count line', () => {
   test('sparse: says we looked further, honestly', async () => {
     mockUseHistory.mockReturnValue({
-      state: { status: 'ready', items, sparse: true },
+      state: { status: 'ready', items, sparse: true, horizon: 3000 },
       refresh: jest.fn(),
     });
     const { getByText } = await render(<HistoryBody center={center} />);
     expect(
       getByText('3 stories — a quieter corner, so we looked further (up to ~38 min walk)')
     ).toBeOnTheScreen();
+  });
+
+  test("sparse: the walk time is DERIVED from the server's horizon, not hardcoded", async () => {
+    // A different radius must change the copy — the server can no
+    // longer make the count line lie by widening (or narrowing) alone
+    mockUseHistory.mockReturnValue({
+      state: { status: 'ready', items, sparse: true, horizon: 1500 },
+      refresh: jest.fn(),
+    });
+    const { getByText } = await render(<HistoryBody center={center} />);
+    expect(
+      getByText('3 stories — a quieter corner, so we looked further (up to ~19 min walk)')
+    ).toBeOnTheScreen();
+  });
+
+  test('sparse without a horizon (a feed persisted before the field): the legacy 3000m phrasing', async () => {
+    mockUseHistory.mockReturnValue({
+      state: { status: 'ready', items, sparse: true },
+      refresh: jest.fn(),
+    });
+    const { getByText } = await render(<HistoryBody center={center} />);
+    expect(getByText(/up to ~38 min walk/)).toBeOnTheScreen();
   });
 
   test('dense: the everyday count line, untouched', async () => {

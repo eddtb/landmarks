@@ -24,6 +24,24 @@ export type HistoryItem = {
   subject?: string;
 };
 
+/** The feed plus how it was gathered — the /api/history response
+ * shape, shared by the route (src/app/api/history+api.ts) and the
+ * client (src/data/history-client.ts), which also persists it whole.
+ * `sparse` means the server found a quiet corner and widened the
+ * Wikipedia search to fill it; `dressing` means the server answered
+ * before its photo leg finished — the text is complete, thumbnails
+ * are still being fetched, and one delayed re-ask (useHistory's job)
+ * will collect them. */
+export type HistoryFeed = {
+  items: HistoryItem[];
+  sparse?: boolean;
+  /** How far the widened search actually reached, in meters — rides
+   * with `sparse` so the count-line copy can derive its "up to ~N min
+   * walk" from what the server DID, not from a hardcoded radius. */
+  horizon?: number;
+  dressing?: boolean;
+};
+
 /**
  * Heritage items carry synthetic pageIds far above real Wikipedia
  * pageids (listed buildings from 2e9, plaques from 3e9 — the bases in

@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 
 import HistoryDetailScreen from '@/app/history/[pageId]';
 import { fetchArticle } from '@/data/article-client';
-import { cacheHistoryItems } from '@/data/history-client';
+import { cacheHistoryItems, fetchNearbyHistory } from '@/data/history-client';
+import { fetchRetold } from '@/data/retold-client';
 
 const mockUseLocalSearchParams = jest.fn();
 
@@ -142,6 +143,72 @@ describe('<HistoryDetailScreen />', () => {
 
     expect(screen.getByTestId('story-loading')).toBeOnTheScreen();
     expect(screen.queryByText('This story could not be found.')).not.toBeOnTheScreen();
+  });
+
+  test('the web of history is bounded to the feed: an in-feed mention links, a cached-but-out-of-area title stays prose', async () => {
+    // The feed this story arrived in — its neighbourhood
+    mockExpoFetch.mockReset();
+    mockExpoFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            pageId: 60,
+            title: 'Rotherhithe Tunnel',
+            coordinates: { latitude: 51.501, longitude: -0.0525 },
+            distanceMeters: 90,
+            url: 'https://en.wikipedia.org/wiki/Rotherhithe_Tunnel',
+            source: 'Wikipedia',
+          },
+          {
+            pageId: 61,
+            title: 'Brunel Engine House',
+            coordinates: { latitude: 51.5015, longitude: -0.0528 },
+            distanceMeters: 140,
+            url: 'https://en.wikipedia.org/wiki/Brunel_Engine_House',
+            source: 'Wikipedia',
+          },
+        ],
+      }),
+    });
+    await fetchNearbyHistory({ latitude: 51.501, longitude: -0.0525 });
+
+    // Cached from another town last week: in the item store, NOT this feed
+    cacheHistoryItems([
+      {
+        pageId: 62,
+        title: 'Tinside Lido',
+        coordinates: { latitude: 50.363, longitude: -4.141 },
+        distanceMeters: 340,
+        url: 'https://en.wikipedia.org/wiki/Tinside_Pool',
+        source: 'Wikipedia',
+      },
+    ]);
+
+    (fetchRetold as jest.Mock).mockResolvedValueOnce({
+      minutes: 4,
+      timeline: [],
+      parts: [
+        {
+          heading: 'Under the river',
+          body: 'Steam from the Brunel Engine House drove the pumps dry. Weary diggers dreamed of Tinside Lido.',
+        },
+      ],
+    });
+
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '60' });
+    await render(<HistoryDetailScreen />);
+
+    // A linked mention renders as its own text segment; unlinked prose
+    // stays embedded in the paragraph — so exact-text queries tell
+    // doors from prose
+    expect(await screen.findByText('Brunel Engine House')).toBeOnTheScreen();
+    expect(screen.queryByText('Tinside Lido')).not.toBeOnTheScreen();
+    expect(screen.getByText(/dreamed of Tinside Lido/)).toBeOnTheScreen();
+
+    // The retold rows give VirtualizedList a follow-up render batch on
+    // a timer — let it fire inside act so the test ends quiet
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
   });
 
   test('a true 404 keeps the not-found branch', async () => {

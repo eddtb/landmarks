@@ -14,7 +14,9 @@
 /** Below this many merged stories, the feed reads thin — widen. */
 export const SparseStoryThreshold = 25;
 
-/** The wide horizon: ~38 min at walking pace (1.33 m/s). */
+/** The wide horizon: ~38 min at walking pace (1.33 m/s). Sent to the
+ * client as the feed's `horizon`, which derives its "up to ~N min
+ * walk" copy from it — change this and the copy follows. */
 export const SparseRadiusMeters = 3000;
 
 /** The sparse decision, pure and pinned by tests. */
