@@ -262,3 +262,62 @@ describe('fetchNearbyHistory bucket grain (the walking-tick fix)', () => {
     expect(second).toBe(first);
   });
 });
+
+// Both tabs stay mounted and each runs useHistory — entering a fresh
+// bucket is always TWO concurrent cache misses. (Same cap note as
+// above: these mint buckets, so they run after the persistence tests.)
+describe('fetchNearbyHistory in-flight dedupe', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => mockFetch.mockReset());
+
+  test('concurrent callers for one fresh bucket share one network ask — and its result object', async () => {
+    let resolveFetch!: (response: unknown) => void;
+    mockFetch.mockReturnValue(new Promise((resolve) => (resolveFetch = resolve)));
+    const center = freshCenter();
+
+    const one = fetchNearbyHistory(center);
+    const two = fetchNearbyHistory(center); // the other tab, same tick
+    await tick();
+    resolveFetch({ ok: true, json: async () => ({ items: [item] }) });
+
+    const [first, second] = await Promise.all([one, two]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+  });
+
+  test('a failed in-flight ask never poisons the bucket — the next caller retries', async () => {
+    const center = freshCenter();
+    mockFetch.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await expect(fetchNearbyHistory(center)).rejects.toThrow('Network request failed');
+
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [item] }) });
+    const retried = await fetchNearbyHistory(center);
+
+    expect(retried.items).toHaveLength(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2); // the retry really fetched
+  });
+
+  test('forceRefresh cuts past an in-flight plain ask; a later plain caller rides the refresh', async () => {
+    let resolvePlain!: (response: unknown) => void;
+    let resolveForced!: (response: unknown) => void;
+    mockFetch
+      .mockReturnValueOnce(new Promise((resolve) => (resolvePlain = resolve)))
+      .mockReturnValueOnce(new Promise((resolve) => (resolveForced = resolve)));
+    const center = freshCenter();
+
+    const plain = fetchNearbyHistory(center);
+    await tick(); // let the plain ask register in-flight first
+    const forced = fetchNearbyHistory(center, { forceRefresh: true }); // starts its own
+    const rider = fetchNearbyHistory(center); // plain, arrives after — shares the refresh
+    await tick();
+    expect(mockFetch).toHaveBeenCalledTimes(2); // plain + forced, never a third
+
+    resolvePlain({ ok: true, json: async () => ({ items: [item] }) });
+    resolveForced({ ok: true, json: async () => ({ items: [persistedItem(99, 'Fresher')] }) });
+
+    expect((await plain).items[0].pageId).toBe(42);
+    expect((await forced).items[0].pageId).toBe(99); // the pull reached the network
+    expect(await rider).toBe(await forced); // and served the concurrent plain caller
+  });
+});

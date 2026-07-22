@@ -95,7 +95,40 @@ export async function fetchNearbyHistory(
   return fetchFresh(center, key, options);
 }
 
-async function fetchFresh(
+// In-flight dedupe: both tabs stay mounted and each runs useHistory,
+// so entering a fresh bucket fires two identical ~124KB asks at once.
+// Keyed on the bucket alone — whichever request started first serves
+// every concurrent caller — EXCEPT forceRefresh: a deliberate pull
+// must actually reach the network, so it starts its own fetch and
+// replaces the entry (a plain caller arriving after that shares the
+// refresh; a plain fetch can never downgrade one). Entries clear when
+// the request settles, success or failure alike — a failed ask must
+// not poison the bucket; the next caller retries.
+const inFlight = new Map<string, Promise<HistoryFetchResult>>();
+
+function fetchFresh(
+  center: Coordinates,
+  key: string,
+  options?: { forceRefresh?: boolean }
+): Promise<HistoryFetchResult> {
+  const pending = inFlight.get(key);
+  if (pending && !options?.forceRefresh) {
+    return pending;
+  }
+  const request = requestFeed(center, key, options);
+  inFlight.set(key, request);
+  const clear = () => {
+    // Identity-checked: a forceRefresh may have replaced this entry —
+    // an older request settling must not clear the newer one
+    if (inFlight.get(key) === request) {
+      inFlight.delete(key);
+    }
+  };
+  request.then(clear, clear);
+  return request;
+}
+
+async function requestFeed(
   center: Coordinates,
   key: string,
   options?: { forceRefresh?: boolean }
