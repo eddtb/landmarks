@@ -78,7 +78,7 @@ export default function GoScreen() {
       try {
         const route = await fetchRoute({ latitude, longitude }, target);
         if (!cancelled) {
-          setRouteState(route ? { status: 'ready', route } : { status: 'none' });
+          setRouteState({ status: 'ready', route });
         }
       } catch (error) {
         console.warn('Failed to load route:', error);

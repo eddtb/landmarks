@@ -21,8 +21,6 @@ const budget = makeBudget({
   defaultDailyUsd: 300,
 });
 
-export const routeBudget = budget;
-
 export type RouteManeuver = {
   instruction: string;
   meters: number;
