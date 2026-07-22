@@ -86,8 +86,9 @@ beforeEach(() => {
 
 describe('the Dorking case (ward 404 → the cascade finds the town)', () => {
   test('the ward is probed, 404s, and "Dorking" leads the screen — retold asked with "Dorking"', async () => {
+    // The real geocoder's shape at Dorking: ward, county, town
     mockReverseGeocodeAsync.mockResolvedValue([
-      { district: 'Dorking North', subregion: 'Mole Valley', city: 'Dorking' },
+      { district: 'Dorking North', subregion: 'Surrey', city: 'Dorking' },
     ]);
     serveDorkingOnly();
 

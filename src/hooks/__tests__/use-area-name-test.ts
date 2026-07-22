@@ -1,11 +1,15 @@
 /**
  * The article-existence cascade: the area is named by the first
  * candidate whose area article actually exists — searched name, then
- * district, subregion, city — never by whatever ward the reverse
- * geocoder answers first (the Dorking North bug, device-triaged).
+ * district, city, and the subregion LAST — never by whatever ward the
+ * reverse geocoder answers first (the Dorking North bug,
+ * device-triaged). The subregion is the county ("Surrey" at Dorking,
+ * sim-verified): its article always exists, so anywhere earlier in
+ * the order it would beat the town on every GPS walk-through.
  */
 import { renderHook, waitFor } from '@testing-library/react-native';
 
+import { ApiError } from '@/data/cached-get';
 import { resetAreaNameCacheForTests, useAreaName } from '@/hooks/use-area-name';
 import { clearPin, setPin } from '@/hooks/use-pin';
 
@@ -21,13 +25,13 @@ jest.mock('@/data/article-client', () => ({
 
 const dorking = { latitude: 51.2325, longitude: -0.3306 };
 
-/** Only these titles have an area article; the rest 404. */
+/** Only these titles have an area article; the rest 404 for real. */
 function articlesExist(...titles: string[]) {
   mockFetchArticleLight.mockImplementation(async (title: string) => {
     if (titles.includes(title)) {
       return { chapters: [], minutes: 1, images: [] };
     }
-    throw new Error('Light article request failed with status 404');
+    throw new ApiError('Light article', 404);
   });
 }
 
@@ -36,8 +40,9 @@ beforeEach(() => {
   // Module-level stores — start every test unpinned and unresolved
   clearPin();
   resetAreaNameCacheForTests();
+  // The real geocoder's shape at Dorking: the ward, the county, the town
   mockReverseGeocodeAsync.mockResolvedValue([
-    { district: 'Dorking North', subregion: 'Mole Valley', city: 'Dorking' },
+    { district: 'Dorking North', subregion: 'Surrey', city: 'Dorking' },
   ]);
 });
 
@@ -53,17 +58,29 @@ describe('useAreaName (the article-existence cascade)', () => {
     expect(mockFetchArticleLight).toHaveBeenCalledWith('Dorking');
   });
 
-  test('unpinned, the ward 404s and falls through — subregion, then city', async () => {
-    articlesExist('Dorking');
+  test('unpinned (GPS through Dorking): the ward 404s and the TOWN wins — the county is never probed', async () => {
+    // "Surrey" has an article too; the ORDER must keep it from winning
+    articlesExist('Dorking', 'Surrey');
 
     const { result } = await renderHook(() => useAreaName(dorking));
 
     await waitFor(() => expect(result.current).toEqual({ name: 'Dorking', settled: true }));
-    // Probed in cascade order until one answered
     expect(mockFetchArticleLight.mock.calls.map((call) => call[0])).toEqual([
       'Dorking North',
-      'Mole Valley',
       'Dorking',
+    ]);
+  });
+
+  test('the county is the last resort: ward and town both 404 before Surrey wins', async () => {
+    articlesExist('Surrey');
+
+    const { result } = await renderHook(() => useAreaName(dorking));
+
+    await waitFor(() => expect(result.current).toEqual({ name: 'Surrey', settled: true }));
+    expect(mockFetchArticleLight.mock.calls.map((call) => call[0])).toEqual([
+      'Dorking North',
+      'Dorking',
+      'Surrey',
     ]);
   });
 
@@ -115,7 +132,6 @@ describe('useAreaName (the article-existence cascade)', () => {
     expect(mockReverseGeocodeAsync).toHaveBeenCalledTimes(1);
     expect(mockFetchArticleLight.mock.calls.map((call) => call[0])).toEqual([
       'Dorking North',
-      'Mole Valley',
       'Dorking',
     ]);
   });
@@ -132,5 +148,53 @@ describe('useAreaName (the article-existence cascade)', () => {
 
     await waitFor(() => expect(result.current).toEqual({ name: 'Greenwich', settled: true }));
     expect(mockFetchArticleLight).not.toHaveBeenCalledWith('Dorking');
+  });
+
+  test('a 500 on the first candidate does not hand the win to the second — and is never cached', async () => {
+    // The server hiccups on the ward's probe; "Dorking" would answer
+    mockFetchArticleLight.mockImplementation(async (title: string) => {
+      if (title === 'Dorking North') {
+        throw new ApiError('Light article', 500);
+      }
+      if (title === 'Dorking') {
+        return { chapters: [], minutes: 1, images: [] };
+      }
+      throw new ApiError('Light article', 404);
+    });
+
+    const flaky = await renderHook(() => useAreaName(dorking));
+
+    // Inconclusive is not "missing": the ward keeps the name
+    // provisionally — no later candidate is crowned off a hiccup
+    await waitFor(() =>
+      expect(flaky.result.current).toEqual({ name: 'Dorking North', settled: true })
+    );
+    expect(mockFetchArticleLight).toHaveBeenCalledTimes(1);
+
+    // The hiccup passes; a fresh consumer re-runs the cascade (a
+    // provisional verdict earned no bucket-lifetime cache) and the
+    // now-definite 404 falls through to the town
+    articlesExist('Dorking');
+    const recovered = await renderHook(() => useAreaName(dorking));
+    await waitFor(() =>
+      expect(recovered.result.current).toEqual({ name: 'Dorking', settled: true })
+    );
+  });
+
+  test('fully offline: the first candidate names the area provisionally, uncached', async () => {
+    mockFetchArticleLight.mockRejectedValue(new TypeError('Network request failed'));
+
+    const offline = await renderHook(() => useAreaName(dorking));
+    await waitFor(() =>
+      expect(offline.result.current).toEqual({ name: 'Dorking North', settled: true })
+    );
+    // Only the first candidate was probed — an inconclusive answer
+    // stops the cascade instead of skipping to a wrong winner
+    expect(mockFetchArticleLight).toHaveBeenCalledTimes(1);
+
+    // Back online, the cascade re-resolves to the real winner
+    articlesExist('Dorking');
+    const online = await renderHook(() => useAreaName(dorking));
+    await waitFor(() => expect(online.result.current).toEqual({ name: 'Dorking', settled: true }));
   });
 });
