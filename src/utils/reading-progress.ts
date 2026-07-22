@@ -9,6 +9,9 @@ export function readingProgress(
   contentHeight: number,
   viewportHeight: number
 ): number {
+  'worklet';
+  // ^ callable from the UI thread too: the gazetteer's scroll handler
+  // feeds the bar without a bridge hop. Plain JS callers are unchanged.
   const scrollable = contentHeight - viewportHeight;
   if (scrollable <= 0) {
     return 0;
