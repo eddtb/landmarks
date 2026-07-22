@@ -23,12 +23,28 @@ if ! xcrun simctl list devices booted | grep -q Booted; then
   echo "✗ No booted simulator. Start one (or: npx expo run:ios)" >&2
   exit 1
 fi
-if ! curl -sf -o /dev/null http://localhost:8081/status; then
-  echo "✗ Metro isn't running on :8081. Start it: npx expo start" >&2
+# Which Metro to drive — default 8081 (the main checkout's server).
+# Worktree sessions run their own Metro on 8084+ and pass it in:
+#   METRO_PORT=8084 scripts/e2e-local.sh
+METRO_PORT="${METRO_PORT:-8081}"
+if ! curl -sf -o /dev/null "http://localhost:${METRO_PORT}/status"; then
+  echo "✗ Metro isn't running on :${METRO_PORT}. Start it: npx expo start" >&2
   exit 1
 fi
 
 # Greenwich: the project's home turf — caches are warm here
 xcrun simctl location booted set 51.4826,-0.0077
 
-maestro test .maestro/
+# Maestro leaves its XCUITest driver host (an `xcodebuild
+# test-without-building` process) running after the suite ends; the
+# NEXT invocation's fresh driver then fights the stale one and dies
+# ~20s in ("Transport unreachable… Restarting after unexpected
+# exit") — observed as perfectly alternating green/dead runs. Kill
+# leftovers (and the sim-side runner) so every run starts clean.
+pkill -f "maestro-driver-ios-config.xctestrun" 2> /dev/null || true
+xcrun simctl terminate booted dev.mobile.maestro-driver-iosUITests.xctrunner 2> /dev/null || true
+
+# METRO_URL rides into every flow (URL-encoded origin for the
+# dev-client link and the outage scripts); flows default it to 8081
+# for CI, so only a non-default port needs the override
+maestro test -e METRO_URL="http%3A%2F%2Flocalhost%3A${METRO_PORT}" .maestro/

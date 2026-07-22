@@ -142,6 +142,7 @@ function SectionHeader({
             Location is off — enable it in Settings, or search a place to explore:
           </ThemedText>
           <TextInput
+            testID="place-search"
             value={searchText}
             onChangeText={setSearchText}
             onSubmitEditing={onSearchSubmit}

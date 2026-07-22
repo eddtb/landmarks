@@ -1,0 +1,19 @@
+# Onboarding, the returning half: after onboarding.yaml dismissed the
+# cards (config.yaml orders this flow right after it), a plain
+# relaunch must NOT show them again — the seen-flag persisted.
+#
+# A separate flow, not a second launchApp inside onboarding.yaml: the
+# within-flow relaunch crashed the XCUITest runner on ~half the local
+# runs, a launch at the top of a fresh flow never did.
+appId: com.eddtb.landmarks
+---
+- launchApp
+- runFlow: subflows/boot.yaml
+# Wait until the app is demonstrably up before asserting absence — a
+# too-early notVisible would pass vacuously under the splash
+- extendedWaitUntil:
+    visible:
+      id: 'history-card'
+    timeout: 45000
+- assertNotVisible:
+    id: 'onboarding'

@@ -1,0 +1,43 @@
+# The stale banner (#193): load the feed once, break the network,
+# pull to refresh — saved stories must serve, honestly labelled
+# "Showing saved stories — you're offline".
+#
+# The "network failure" is the deliberate outage switch
+# (/api/e2e-outage, fixtures-only): iOS Maestro has no airplane mode,
+# and killing Metro would kill the JS bundle too in dev topology —
+# the outage makes /api/history alone refuse with a 503, which is
+# exactly what the client's offline fallback catches. The relaunch
+# half of #193 (persisted stories surviving process death) is not
+# drivable here: a fresh-but-unreachable fetch only happens after the
+# 1h TTL, which no honest flow can wait out — the pull-to-refresh
+# bypass exercises the same fallback path deterministically.
+appId: com.eddtb.landmarks
+onFlowComplete:
+  # Runs pass or fail: a leaked outage would 503 every later flow
+  - runScript: subflows/outage-off.js
+---
+- launchApp
+- runFlow: subflows/setup.yaml
+
+# The feed loads and persists (the "saved stories" this flow relies on)
+- extendedWaitUntil:
+    visible:
+      id: 'history-card'
+    timeout: 45000
+
+# Break the network for /api/history only
+- runScript: subflows/outage-on.js
+
+# A deliberate pull bypasses every cache → the fetch fails → the
+# saved bucket serves with the stale banner
+- waitForAnimationToEnd:
+    timeout: 3000
+- swipe:
+    start: 50%, 45%
+    end: 50%, 85%
+- extendedWaitUntil:
+    visible: '.*saved stories.*'
+    timeout: 20000
+
+# Heal the network for whatever runs next
+- runScript: subflows/outage-off.js

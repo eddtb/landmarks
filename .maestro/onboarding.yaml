@@ -1,0 +1,50 @@
+# Onboarding: the three first-run cards appear in order, dismissal
+# reaches the feed, and the dismissal STICKS across a relaunch.
+#
+# clearState makes this a true first run — it also wipes the dev
+# client's stored Metro URL and the dev menu's "seen" flag, so the
+# boot subflow re-handles both. This flow consumes boot.yaml, NOT
+# setup.yaml: setup dismisses the very cards asserted here.
+appId: com.eddtb.landmarks
+---
+- launchApp:
+    clearState: true
+- runFlow: subflows/boot.yaml
+
+# Card 1 — titles are copy from src/components/onboarding.tsx; if the
+# copy changes, this flow should change with it (that's the point)
+- extendedWaitUntil:
+    visible:
+      id: 'onboarding'
+    timeout: 45000
+- assertVisible: 'Stories where you stand'
+# Card 2
+- swipe:
+    start: 85%, 50%
+    end: 15%, 50%
+- assertVisible: 'The story of the area'
+# Card 3
+- swipe:
+    start: 85%, 50%
+    end: 15%, 50%
+- assertVisible: 'Walk to it'
+
+# Dismiss from the last card (centre-screen button — the dev client's
+# floating Tools gear covers the top-right Skip; see setup.yaml)
+- tapOn:
+    id: 'onboarding-done'
+- extendedWaitUntil:
+    notVisible:
+      id: 'onboarding'
+    timeout: 10000
+# …and the feed is really underneath
+- extendedWaitUntil:
+    visible:
+      id: 'history-card'
+    timeout: 45000
+
+# The relaunch half ("dismissal sticks") lives in onboarding-return
+# .yaml, ordered right after this flow by .maestro/config.yaml — a
+# second launchApp INSIDE a flow crashed the XCUITest runner on ~half
+# the local runs ("Restarting after unexpected exit"), while a launch
+# at the top of a fresh flow never did once in the same sessions.
