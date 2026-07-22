@@ -18,7 +18,7 @@ import { router } from 'expo-router';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { HistoryCard } from '@/components/history-card';
-import { OneDoor, useOneDoorDismissed } from '@/components/one-door';
+import { useOneDoorDismissed } from '@/components/one-door';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -57,8 +57,8 @@ export function standingOn(
  */
 
 export function LocationGate({ children }: { children: (props: GateProps) => ReactNode }) {
-  const { status, coordinates, requestPermission } = useLocation();
-  const { dismissed, dismiss } = useOneDoorDismissed();
+  const { status, coordinates } = useLocation();
+  const dismissed = useOneDoorDismissed();
   // ONE pin app-wide (see use-pin): both tabs' gates read the same
   // store, so pinning on Nearby pins History too, and either tab's
   // "Back to near me" releases both. The pin remembers how it was
@@ -78,15 +78,15 @@ export function LocationGate({ children }: { children: (props: GateProps) => Rea
   // outlasts movement — only "Back to near me" clears it.
   const activePin = pin && pin.blind && coordinates ? null : pin;
 
-  // Permission undetermined: the one door — unless "Not now" was
-  // chosen on an earlier launch, in which case fall straight through
-  // to the denied-state UI (banner + search). While the flag is still
-  // loading the gate adds nothing, so a returning dismisser never
-  // sees a flash of the door.
+  // Permission undetermined and "Not now" not on record: the ROOT
+  // OneDoorGate owns this state and covers everything, tab pill
+  // included — beneath it this gate just holds a quiet loading. Once
+  // the flag says dismissed, undetermined falls through to the
+  // denied-state UI (banner + search) below instead.
   if (status === 'priming' && dismissed !== true) {
     return (
-      <ThemedView style={styles.container}>
-        {dismissed === false && <OneDoor onEnable={requestPermission} onNotNow={dismiss} />}
+      <ThemedView style={styles.centered}>
+        <ActivityIndicator />
       </ThemedView>
     );
   }

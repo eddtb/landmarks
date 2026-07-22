@@ -1,71 +1,96 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { BrandPurple, BrandWarm, BrandWarmInk, Spacing } from '@/constants/theme';
+import { requestLocationPermission, useLocationPermission } from '@/hooks/use-location';
 
 export const ONE_DOOR_DISMISSED_KEY = 'one-door-dismissed-v1';
 
 /**
- * "Not now" is remembered the way OnboardingGate's seen-flag was: read
- * async at boot, `null` while in flight so the caller renders neither
- * the gate nor the fallback — a returning dismisser never sees a flash
- * of the door. The flag only matters while iOS still reports the
- * permission undetermined; once the user has answered the system
- * dialog, LocationGate's status logic makes the door unreachable.
+ * "Not now", remembered app-wide (the use-pin primitive: a value, a
+ * listener set, useSyncExternalStore). Read from AsyncStorage once,
+ * `null` while in flight so callers render neither the gate nor the
+ * fallback — a returning dismisser never sees a flash of the door. A
+ * module store, not per-hook state: the root gate dismisses and the
+ * tabs' LocationGates must learn in the same frame.
  */
-export function useOneDoorDismissed(): { dismissed: boolean | null; dismiss: () => void } {
-  const [dismissed, setDismissed] = useState<boolean | null>(null);
+let dismissed: boolean | null = null;
+let readStarted = false;
+const listeners = new Set<() => void>();
 
-  useEffect(() => {
-    let cancelled = false;
-    AsyncStorage.getItem(ONE_DOOR_DISMISSED_KEY)
-      .then((value) => {
-        if (!cancelled) setDismissed(value === 'true');
-      })
-      // Storage broke: show the door — it's the app's one required ask
-      .catch(() => {
-        if (!cancelled) setDismissed(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+function setDismissed(next: boolean | null) {
+  dismissed = next;
+  for (const listener of listeners) {
+    listener();
+  }
+}
 
-  const dismiss = () => {
-    setDismissed(true);
-    // Fire-and-forget: worst case the door shows once more next launch
-    AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true').catch(() => {});
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
   };
+}
 
-  return { dismissed, dismiss };
+function getSnapshot() {
+  return dismissed;
+}
+
+function ensureFlagRead() {
+  if (readStarted) {
+    return;
+  }
+  readStarted = true;
+  AsyncStorage.getItem(ONE_DOOR_DISMISSED_KEY)
+    .then((value) => setDismissed(value === 'true'))
+    // Storage broke: show the door — it's the app's one required ask
+    .catch(() => setDismissed(false));
+}
+
+export function dismissOneDoor() {
+  setDismissed(true);
+  // Fire-and-forget: worst case the door shows once more next launch
+  AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true').catch(() => {});
+}
+
+/** The shared flag; null while the first read is in flight. */
+export function useOneDoorDismissed(): boolean | null {
+  useEffect(ensureFlagRead, []);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** Tests only: the store is module-level and must not leak between them. */
+export function resetOneDoorForTests() {
+  dismissed = null;
+  readStarted = false;
 }
 
 // The wander line, drawn with primitives (react-native-svg is a native
 // module — rebuild cost — and the dependency diet forbids it when
-// Views suffice). Each loop is a bordered circle with the opening
-// side's border transparent; alternating openings, overlapped
-// horizontally, read as the mock's looping run.
-const LoopDiameter = 110;
-const LoopStroke = 14;
-const LoopOverlap = 40;
-const LoopCount = 8;
+// Views suffice). A serpentine of alternating semicircle half-arcs:
+// each is a View half the arc span tall with only its outer corners
+// rounded and the flat side's border removed. A semicircle's ends run
+// vertical, so an over-arc joined to an under-arc at the shared edge
+// is C1-continuous — a smooth wave, no crossings, no chain-link
+// lenses.
+const ArcSpan = 110; // horizontal span of one half-arc
+const ArcStroke = 14;
+const ArcCount = 6; // covers the widest phone from off-left to off-right
 
-function WanderRun({ top, left, opacity }: { top: `${number}%`; left: number; opacity: number }) {
+function WanderRun({ top, left, opacity }: { top: number; left: number; opacity: number }) {
   return (
     <View style={[styles.run, { top, left, opacity }]}>
-      {Array.from({ length: LoopCount }, (_, index) => (
+      {Array.from({ length: ArcCount }, (_, index) => (
         <View
           key={index}
           style={[
-            styles.loop,
-            index > 0 && { marginLeft: -LoopOverlap },
-            // Alternate the opening: up, down, up… — the looping run
-            index % 2 === 0
-              ? { borderTopColor: 'transparent' }
-              : { borderBottomColor: 'transparent' },
+            index % 2 === 0 ? styles.arcOver : styles.arcUnder,
+            // Overlap by the stroke so the vertical arc-ends share
+            // their pixels — one continuous line, not butted segments
+            index > 0 && { marginLeft: -ArcStroke },
           ]}
         />
       ))}
@@ -73,8 +98,10 @@ function WanderRun({ top, left, opacity }: { top: `${number}%`; left: number; op
   );
 }
 
-/** Two runs across the upper third — one near-solid, one faint echo —
- * entering from the left edge and exiting right, behind everything. */
+/** The solid run and a faint echo across the upper third. The echo
+ * sits fully below the solid band in the same phase, so the two
+ * parallel and never cross. Both enter from the left edge and exit
+ * right, behind everything. */
 function WanderLine() {
   return (
     <View
@@ -82,8 +109,8 @@ function WanderLine() {
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants">
-      <WanderRun top="6%" left={-30} opacity={0.92} />
-      <WanderRun top="17%" left={-70} opacity={0.35} />
+      <WanderRun top={56} left={-30} opacity={0.92} />
+      <WanderRun top={56 + ArcSpan + Spacing.two} left={-58} opacity={0.35} />
     </View>
   );
 }
@@ -100,8 +127,7 @@ type Props = {
  * replacing both the three-card onboarding overlay and the old
  * location-priming screen. Full-bleed brand purple, the wander line in
  * the upper third, the premise in a breath, and the app's only
- * non-negotiable ask — shown only while location permission is still
- * undetermined and "Not now" hasn't been chosen before.
+ * non-negotiable ask.
  */
 export function OneDoor({ onEnable, onNotNow }: Props) {
   const insets = useSafeAreaInsets();
@@ -146,7 +172,46 @@ export function OneDoor({ onEnable, onNotNow }: Props) {
   );
 }
 
+/**
+ * The root overlay — above the tab navigator, below the animated
+ * splash. The door must cover the whole app: rendered inside a tab's
+ * LocationGate it left the floating tab pill on top and the other tab
+ * tappable behind it (sim-caught). Shows only while location
+ * permission is undetermined AND "Not now" isn't on record; while
+ * either read is in flight it adds nothing, so no flash for any
+ * returning user. Enable here is the app's ONE permission-request
+ * path — nothing else asks iOS, so no double prompts.
+ */
+export function OneDoorGate() {
+  const permission = useLocationPermission();
+  const doorDismissed = useOneDoorDismissed();
+
+  if (permission?.status !== 'undetermined' || doorDismissed !== false) {
+    return null;
+  }
+  return (
+    <View testID="one-door-overlay" style={styles.overlay}>
+      <OneDoor
+        onEnable={() => {
+          requestLocationPermission();
+        }}
+        onNotNow={dismissOneDoor}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // Above the tab pill and every screen, below the animated splash
+    // (zIndex 1000) — while the door is up it is the only surface
+    zIndex: 500,
+  },
   screen: {
     flex: 1,
     backgroundColor: BrandPurple,
@@ -162,13 +227,29 @@ const styles = StyleSheet.create({
   run: {
     position: 'absolute',
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    height: ArcSpan,
   },
-  loop: {
-    width: LoopDiameter,
-    height: LoopDiameter,
-    borderRadius: LoopDiameter / 2,
-    borderWidth: LoopStroke,
+  // The over-arc — rises, crests, falls; its ends run vertical
+  arcOver: {
+    width: ArcSpan,
+    height: ArcSpan / 2,
+    borderTopLeftRadius: ArcSpan / 2,
+    borderTopRightRadius: ArcSpan / 2,
     borderColor: '#FFFFFF',
+    borderWidth: ArcStroke,
+    borderBottomWidth: 0,
+  },
+  // The under-arc — the mirror, dropped half an arc so the ends meet
+  arcUnder: {
+    width: ArcSpan,
+    height: ArcSpan / 2,
+    marginTop: ArcSpan / 2,
+    borderBottomLeftRadius: ArcSpan / 2,
+    borderBottomRightRadius: ArcSpan / 2,
+    borderColor: '#FFFFFF',
+    borderWidth: ArcStroke,
+    borderTopWidth: 0,
   },
   // Bottom-anchored, per the mock: the copy and actions sit in the
   // lower half, under the line's run

@@ -35,7 +35,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Landmarks uses your location to show interesting places near you."
+          "locationWhenInUsePermission": "Venture uses your location to find the stories within a walk of you."
         }
       ],
       [

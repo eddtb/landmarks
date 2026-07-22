@@ -4,6 +4,7 @@ import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { OneDoorGate } from '@/components/one-door';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -14,8 +15,6 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
-      {/* No first-run overlay here any more: the one door renders
-          inside LocationGate, where the old priming screen lived */}
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
@@ -27,6 +26,10 @@ export default function RootLayout() {
           options={{ presentation: 'modal', headerShown: false }}
         />
       </Stack>
+      {/* The one door covers EVERYTHING (tab pill included) while
+          location permission is undetermined — inside a tab's
+          LocationGate the pill floated on top of it (sim-caught) */}
+      <OneDoorGate />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

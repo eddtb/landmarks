@@ -1,27 +1,38 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
-import { useLocation } from '@/hooks/use-location';
+import {
+  requestLocationPermission,
+  resetLocationPermissionForTests,
+  useLocation,
+} from '@/hooks/use-location';
 
-const mockUseForegroundPermissions = jest.fn();
+const mockGetForegroundPermissionsAsync = jest.fn();
+const mockRequestForegroundPermissionsAsync = jest.fn();
 const mockGetLastKnownPositionAsync = jest.fn();
 const mockWatchPositionAsync = jest.fn();
 
 jest.mock('expo-location', () => ({
-  useForegroundPermissions: () => mockUseForegroundPermissions(),
+  getForegroundPermissionsAsync: () => mockGetForegroundPermissionsAsync(),
+  requestForegroundPermissionsAsync: () => mockRequestForegroundPermissionsAsync(),
   getLastKnownPositionAsync: () => mockGetLastKnownPositionAsync(),
   watchPositionAsync: (...args: unknown[]) => mockWatchPositionAsync(...args),
   Accuracy: { Balanced: 3 },
 }));
 
-const requestFn = jest.fn();
-
-function permissionState(overrides: object | null) {
-  mockUseForegroundPermissions.mockReturnValue([overrides, requestFn]);
+function permissionState(state: object | null) {
+  if (state === null) {
+    // The read never resolves — the permission stays unknown
+    mockGetForegroundPermissionsAsync.mockReturnValue(new Promise(() => {}));
+  } else {
+    mockGetForegroundPermissionsAsync.mockResolvedValue(state);
+  }
 }
 
 describe('useLocation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // The permission store is module-level — start every test unknown
+    resetLocationPermissionForTests();
     mockGetLastKnownPositionAsync.mockResolvedValue(null);
     // Default watch: emits one fix immediately, returns a removable subscription
     mockWatchPositionAsync.mockImplementation(
@@ -41,13 +52,13 @@ describe('useLocation', () => {
   test('primes when permission has never been requested', async () => {
     permissionState({ granted: false, status: 'undetermined', canAskAgain: true });
     const { result } = await renderHook(() => useLocation());
-    expect(result.current.status).toBe('priming');
+    await waitFor(() => expect(result.current.status).toBe('priming'));
   });
 
   test('reports denied when the user refused', async () => {
     permissionState({ granted: false, status: 'denied', canAskAgain: false });
     const { result } = await renderHook(() => useLocation());
-    expect(result.current.status).toBe('denied');
+    await waitFor(() => expect(result.current.status).toBe('denied'));
     expect(result.current.coordinates).toBeNull();
   });
 
@@ -104,5 +115,31 @@ describe('useLocation', () => {
     unmount();
 
     await waitFor(() => expect(remove).toHaveBeenCalled());
+  });
+
+  test('one Enable moves every mounted hook (the shared permission store)', async () => {
+    // The bug this store exists to prevent: expo's per-instance
+    // permission hooks meant the root gate's grant never reached the
+    // tabs' own useLocation instances — they primed forever
+    permissionState({ granted: false, status: 'undetermined', canAskAgain: true });
+    mockRequestForegroundPermissionsAsync.mockResolvedValue({
+      granted: true,
+      status: 'granted',
+      canAskAgain: true,
+    });
+
+    const first = await renderHook(() => useLocation());
+    const second = await renderHook(() => useLocation());
+    await waitFor(() => expect(first.result.current.status).toBe('priming'));
+    await waitFor(() => expect(second.result.current.status).toBe('priming'));
+
+    await act(async () => {
+      await requestLocationPermission();
+    });
+
+    await waitFor(() => expect(first.result.current.status).toBe('ready'));
+    await waitFor(() => expect(second.result.current.status).toBe('ready'));
+    // iOS was asked exactly once
+    expect(mockRequestForegroundPermissionsAsync).toHaveBeenCalledTimes(1);
   });
 });
