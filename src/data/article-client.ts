@@ -11,7 +11,14 @@ export type Article = { chapters: ArticleChapter[]; minutes: number; images: Art
 // a cached light article would hide the images behind it). Keyed by
 // title — content by name, not location-served — with the server's own
 // 7d article TTL (src/server/article.ts ArticleTtlMs) mirrored client-side.
-const articleCache = persistedMap<Article>('article', 7 * 24 * 60 * 60 * 1000);
+//
+// Cap: 40 full articles ≈ a week of heavy reading; at ~10-30KB each
+// that bounds the store's share of Android AsyncStorage's ~6MB ceiling
+// to ~1MB (see persisted-cache's maxEntries).
+const ArticleCap = 40;
+const articleCache = persistedMap<Article>('article', 7 * 24 * 60 * 60 * 1000, {
+  maxEntries: ArticleCap,
+});
 const metaCache = new Map<string, number>();
 
 export async function fetchArticle(title: string): Promise<Article> {

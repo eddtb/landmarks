@@ -10,7 +10,10 @@ import { Coordinates } from '@/utils/geo';
  */
 export function useAreaName(center: Coordinates): string | null {
   const [name, setName] = useState<string | null>(null);
-  const { latitude, longitude } = center;
+  // ~111m buckets: an area NAME can't change inside one, and effect
+  // deps finer than that re-geocoded on every ~10m GPS tick.
+  const latitude = Number(center.latitude.toFixed(3));
+  const longitude = Number(center.longitude.toFixed(3));
 
   useEffect(() => {
     let cancelled = false;
@@ -19,7 +22,9 @@ export function useAreaName(center: Coordinates): string | null {
         const [first] = await Location.reverseGeocodeAsync({ latitude, longitude });
         const resolved = first?.district ?? first?.subregion ?? first?.city ?? null;
         if (!cancelled) {
-          setName(resolved);
+          // Crossing a bucket rarely crosses a district — same name
+          // stays the same state, no header re-render
+          setName((prev) => (prev === resolved ? prev : resolved));
         }
       } catch {
         // keep the fallback
