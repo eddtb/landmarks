@@ -1,0 +1,34 @@
+# The one door, driven from the outside: with location DENIED at
+# launch (iOS `never`) the gate must NOT show — permission is
+# determined, so LocationGate falls straight through to the denied
+# banner + search. No gate, no crash, and the escape hatch renders.
+#
+# Why this flow asserts the denied path and not the door itself:
+# Maestro's permission model can only set determined states — the door
+# only exists in the UNDETERMINED state, which needs `xcrun simctl
+# privacy <udid> reset location` between install and launch. A flow
+# cannot shell out, and resetting a reused local simulator mid-suite
+# would poison every later flow's auto-granted location. The door's
+# own behaviour (renders on undetermined, Enable → requestPermission,
+# Not now → persisted flag + denied fallback, no flash while the flag
+# loads) is pinned by unit tests: src/__tests__/one-door-test.tsx.
+#
+# clearState makes this a true fresh install — it wipes the dev
+# client's stored Metro URL, so the boot guards re-handle the relink.
+appId: com.eddtb.landmarks
+---
+- launchApp:
+    clearState: true
+    permissions:
+      location: never
+- runFlow: subflows/setup.yaml
+
+# Determined-denied: the honest banner, not the door
+- extendedWaitUntil:
+    visible: '.*Location is off.*'
+    timeout: 45000
+- assertNotVisible:
+    id: 'one-door'
+# …and the search escape hatch is really there
+- assertVisible:
+    id: 'place-search'
