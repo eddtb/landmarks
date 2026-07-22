@@ -154,7 +154,16 @@ type BatchPage = {
   extract?: string;
   thumbnail?: { source?: string };
   fullurl?: string;
+  /** The batch request asks only for categories that positively identify
+   * broad London areas; buildings in those areas do not carry them. */
+  categories?: { title: string }[];
 };
+
+const BroadAreaCategories = [
+  'Category:Areas of London',
+  'Category:District centres of London',
+  'Category:Districts of London on the River Thames',
+];
 
 /**
  * Register gate: geosearch mixes genuine stories (vanished palaces,
@@ -196,6 +205,7 @@ export function buildHistoryItems(
         thumbnailUrl: page?.thumbnail?.source,
         url: page?.fullurl ?? `https://en.wikipedia.org/?curid=${entry.pageid}`,
         source: 'Wikipedia',
+        ...(page?.categories?.length ? { area: true as const } : {}),
       };
     })
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
@@ -296,8 +306,9 @@ export async function findNearbyHistory(
       const batchUrl =
         'https://en.wikipedia.org/w/api.php?action=query&format=json' +
         `&pageids=${chunk.join('|')}` +
-        '&prop=pageimages%7Cextracts%7Cinfo&exintro=1&explaintext=1&exlimit=max' +
-        '&pithumbsize=800&pilimit=max&inprop=url';
+        '&prop=pageimages%7Cextracts%7Cinfo%7Ccategories&exintro=1&explaintext=1&exlimit=max' +
+        `&clcategories=${encodeURIComponent(BroadAreaCategories.join('|'))}` +
+        '&cllimit=max&pithumbsize=800&pilimit=max&inprop=url';
       const batchResponse = await fetch(batchUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
       if (!batchResponse.ok) {
         throw new Error(`Wikipedia batch query failed with status ${batchResponse.status}`);

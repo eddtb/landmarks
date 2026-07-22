@@ -34,6 +34,8 @@ import { distanceMeters } from '@/utils/geo';
  * once and collects the dressed verdict from this bucket's cache.
  */
 const ListTtlMs = 60 * 60 * 1000;
+// v7: items may carry area:true (broad geographic subjects stay in the
+// Gazetteer but never become walk-to Nearby cards);
 // v6: items may carry event:true (Edd's ruling: articles ABOUT events
 // — crashes, battles, fires — live in the History archive, never
 // Nearby) — a v5 list lacks the flag and would keep leaking events
@@ -44,7 +46,7 @@ const ListTtlMs = 60 * 60 * 1000;
 // v4: plaque items may carry resolved subject titles (option A);
 // v3 and earlier predate photo rules and existence tags
 const listCache = diskBackedMap<{ items: HistoryItem[]; sparse?: boolean; at: number }>(
-  'history-lists-v6'
+  'history-lists-v7'
 );
 
 function bucketKey(lat: number, lng: number): string {
@@ -66,7 +68,7 @@ const pendingCompose = new Map<string, { items: HistoryItem[]; sparse?: boolean 
 // cold legs (measured 1.5-3.5s) never make it — and shouldn't.
 const ServeGraceMs = 150;
 
-/** Existence facts (tag + event verdict) keyed by pageId; failure
+/** Existence facts (tag + event + broad-area verdicts) keyed by pageId; failure
  * degrades to an empty map — fewer facts, never fewer stories. */
 async function existenceFactsByPageId(items: HistoryItem[]): Promise<Map<number, ExistenceFacts>> {
   try {
@@ -99,6 +101,7 @@ function applyFacts(items: HistoryItem[], facts: Map<number, ExistenceFacts>): H
       ...item,
       ...(fact.tag ? { pastTag: fact.tag } : {}),
       ...(fact.event ? { event: true as const } : {}),
+      ...(fact.area ? { area: true as const } : {}),
     };
   });
 }
@@ -249,23 +252,16 @@ export async function GET(request: Request) {
     // (the deep tail warms up across requests), so length ≠ load time
     const capped = told.slice(0, 150);
 
-    // The two remaining network stages hit DIFFERENT hosts (Commons +
-    // Geograph vs Wikidata) — per-host politeness allows them to
-    // overlap, so together they cost the longer of the two, not the
-    // sum. The Wikipedia-bound stages above stay ordered: they share a
-    // host AND enrichment consumes the merge that plaque resolution
-    // feeds. And neither leg holds the response past the grace below:
-    // measured cold (2026-07-22, Greenwich), tags are 3.5s and dressing
-    // is deadline-bounded at 1.5s — both decoration (the eyebrow tag,
-    // the thumbnail), neither worth staring at a spinner for. The story
-    // text itself is complete at this point.
+    // Classification is routing, not decoration: it must settle before
+    // ANY payload is allowed out, otherwise a cold Wikidata lookup can
+    // briefly paint Deptford as a walk-to destination before the
+    // dressing upgrade removes it. Failure still degrades to no facts,
+    // but a successful area/event verdict is atomic with the response.
+    // Photos remain cosmetic and retain the fast-response grace below.
     const decorateStart = Date.now();
-    const dressing = dressWithPhotos(capped);
-    // Structured existence facts from Wikidata — grammar retired (#137's
-    // ceiling); failure degrades (in the helper) to fewer tags, never
-    // fewer stories
-    let factsSoFar = new Map<number, ExistenceFacts>();
-    const tagging = existenceFactsByPageId(capped).then((facts) => (factsSoFar = facts));
+    const facts = await existenceFactsByPageId(capped);
+    const classified = applyFacts(capped, facts);
+    const dressing = dressWithPhotos(classified);
 
     // Cache only the final dressed verdict — the disk cache's bucket
     // answer must never be an undressed list
@@ -285,7 +281,7 @@ export async function GET(request: Request) {
     // it; the text-complete list is served NOW and the dressed verdict
     // is cached when the legs land. A failed photo leg caches NOTHING:
     // couldn't-try is not tried-and-failed.
-    const final = Promise.all([dressing, tagging]);
+    const final = Promise.all([dressing, Promise.resolve(facts)]);
     const settled = await Promise.race([
       final,
       new Promise<null>((resolve) => {
@@ -298,8 +294,7 @@ export async function GET(request: Request) {
       return respond(finalize(settled), sparse);
     }
 
-    // Facts that beat the grace still ride the early response
-    const snapshot = { items: applyFacts(capped, factsSoFar), ...(sparse ? { sparse } : {}) };
+    const snapshot = { items: classified, ...(sparse ? { sparse } : {}) };
     pendingCompose.set(key, snapshot);
     const settle = () => {
       // Identity-checked like the client's in-flight map: a fresh=1

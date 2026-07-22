@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import HistoryDetailScreen from '@/app/history/[pageId]';
 import { fetchArticle } from '@/data/article-client';
@@ -6,11 +6,13 @@ import { cacheHistoryItems, fetchNearbyHistory } from '@/data/history-client';
 import { fetchRetold } from '@/data/retold-client';
 
 const mockUseLocalSearchParams = jest.fn();
+const mockPush = jest.fn();
 
 jest.mock('expo-router', () => {
   const actual = jest.requireActual('expo-router');
   return {
     ...actual,
+    router: { ...actual.router, push: (...args: unknown[]) => mockPush(...args) },
     useLocalSearchParams: () => mockUseLocalSearchParams(),
     Stack: { Screen: () => null },
   };
@@ -64,6 +66,7 @@ describe('<HistoryDetailScreen />', () => {
 
     // The venue grammar rides under the hero (112m rounds to the 1-min floor)
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
+    expect(screen.getByText('Compass')).toBeOnTheScreen();
     expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
 
     // No retelling exists → the original article stands as the story
@@ -74,6 +77,23 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen();
     // …and a link out to the source, which holds more than we parse
     expect(screen.getByText('Read the original article ›')).toBeOnTheScreen();
+    expect(screen.getByText('Wikipedia · source')).toBeOnTheScreen();
+    expect(screen.getByTestId('original-article-link')).toHaveStyle({
+      backgroundColor: '#EFEAFC',
+      borderRadius: 14,
+    });
+  });
+
+  test('the Compass button opens the story compass modal', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
+    await render(<HistoryDetailScreen />);
+
+    fireEvent.press(screen.getByTestId('compass-button'));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/history/[pageId]/compass',
+      params: { pageId: '42' },
+    });
   });
 
   test('a place with NO article of its own keeps the extract story', async () => {
@@ -208,6 +228,10 @@ describe('<HistoryDetailScreen />', () => {
     expect(await screen.findByText('Brunel Engine House')).toBeOnTheScreen();
     expect(screen.queryByText('Tinside Lido')).not.toBeOnTheScreen();
     expect(screen.getByText(/dreamed of Tinside Lido/)).toBeOnTheScreen();
+    expect(await screen.findByTestId('original-article-door')).toHaveStyle({
+      backgroundColor: '#EFEAFC',
+      borderRadius: 14,
+    });
 
     // The retold rows give VirtualizedList a follow-up render batch on
     // a timer — let it fire inside act so the test ends quiet

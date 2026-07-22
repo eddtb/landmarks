@@ -65,13 +65,14 @@ const story = (
 
 // The ruling's evidence case: photographed, no pastTag, flagged
 const crash = story({ pageId: 9, title: 'Lewisham rail crash', event: true });
+const area = story({ pageId: 8, title: 'Lewisham', area: true });
 const church = story({ pageId: 3, title: 'St Mary the Virgin, Lewisham' });
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseLocation.mockReturnValue({ status: 'ready', coordinates: lewisham });
   mockUseHistory.mockReturnValue({
-    state: { status: 'ready', items: [crash, church] },
+    state: { status: 'ready', items: [crash, area, church] },
     refresh: jest.fn(),
   });
 });
@@ -81,6 +82,7 @@ describe('the Nearby feed', () => {
     const screen = await render(<HistoryBody center={lewisham} />);
     expect(screen.getByText('1 story within a walk')).toBeOnTheScreen();
     expect(screen.queryByText('Lewisham rail crash')).toBeNull();
+    expect(screen.queryByText('Lewisham')).toBeNull();
     expect(screen.getByText('St Mary the Virgin, Lewisham')).toBeOnTheScreen();
   });
 });
@@ -89,6 +91,7 @@ describe('the History archive', () => {
   test('the split routes the flagged event to the relics', async () => {
     const screen = await render(<HistoryArchiveScreen />);
     await waitFor(() => expect(screen.getByText('relic: Lewisham rail crash')).toBeOnTheScreen());
+    expect(screen.getByText('relic: Lewisham')).toBeOnTheScreen();
     // The standing, photographed church stays Nearby-only
     expect(screen.queryByText('relic: St Mary the Virgin, Lewisham')).toBeNull();
   });

@@ -74,12 +74,27 @@ const EventClassIds = new Set([
   'Q3588250', // ethnic riot (2011 England riots)
 ]);
 
+/** Geographic subjects whose coordinates are representative centres,
+ * not visitable destinations. Precision wins: these are exact P31
+ * classes observed on Greenwich, Deptford and Millwall. A building in
+ * one of those places carries building/museum/observatory classes and
+ * therefore cannot match this gate. */
+const AreaClassIds = new Set([
+  'Q149621', // district (Greenwich)
+  'Q3957', // town (Greenwich)
+  'Q2755753', // area of London (Greenwich, Deptford, Millwall)
+]);
+
 /**
  * Pure and sentinel-tested: is this article ABOUT an event? Membership
  * is by QID, not label — no extra lookups, no fuzzy matching.
  */
 export function isEventArticle(claims: EntityClaims): boolean {
   return claimIds(claims, 'P31').some((id) => EventClassIds.has(id));
+}
+
+export function isAreaArticle(claims: EntityClaims): boolean {
+  return claimIds(claims, 'P31').some((id) => AreaClassIds.has(id));
 }
 
 /**
@@ -111,7 +126,7 @@ async function api(params: Record<string, string>): Promise<Record<string, unkno
   const query = new URLSearchParams({ action: 'wbgetentities', format: 'json', ...params });
   const response = await fetch(`${Endpoint}?${query}`, {
     headers: { 'User-Agent': UserAgent },
-    signal: AbortSignal.timeout(6000),
+    signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) {
     throw new Error(`Wikidata failed with status ${response.status}`);
@@ -120,10 +135,12 @@ async function api(params: Record<string, string>): Promise<Record<string, unkno
 }
 
 const TagTtlMs = 30 * 24 * 60 * 60 * 1000;
+// v3: verdicts carry the broad-area flag, so old cached silence cannot
+// keep Greenwich/Deptford/Millwall in Nearby for the prior 30-day TTL;
 // v2: verdicts carry the event flag (events-are-history ruling) — a v1
 // entry lacks it and would keep filing crashes as visitable places
-const factCache = diskBackedMap<{ tag: string | null; event: boolean; at: number }>(
-  'wikidata-existence-v2'
+const factCache = diskBackedMap<{ tag: string | null; event: boolean; area: boolean; at: number }>(
+  'wikidata-existence-v3'
 );
 // Class labels are stable vocabulary — cache without expiry semantics
 const labelCache = diskBackedMap<string>('wikidata-class-labels');
@@ -136,20 +153,44 @@ function chunk<T>(list: T[], size: number): T[][] {
   return chunks;
 }
 
-/** What Wikidata knows about an article's subject: an existence tag
- * ("Demolished 1936"), an event verdict (the article is ABOUT a crash,
- * a battle, a fire), or both. Absent field = no evidence. */
-export type ExistenceFacts = { tag?: string; event?: true };
+/** Wikidata's claim payload is large: 50 titles regularly crosses the
+ * Hosting edge timeout even though a five-title request succeeds. Keep
+ * payloads modest and cap concurrency so cold feeds finish without
+ * either serial latency or an upstream burst. */
+async function inWorkers<T>(
+  batches: T[][],
+  concurrency: number,
+  visit: (batch: T[]) => Promise<void>
+): Promise<void> {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, batches.length) }, async () => {
+      while (next < batches.length) {
+        const batch = batches[next++];
+        await visit(batch);
+      }
+    })
+  );
+}
 
-function toFacts(tag: string | null, event: boolean): ExistenceFacts | null {
-  if (!tag && !event) {
+/** What Wikidata knows about an article's subject: an existence tag,
+ * event verdict, and/or broad geographic-area verdict. Absent field =
+ * no evidence. */
+export type ExistenceFacts = { tag?: string; event?: true; area?: true };
+
+function toFacts(tag: string | null, event: boolean, area: boolean): ExistenceFacts | null {
+  if (!tag && !event && !area) {
     return null;
   }
-  return { ...(tag ? { tag } : {}), ...(event ? { event: true as const } : {}) };
+  return {
+    ...(tag ? { tag } : {}),
+    ...(event ? { event: true as const } : {}),
+    ...(area ? { area: true as const } : {}),
+  };
 }
 
 /** Existence facts for enwiki article titles, batched and cached —
- * tags and event verdicts ride the SAME requests: one host, no second
+ * tags, event and area verdicts ride the SAME requests: one host, no second
  * hammer. */
 export async function fetchExistenceFacts(titles: string[]): Promise<Map<string, ExistenceFacts>> {
   const facts = new Map<string, ExistenceFacts>();
@@ -157,7 +198,7 @@ export async function fetchExistenceFacts(titles: string[]): Promise<Map<string,
   for (const title of titles) {
     const cached = factCache.get(title.toLowerCase());
     if (cached && Date.now() - cached.at < TagTtlMs) {
-      const fact = toFacts(cached.tag, cached.event);
+      const fact = toFacts(cached.tag, cached.event, cached.area);
       if (fact) {
         facts.set(title, fact);
       }
@@ -170,21 +211,25 @@ export async function fetchExistenceFacts(titles: string[]): Promise<Map<string,
   }
 
   const entityClaims = new Map<string, EntityClaims>();
-  for (const batch of chunk(missing, 50)) {
-    const body = (await api({
-      sites: 'enwiki',
-      titles: batch.join('|'),
-      props: 'claims|sitelinks',
-    })) as {
-      entities?: Record<string, { claims?: EntityClaims; sitelinks?: { enwiki?: { title?: string } } }>;
-    };
-    for (const entity of Object.values(body.entities ?? {})) {
-      const title = entity.sitelinks?.enwiki?.title;
-      if (title && entity.claims) {
-        entityClaims.set(title, entity.claims);
+  await inWorkers(chunk(missing, 15), 3, async (batch) => {
+      const body = (await api({
+        sites: 'enwiki',
+        titles: batch.join('|'),
+        props: 'claims|sitelinks',
+        sitefilter: 'enwiki',
+      })) as {
+        entities?: Record<
+          string,
+          { claims?: EntityClaims; sitelinks?: { enwiki?: { title?: string } } }
+        >;
+      };
+      for (const entity of Object.values(body.entities ?? {})) {
+        const title = entity.sitelinks?.enwiki?.title;
+        if (title && entity.claims) {
+          entityClaims.set(title, entity.claims);
+        }
       }
-    }
-  }
+    });
 
   // Resolve unseen class QIDs to labels, once each, batched
   const classIds = new Set<string>();
@@ -218,8 +263,9 @@ export async function fetchExistenceFacts(titles: string[]): Promise<Map<string,
     const claims = actual ? entityClaims.get(actual)! : null;
     const tag = claims ? existenceTag(claims, labels) : null;
     const event = claims ? isEventArticle(claims) : false;
-    factCache.set(requested.toLowerCase(), { tag, event, at: Date.now() });
-    const fact = toFacts(tag, event);
+    const area = claims ? isAreaArticle(claims) : false;
+    factCache.set(requested.toLowerCase(), { tag, event, area, at: Date.now() });
+    const fact = toFacts(tag, event, area);
     if (fact) {
       facts.set(requested, fact);
     }

@@ -1,0 +1,21 @@
+name: Release iOS to TestFlight
+
+# Intentionally has no event trigger. Run it explicitly with:
+# eas workflow:run .eas/workflows/release-ios.yml
+# EAS Submit uploads to App Store Connect/TestFlight; public App Store release
+# still requires a separate decision in App Store Connect.
+jobs:
+  build_ios_production:
+    name: Build iOS production
+    type: build
+    params:
+      platform: ios
+      profile: production
+
+  submit_ios_production:
+    name: Upload iOS production build to TestFlight
+    needs: [build_ios_production]
+    type: submit
+    params:
+      build_id: ${{ needs.build_ios_production.outputs.build_id }}
+      profile: production

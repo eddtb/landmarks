@@ -315,7 +315,9 @@ function GazetteerBody({ center }: { center: Coordinates }) {
     );
   }
 
-  const relics = state.items.filter((item) => !item.thumbnailUrl || item.pastTag || item.event);
+  const relics = state.items.filter(
+    (item) => !item.thumbnailUrl || item.pastTag || item.event || item.area
+  );
   return (
     <AreaGazetteer
       areaName={areaName}
@@ -470,7 +472,9 @@ export function HistoryBody({
   // Nearby = things you can visit AND recognise: a subject photo and
   // no structured evidence of pastness. The past and the
   // unphotographed live in the Gazetteer next door.
-  const items = state.items.filter((item) => item.thumbnailUrl && !item.pastTag && !item.event);
+  const items = state.items.filter(
+    (item) => item.thumbnailUrl && !item.pastTag && !item.event && !item.area
+  );
 
   // No standing-on unless the center is a real GPS fix: while
   // exploring the pinned center is somewhere the user is NOT, and with
@@ -478,7 +482,7 @@ export function HistoryBody({
   // Charing Cross from anywhere on Earth lies (#208)
   const standing =
     state.status === 'ready' && !exploring && !locationDenied
-      ? standingOn(state.items, center)
+      ? standingOn(state.items.filter((item) => !item.area), center)
       : null;
 
   return (

@@ -32,7 +32,7 @@ function mapsWalkingUrl(coordinates: Coordinates): string {
   );
 }
 
-/** The venue grammar rides under the hero: one violet Go. */
+/** The journey controls ride under the hero: violet Go, then Compass. */
 function ActionsLead({ item }: { item: HistoryItem }) {
   const theme = useTheme();
   const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
@@ -55,6 +55,22 @@ function ActionsLead({ item }: { item: HistoryItem }) {
         <ThemedText type="smallBold" style={styles.goText}>
           Go · {formatWalkTime(walkSeconds)}
         </ThemedText>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        testID="compass-button"
+        onPress={() =>
+          router.push({
+            pathname: '/history/[pageId]/compass',
+            params: { pageId: String(item.pageId) },
+          })
+        }
+        style={({ pressed }) => [
+          styles.compass,
+          { backgroundColor: theme.backgroundElement },
+          pressed && { opacity: 0.85 },
+        ]}>
+        <ThemedText type="smallBold">Compass</ThemedText>
       </Pressable>
       <ThemedText type="small" themeColor="textSecondary" style={styles.leadMeta}>
         {item.source}
@@ -243,6 +259,11 @@ const styles = StyleSheet.create({
   },
   goText: {
     color: '#FFFFFF',
+  },
+  compass: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.six,
   },
   leadMeta: {
     flexShrink: 1,

@@ -60,7 +60,7 @@ const mockTags = fetchExistenceFacts as jest.Mock;
 const cacheMaps = (
   jest.requireMock('@/server/ai-cache') as { __maps: Map<string, Map<string, unknown>> }
 ).__maps;
-const listMap = () => cacheMaps.get('history-lists-v6')!;
+const listMap = () => cacheMaps.get('history-lists-v7')!;
 
 function story(pageId: number, title: string): HistoryItem {
   return {

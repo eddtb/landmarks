@@ -714,6 +714,7 @@ function ArticleBody({
   /** When set, a "Read the original article" link out follows the body. */
   sourceUrl?: string;
 }) {
+  const theme = useTheme();
   return (
     <View style={styles.article}>
       {label && (
@@ -728,9 +729,20 @@ function ArticleBody({
       ))}
       <ChapterFolds chapters={chapters} />
       {sourceUrl && (
-        <ExternalLink href={sourceUrl as `https://${string}`} style={styles.sourceLink}>
-          <ThemedText type="small" themeColor="accent">
+        <ExternalLink
+          href={sourceUrl as `https://${string}`}
+          accessibilityLabel="Read the original article on Wikipedia"
+          testID="original-article-link"
+          style={[
+            styles.originalArticleBlock,
+            styles.sourceLink,
+            { backgroundColor: theme.accentSoft },
+          ]}>
+          <ThemedText type="smallBold" themeColor="accent">
             Read the original article ›
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Wikipedia · source
           </ThemedText>
         </ExternalLink>
       )}
@@ -854,8 +866,10 @@ function DoorRow({
   return (
     <Pressable
       accessibilityRole="button"
+      testID="original-article-door"
       onPress={onToggle}
       style={({ pressed }) => [
+        styles.originalArticleBlock,
         styles.door,
         { backgroundColor: theme.accentSoft },
         pressed && { opacity: 0.85 },
@@ -972,6 +986,7 @@ const styles = StyleSheet.create({
   },
   sourceLink: {
     marginTop: Spacing.three,
+    marginBottom: Spacing.three,
   },
   partWrap: {
     paddingHorizontal: Spacing.four,
@@ -1029,15 +1044,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
-  door: {
+  originalArticleBlock: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginHorizontal: Spacing.four,
-    marginVertical: Spacing.three,
+    gap: Spacing.two,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three - 2,
+  },
+  door: {
+    marginHorizontal: Spacing.four,
+    marginVertical: Spacing.three,
   },
   sectionHead: {
     paddingHorizontal: Spacing.four,

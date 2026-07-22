@@ -29,6 +29,10 @@ export default function RootLayout() {
           name="history/[pageId]/go"
           options={{ presentation: 'modal', headerShown: false }}
         />
+        <Stack.Screen
+          name="history/[pageId]/compass"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
       </Stack>
       </OneDoorBackdrop>
       {/* The one door covers EVERYTHING (tab pill included) while

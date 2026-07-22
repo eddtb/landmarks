@@ -23,6 +23,11 @@ export type HistoryItem = {
    * Events live in the History archive, never the Nearby feed (Edd's
    * ruling), photo or no photo — you can't walk to a happening. */
   event?: true;
+  /** The article describes a broad geographic area (for example an
+   * area of London, district or town), not a destination with a
+   * meaningful point to walk to. It stays available to the History
+   * Gazetteer but never appears as a Nearby destination. */
+  area?: true;
   /** A plaque's resolved subject when the feed already tells that
    * story under its own card: the story screen opens the subject's
    * Gazetteer while the card keeps the honest inscription. */
