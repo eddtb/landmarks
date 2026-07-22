@@ -7,7 +7,14 @@ import { Coordinates } from '@/utils/geo';
 export type HistoryState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; items: HistoryItem[]; sparse?: boolean; stale?: boolean };
+  | {
+      status: 'ready';
+      items: HistoryItem[];
+      sparse?: boolean;
+      /** Meters the sparse search actually reached — the copy's truth. */
+      horizon?: number;
+      stale?: boolean;
+    };
 
 /** How long the server's photo leg gets before the one-shot upgrade
  * re-ask — comfortably past dressWithPhotos' 1.5s response deadline. */
@@ -53,9 +60,16 @@ export function useHistory(center: Coordinates): {
           prev.status === 'ready' &&
           prev.items === next.items &&
           prev.sparse === next.sparse &&
+          prev.horizon === next.horizon &&
           prev.stale === next.stale
             ? prev
-            : { status: 'ready', items: next.items, sparse: next.sparse, stale: next.stale }
+            : {
+                status: 'ready',
+                items: next.items,
+                sparse: next.sparse,
+                horizon: next.horizon,
+                stale: next.stale,
+              }
         );
         // A dressing feed (fresh from the server, or a persisted flagged
         // bucket surviving a relaunch) gets its ONE upgrade re-ask: the

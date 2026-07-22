@@ -1,6 +1,4 @@
-import { fetch } from 'expo/fetch';
-
-import { apiUrl } from '@/data/api';
+import { cachedGet } from '@/data/cached-get';
 import { storyParagraphs } from '@/utils/format';
 
 /** Anything with a story to tell: HistoryItem and WalkStop both fit. */
@@ -16,27 +14,22 @@ export type TellingSource = {
 const cache = new Map<number, string>();
 
 export async function fetchTelling(item: TellingSource): Promise<string> {
-  const cached = cache.get(item.pageId);
-  if (cached) {
-    return cached;
-  }
-
-  const response = await fetch(apiUrl('/api/telling'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      pageId: item.pageId,
-      title: item.title,
-      // IPA parentheticals are worst read aloud — clean before the writer sees them
-      extract: storyParagraphs(item.extract ?? '').join('\n'),
-      source: item.source,
-    }),
+  return cachedGet({
+    cache,
+    key: item.pageId,
+    path: '/api/telling',
+    label: 'Telling',
+    init: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pageId: item.pageId,
+        title: item.title,
+        // IPA parentheticals are worst read aloud — clean before the writer sees them
+        extract: storyParagraphs(item.extract ?? '').join('\n'),
+        source: item.source,
+      }),
+    },
+    unwrap: (body: { telling: string }) => body.telling,
   });
-  if (!response.ok) {
-    throw new Error(`Telling request failed with status ${response.status}`);
-  }
-
-  const body = (await response.json()) as { telling: string };
-  cache.set(item.pageId, body.telling);
-  return body.telling;
 }

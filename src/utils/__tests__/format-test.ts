@@ -2,6 +2,7 @@ import {
   hookEchoesTitle,
   formatDistance,
   formatWalkTime,
+  formatWalkTimeForMeters,
   storyHook,
   storyParagraphs,
 } from '@/utils/format';
@@ -24,6 +25,15 @@ describe('formatWalkTime', () => {
     expect(formatWalkTime(73)).toBe('1 min walk');
     expect(formatWalkTime(260)).toBe('4 min walk');
     expect(formatWalkTime(900)).toBe('15 min walk');
+  });
+});
+
+describe('formatWalkTimeForMeters', () => {
+  test('converts meters at walking pace (1.33 m/s)', () => {
+    // The sparse horizon's own number: 3000m is the "~38 min walk"
+    expect(formatWalkTimeForMeters(3000)).toBe('38 min walk');
+    expect(formatWalkTimeForMeters(1500)).toBe('19 min walk');
+    expect(formatWalkTimeForMeters(50)).toBe('1 min walk');
   });
 });
 

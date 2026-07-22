@@ -1,11 +1,9 @@
 import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
+import { ApiError, cachedGet } from '@/data/cached-get';
 import { persistedMap } from '@/data/persisted-cache';
-
-export type ArticleChapter = { title: string; paragraphs: string[] };
-export type ArticleImage = { imageUrl: string; credit: string };
-export type Article = { chapters: ArticleChapter[]; minutes: number; images: ArticleImage[] };
+import { Article } from '@/types/article';
 
 // Only the COMPLETE article persists (mirroring the server rule below:
 // a cached light article would hide the images behind it). Keyed by
@@ -75,15 +73,21 @@ export async function fetchArticleLight(title: string): Promise<Article> {
 
 /** Just the reading time, for the story screen's door. */
 export async function fetchArticleMinutes(title: string): Promise<number | null> {
-  const cached = metaCache.get(title);
-  if (cached !== undefined) {
-    return cached;
+  try {
+    return await cachedGet({
+      cache: metaCache,
+      key: title,
+      path: `/api/article?title=${encodeURIComponent(title)}&meta=1`,
+      label: 'Article meta',
+      unwrap: (body: { minutes: number }) => body.minutes,
+    });
+  } catch (error) {
+    // The deliberate soft policy: a server that can't answer returns
+    // null — the door still opens; it just doesn't promise a time.
+    // Network failures keep throwing, exactly as before the extraction.
+    if (error instanceof ApiError) {
+      return null;
+    }
+    throw error;
   }
-  const response = await fetch(apiUrl(`/api/article?title=${encodeURIComponent(title)}&meta=1`));
-  if (!response.ok) {
-    return null; // the door still opens; it just doesn't promise a time
-  }
-  const body = (await response.json()) as { minutes: number };
-  metaCache.set(title, body.minutes);
-  return body.minutes;
 }

@@ -1,4 +1,4 @@
-import { WalkingRoute } from '@/data/route-client';
+import { WalkingRoute } from '@/types/route';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /** Within this range of a maneuver point, the step counts as completed. */
@@ -65,6 +65,57 @@ function distanceToSegmentMeters(p: Coordinates, a: Coordinates, b: Coordinates)
   const t =
     lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, (-A.x * abX + -A.y * abY) / lengthSquared));
   return Math.hypot(A.x + t * abX, A.y + t * abY);
+}
+
+/**
+ * Corridor half-width for re-routing, in meters. Urban GPS jitter runs
+ * ~5-15m and a wrong-side-of-the-street fix adds up to ~20m more, so
+ * anything under ~30m flaps on noise alone. 35m also clears the ~27.8m
+ * origin bucket that used to drive a refetch every grid cell, while
+ * staying well under a short city block (~80m) — so a genuinely wrong
+ * turn still triggers a re-route within a few paces.
+ */
+export const RouteCorridorMeters = 35;
+
+/** The route currently guiding the user, and the destination it serves. */
+export type RouteCorridor = { route: WalkingRoute; target: Coordinates };
+
+/** Nearest distance in meters from the user to the route's polyline. */
+export function distanceToRouteMeters(route: WalkingRoute, user: Coordinates): number {
+  const points = route.coordinates;
+  if (points.length === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  let nearest = distanceMeters(user, points[0]);
+  for (let index = 0; index < points.length - 1; index++) {
+    const meters = distanceToSegmentMeters(user, points[index], points[index + 1]);
+    if (meters < nearest) {
+      nearest = meters;
+    }
+  }
+  return nearest;
+}
+
+/**
+ * Should this GPS tick re-ask the router? Only when there is no route
+ * yet, the destination changed, or the user has left the corridor —
+ * every on-route tick is judged locally, with no network involved.
+ */
+export function needsReroute(
+  corridor: RouteCorridor | null,
+  user: Coordinates,
+  target: Coordinates,
+): boolean {
+  if (!corridor) {
+    return true;
+  }
+  if (
+    corridor.target.latitude !== target.latitude ||
+    corridor.target.longitude !== target.longitude
+  ) {
+    return true;
+  }
+  return distanceToRouteMeters(corridor.route, user) > RouteCorridorMeters;
 }
 
 /**

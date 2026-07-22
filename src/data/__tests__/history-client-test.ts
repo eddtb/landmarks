@@ -60,7 +60,7 @@ store['cache-history-item-v1'] = JSON.stringify([
   ['7', { value: persistedItem(7, 'Persisted Detail'), at: Date.now() }],
 ]);
 
-const { fetchNearbyHistory, fetchStory, getCachedHistoryItem } =
+const { fetchNearbyHistory, fetchStory, getCachedHistoryItem, getStoriesAround } =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/data/history-client') as typeof import('@/data/history-client');
 
@@ -97,6 +97,7 @@ describe('fetchNearbyHistory', () => {
     const feed = await fetchNearbyHistory(freshCenter());
 
     expect(feed.sparse).toBe(true);
+    expect(feed.horizon).toBe(3000); // how far it looked rides along
     expect(feed.items).toHaveLength(1);
   });
 
@@ -194,6 +195,13 @@ describe('fetchNearbyHistory persistence (relaunch simulated by pre-import seedi
     // getCachedHistoryItem is sync; give hydration its microtasks
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(getCachedHistoryItem(7)?.title).toBe('Persisted Detail');
+  });
+
+  test("an expired offline bucket still answers the neighbourhood ask", () => {
+    // 50.3 was served offline-stale above and never revalidated — the
+    // feed on screen IS that expired bucket, so a story opened from it
+    // keeps its neighbourhood (peek's grade, not get's)
+    expect(getStoriesAround(3).map((story) => story.title)).toEqual(['Persisted Offline']);
   });
 });
 
@@ -365,5 +373,53 @@ describe('fetchNearbyHistory in-flight dedupe', () => {
     expect((await plain).items[0].pageId).toBe(42);
     expect((await forced).items[0].pageId).toBe(99); // the pull reached the network
     expect(await rider).toBe(await forced); // and served the concurrent plain caller
+  });
+});
+
+// getStoriesAround: the detail screen's neighbourhood ask (#202) —
+// the web of history links a story to the stories around it, not to
+// the whole persisted item store. (These mint buckets, so they run
+// last with the other minters — same cap note as above.)
+describe('getStoriesAround', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  test('answers with the containing feed — as the IDENTICAL stored array', async () => {
+    const neighbours = [
+      persistedItem(500, 'Thames Tunnel'),
+      persistedItem(501, 'Brunel Engine House'),
+    ];
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: neighbours }) });
+    const feed = await fetchNearbyHistory(freshCenter());
+
+    // Reference equality is the contract render-time memoization hangs on
+    expect(getStoriesAround(500)).toBe(feed.items);
+    expect(getStoriesAround(501)).toBe(feed.items);
+  });
+
+  test("a story in no cached feed gets the shared empty neighbourhood — never another town's stories", () => {
+    expect(getStoriesAround(987654)).toHaveLength(0);
+    // One stable [] for every stranger — identity again, not a fresh array
+    expect(getStoriesAround(987654)).toBe(getStoriesAround(123456));
+  });
+
+  test('a story in two overlapping buckets answers from the newest-minted one', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [persistedItem(600, 'Shared Story'), persistedItem(601, 'Old Neighbour')],
+      }),
+    });
+    await fetchNearbyHistory(freshCenter());
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [persistedItem(600, 'Shared Story'), persistedItem(602, 'New Neighbour')],
+      }),
+    });
+    await fetchNearbyHistory(freshCenter());
+
+    const titles = getStoriesAround(600).map((story) => story.title);
+    expect(titles).toContain('New Neighbour');
+    expect(titles).not.toContain('Old Neighbour');
   });
 });

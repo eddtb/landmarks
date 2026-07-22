@@ -11,7 +11,7 @@ import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
 import { fetchExistenceTags } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
-import { HistoryItem } from '@/types/history';
+import { HistoryFeed, HistoryItem } from '@/types/history';
 import { wikiTitleFromUrl } from '@/utils/format';
 import { distanceMeters } from '@/utils/geo';
 
@@ -140,12 +140,18 @@ export async function GET(request: Request) {
     items: Awaited<ReturnType<typeof dressWithPhotos>>,
     sparse?: boolean,
     dressing?: boolean
-  ) =>
-    Response.json({
+  ) => {
+    // The shared feed shape (src/types/history.ts): the horizon rides
+    // with sparse so the client derives its "up to ~N min walk" copy
+    // from what this compose actually searched — a radius change here
+    // can no longer make the count line lie.
+    const feed: HistoryFeed = {
       items,
       ...(sparse ? { sparse: true, horizon: SparseRadiusMeters } : {}),
       ...(dressing ? { dressing: true } : {}),
-    });
+    };
+    return Response.json(feed);
+  };
 
   const key = bucketKey(lat, lng);
   if (!fresh) {

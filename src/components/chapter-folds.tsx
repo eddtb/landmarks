@@ -3,8 +3,8 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { ArticleChapter } from '@/data/article-client';
 import { useTheme } from '@/hooks/use-theme';
+import { ArticleChapter } from '@/types/article';
 
 /**
  * The fold list (mock direction B, now shared): chapters collapsed to

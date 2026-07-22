@@ -1,3 +1,4 @@
+import { diskBackedMap } from '@/server/ai-cache';
 import { fixturesEnabled, readFixture } from '@/server/fixtures';
 import { fetchStoryByPageId } from '@/server/wikipedia';
 import { HistoryItem, isWikiPageId } from '@/types/history';
@@ -13,6 +14,19 @@ import { HistoryItem, isWikiPageId } from '@/types/history';
  * shares keep their openplaques URL instead. Wikipedia is keyless and
  * unmetered — no budget table entry.
  */
+
+// 7 days: the payload is Wikipedia page metadata (title, intro
+// extract, thumbnail, url, coordinates) — the same HistoryItem the
+// client already persists for 7 days (history-client.ts itemCache), so
+// the server holding it any shorter just re-asks Wikipedia for data
+// every device is happy to keep a week, and any longer would outlive
+// the client's own trust in it.
+const StoryTtlMs = 7 * 24 * 60 * 60 * 1000;
+// Only real items are ever stored — a 404 (missing page, synthetic
+// id) or an upstream failure is a moment's verdict, not a fact about
+// the page, and must never be replayed for a week.
+const storyCache = diskBackedMap<{ item: HistoryItem; at: number }>('stories-v1');
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const pageIdParam = url.searchParams.get('pageId');
@@ -39,11 +53,17 @@ export async function GET(request: Request) {
     return Response.json({ error: 'No story' }, { status: 404 });
   }
 
+  const cached = storyCache.get(String(pageId));
+  if (cached && Date.now() - cached.at < StoryTtlMs) {
+    return Response.json({ item: cached.item });
+  }
+
   try {
     const item = await fetchStoryByPageId(pageId);
     if (!item) {
       return Response.json({ error: 'No story' }, { status: 404 });
     }
+    storyCache.set(String(pageId), { item, at: Date.now() });
     return Response.json({ item });
   } catch (error) {
     console.error('Story fetch failed:', error);

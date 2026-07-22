@@ -11,7 +11,7 @@ import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { fetchStory, getCachedHistoryItem, getCachedHistoryItems } from '@/data/history-client';
+import { fetchStory, getCachedHistoryItem, getStoriesAround } from '@/data/history-client';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem, isWikiPageId } from '@/types/history';
 import { formatWalkTime, storyParagraphs } from '@/utils/format';
@@ -154,7 +154,14 @@ export default function HistoryDetailScreen() {
     );
   }
 
-  const others = getCachedHistoryItems().filter((story) => story.pageId !== item.pageId);
+  // The web of history, bounded (#202): link candidates are the feed
+  // bucket this story belongs to — its actual neighbourhood — never
+  // the whole persisted item store (a title cached in another town
+  // last week is not a door here, and 500 titles regex-scanning every
+  // paragraph was the planner's bill). getStoriesAround answers with
+  // a stable array, so this derivation memoizes instead of defeating
+  // the compiler with a fresh identity per render.
+  const others = getStoriesAround(item.pageId).filter((story) => story.pageId !== item.pageId);
 
   return (
     <ThemedView style={styles.container} testID="story-screen">

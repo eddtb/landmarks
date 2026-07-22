@@ -64,6 +64,9 @@ export type PersistedMap<V> = {
   set(key: string, value: V): void;
   /** All live (within-TTL) values. */
   values(): V[];
+  /** Every value, even expired — peek's placeholder/offline grade,
+   * for callers scanning a bounded store. */
+  peekValues(): V[];
   /** Force any pending write-back now. Test seam / teardown aid. */
   flush(): Promise<void>;
 };
@@ -230,6 +233,9 @@ export function persistedMap<V>(
       return [...map.values()]
         .filter((entry) => now - entry.at <= ttlMs)
         .map((entry) => entry.value);
+    },
+    peekValues() {
+      return [...map.values()].map((entry) => entry.value);
     },
     async flush() {
       if (timer) {

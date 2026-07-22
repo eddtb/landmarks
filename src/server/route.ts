@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { makeBudget } from '@/server/spend-budget';
+import { WalkingRoute } from '@/types/route';
 import { Coordinates } from '@/utils/geo';
 
 /**
@@ -20,19 +21,6 @@ const budget = makeBudget({
   // Counts calls, not dollars — trip well before being a bad guest
   defaultDailyUsd: 300,
 });
-
-export type RouteManeuver = {
-  instruction: string;
-  meters: number;
-  beginIndex: number;
-};
-
-export type WalkingRoute = {
-  coordinates: Coordinates[];
-  maneuvers: RouteManeuver[];
-  meters: number;
-  seconds: number;
-};
 
 /**
  * Pure and unit-tested: Valhalla ships its shape as a precision-6

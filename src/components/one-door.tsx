@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { WanderLine } from '@/components/wander-line';
 import { BrandPurple, BrandWarm, BrandWarmInk, Spacing } from '@/constants/theme';
 import { requestLocationPermission, useLocationPermission } from '@/hooks/use-location';
 
@@ -68,33 +69,21 @@ export function resetOneDoorForTests() {
   readStarted = false;
 }
 
-// The wander line, drawn with primitives (react-native-svg is a native
-// module — rebuild cost — and the dependency diet forbids it when
-// Views suffice). A serpentine of alternating semicircle half-arcs:
-// each is a View half the arc span tall with only its outer corners
-// rounded and the flat side's border removed. A semicircle's ends run
-// vertical, so an over-arc joined to an under-arc at the shared edge
-// is C1-continuous — a smooth wave, no crossings, no chain-link
-// lenses.
+// The gate's cut of the shared wander line (src/components/wander-line
+// — extracted from here, pixel-verified in place)
 const ArcSpan = 110; // horizontal span of one half-arc
 const ArcStroke = 14;
 const ArcCount = 6; // covers the widest phone from off-left to off-right
 
 function WanderRun({ top, left, opacity }: { top: number; left: number; opacity: number }) {
   return (
-    <View style={[styles.run, { top, left, opacity }]}>
-      {Array.from({ length: ArcCount }, (_, index) => (
-        <View
-          key={index}
-          style={[
-            index % 2 === 0 ? styles.arcOver : styles.arcUnder,
-            // Overlap by the stroke so the vertical arc-ends share
-            // their pixels — one continuous line, not butted segments
-            index > 0 && { marginLeft: -ArcStroke },
-          ]}
-        />
-      ))}
-    </View>
+    <WanderLine
+      arcSpan={ArcSpan}
+      stroke={ArcStroke}
+      count={ArcCount}
+      color="#FFFFFF"
+      style={[styles.run, { top, left, opacity }]}
+    />
   );
 }
 
@@ -102,7 +91,7 @@ function WanderRun({ top, left, opacity }: { top: number; left: number; opacity:
  * sits fully below the solid band in the same phase, so the two
  * parallel and never cross. Both enter from the left edge and exit
  * right, behind everything. */
-function WanderLine() {
+function GateWanderLines() {
   return (
     <View
       style={styles.wander}
@@ -134,7 +123,7 @@ export function OneDoor({ onEnable, onNotNow }: Props) {
 
   return (
     <View testID="one-door" style={styles.screen}>
-      <WanderLine />
+      <GateWanderLines />
       <View style={[styles.content, { paddingBottom: insets.bottom + Spacing.five }]}>
         <ThemedText type="eyebrow" style={styles.brandmark}>
           VENTURE
@@ -262,30 +251,6 @@ const styles = StyleSheet.create({
   },
   run: {
     position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    height: ArcSpan,
-  },
-  // The over-arc — rises, crests, falls; its ends run vertical
-  arcOver: {
-    width: ArcSpan,
-    height: ArcSpan / 2,
-    borderTopLeftRadius: ArcSpan / 2,
-    borderTopRightRadius: ArcSpan / 2,
-    borderColor: '#FFFFFF',
-    borderWidth: ArcStroke,
-    borderBottomWidth: 0,
-  },
-  // The under-arc — the mirror, dropped half an arc so the ends meet
-  arcUnder: {
-    width: ArcSpan,
-    height: ArcSpan / 2,
-    marginTop: ArcSpan / 2,
-    borderBottomLeftRadius: ArcSpan / 2,
-    borderBottomRightRadius: ArcSpan / 2,
-    borderColor: '#FFFFFF',
-    borderWidth: ArcStroke,
-    borderTopWidth: 0,
   },
   // Bottom-anchored, per the mock: the copy and actions sit in the
   // lower half, under the line's run
