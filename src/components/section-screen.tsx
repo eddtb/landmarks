@@ -21,8 +21,10 @@ import { HistoryCard } from '@/components/history-card';
 import { useOneDoorDismissed } from '@/components/one-door';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { DrawingWanderLine, WanderLine } from '@/components/wander-line';
+import { BrandWarmInk, Spacing } from '@/constants/theme';
 import { useAreaName } from '@/hooks/use-area-name';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { setPin, usePin } from '@/hooks/use-pin';
@@ -55,6 +57,21 @@ export function standingOn(
  * The Storyteller's home: location gating, the NEARBY header with the
  * locator dot, and the stories of where you stand.
  */
+
+/** The two long cold loads (approved mock 2): the wander line draws
+ * itself — the walked part solid, the path ahead faint — instead of an
+ * anonymous spinner. Every short wait elsewhere keeps the spinner. */
+function ColdLoad({ areaName }: { areaName: string | null }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.centered} testID="cold-load">
+      <DrawingWanderLine arcSpan={64} stroke={7} count={4} color={theme.accent} />
+      <ThemedText type="small" themeColor="textSecondary">
+        {areaName ? `Finding the stories of ${areaName}…` : 'Finding the stories near you…'}
+      </ThemedText>
+    </View>
+  );
+}
 
 export function LocationGate({ children }: { children: (props: GateProps) => ReactNode }) {
   const { status, coordinates } = useLocation();
@@ -229,7 +246,11 @@ export function StoriesScreen() {
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <SectionHeader {...gate} eyebrow="Nearby" />
-            <HistoryBody center={gate.center} exploring={gate.exploring} />
+            <HistoryBody
+              center={gate.center}
+              exploring={gate.exploring}
+              locationDenied={gate.locationDenied}
+            />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -273,11 +294,7 @@ function GazetteerBody({ center }: { center: Coordinates }) {
   }, [refresh]);
 
   if (state.status === 'loading') {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-      </View>
-    );
+    return <ColdLoad areaName={areaName} />;
   }
   if (state.status === 'error') {
     return (
@@ -304,10 +321,18 @@ function GazetteerBody({ center }: { center: Coordinates }) {
   );
 }
 
-/** The magic moment: a story within arm's reach leads the screen. */
+/** The magic moment: a story within arm's reach leads the screen —
+ * and the single surface that earns the warm accent (approved mock 3).
+ * Purple is the app's voice; yellow is its rarity marker. Same shape,
+ * same copy — only the border, eyebrow and ground go warm. */
 export function StandingOnIt({ item, center }: { item: HistoryItem; center: Coordinates }) {
   const theme = useTheme();
+  const scheme = useColorScheme();
   const meters = Math.round(distanceMeters(center, item.coordinates));
+  // The mock's --warm-ink: in dark the eyebrow IS the warm accent; in
+  // light it wears the warm's dark ink — accentWarm on warmSoft is
+  // yellow-on-yellow there and can't be read
+  const eyebrowColor = scheme === 'dark' ? theme.accentWarm : BrandWarmInk;
   return (
     <Pressable
       accessibilityRole="button"
@@ -316,10 +341,10 @@ export function StandingOnIt({ item, center }: { item: HistoryItem; center: Coor
       }
       style={({ pressed }) => [
         styles.standing,
-        { backgroundColor: theme.accentSoft, borderColor: theme.accent },
+        { backgroundColor: theme.warmSoft, borderColor: theme.accentWarm },
         pressed && { opacity: 0.9 },
       ]}>
-      <ThemedText type="eyebrow" themeColor="accent">
+      <ThemedText type="eyebrow" style={{ color: eyebrowColor }}>
         You&apos;re standing on it
       </ThemedText>
       <ThemedText type="headline">{item.title}</ThemedText>
@@ -399,13 +424,18 @@ const LegacySparseHorizonMeters = 3000;
 export function HistoryBody({
   center,
   exploring,
+  locationDenied,
 }: {
   center: Coordinates;
   exploring?: boolean;
+  /** No real fix — the center is the fallback, not the user. */
+  locationDenied?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
+  const areaName = useAreaName(center);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -414,11 +444,7 @@ export function HistoryBody({
   }, [refresh]);
 
   if (state.status === 'loading') {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-      </View>
-    );
+    return <ColdLoad areaName={areaName} />;
   }
 
   if (state.status === 'error') {
@@ -439,9 +465,14 @@ export function HistoryBody({
   // unphotographed live in the Gazetteer next door.
   const items = state.items.filter((item) => item.thumbnailUrl && !item.pastTag);
 
-  // No standing-on while exploring: the pinned center is somewhere the
-  // user is NOT, and "16 m from you" about a town 300 miles away lies
-  const standing = state.status === 'ready' && !exploring ? standingOn(state.items, center) : null;
+  // No standing-on unless the center is a real GPS fix: while
+  // exploring the pinned center is somewhere the user is NOT, and with
+  // location denied the center is the fallback — "right here" about
+  // Charing Cross from anywhere on Earth lies (#208)
+  const standing =
+    state.status === 'ready' && !exploring && !locationDenied
+      ? standingOn(state.items, center)
+      : null;
 
   return (
     <>
@@ -491,9 +522,15 @@ export function HistoryBody({
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-            No recorded history right here — wander a little.
-          </ThemedText>
+          // Mock 1: the drawing agrees with the words — a quiet accent
+          // wander line above the invitation. Static; an empty state
+          // shouldn't fidget.
+          <View style={styles.empty}>
+            <WanderLine arcSpan={52} stroke={6} count={4} color={theme.accent} />
+            <ThemedText type="small" themeColor="textSecondary" style={styles.emptyCopy}>
+              No recorded history right here — wander a little.
+            </ThemedText>
+          </View>
         }
       />
     </>
@@ -591,8 +628,12 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   empty: {
-    textAlign: 'center',
+    alignItems: 'center',
     paddingTop: Spacing.six,
+    gap: Spacing.three,
+  },
+  emptyCopy: {
+    textAlign: 'center',
   },
   search: {
     borderRadius: Spacing.three - Spacing.one,
