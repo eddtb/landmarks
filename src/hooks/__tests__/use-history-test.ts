@@ -5,9 +5,11 @@ import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 const mockFetchNearbyHistory = jest.fn();
+const mockHasCachedFeed = jest.fn().mockReturnValue(false);
 
 jest.mock('@/data/history-client', () => ({
   fetchNearbyHistory: (...args: unknown[]) => mockFetchNearbyHistory(...args),
+  hasCachedFeed: (...args: unknown[]) => mockHasCachedFeed(...args),
 }));
 
 const item = {
@@ -91,5 +93,50 @@ describe('useHistory setState bail', () => {
     await act(() => result.current.refresh());
     expect(result.current.state).not.toBe(before);
     expect(result.current.state).toMatchObject({ status: 'ready', stale: true });
+  });
+});
+
+describe('useHistory loading honesty on a bucket jump', () => {
+  beforeEach(() => {
+    mockFetchNearbyHistory.mockReset();
+    mockHasCachedFeed.mockReset();
+    mockHasCachedFeed.mockReturnValue(false);
+  });
+
+  test('jumping to an uncached bucket drops to loading — never the old feed under a new header', async () => {
+    mockFetchNearbyHistory.mockResolvedValue({ items: [item] });
+    const { result, rerender } = await renderHook(
+      ({ center }: { center: Coordinates }) => useHistory(center),
+      { initialProps: { center: { latitude: 51.5041, longitude: -0.0902 } } }
+    );
+    await waitFor(() => expect(result.current.state.status).toBe('ready'));
+
+    // A manual pin: Greenwich → Alnwick, nothing cached there, and the
+    // fetch takes its 10-20 seconds — the window the probe caught
+    mockFetchNearbyHistory.mockReturnValue(new Promise(() => {}));
+    await rerender({ center: { latitude: 55.4135, longitude: -1.7055 } });
+
+    expect(result.current.state.status).toBe('loading');
+  });
+
+  test('jumping to a cached bucket hands over seamlessly — ready throughout', async () => {
+    mockFetchNearbyHistory.mockResolvedValue({ items: [item] });
+    const { result, rerender } = await renderHook(
+      ({ center }: { center: Coordinates }) => useHistory(center),
+      { initialProps: { center: { latitude: 51.5041, longitude: -0.0902 } } }
+    );
+    await waitFor(() => expect(result.current.state.status).toBe('ready'));
+
+    // The new bucket has a feed to paint (fresh or expired placeholder)
+    mockHasCachedFeed.mockReturnValue(true);
+    const cachedFeed = { items: [{ ...item, pageId: 43, title: 'Alnwick Castle' }] };
+    mockFetchNearbyHistory.mockResolvedValue(cachedFeed);
+    await rerender({ center: { latitude: 55.4135, longitude: -1.7055 } });
+
+    // Never a loading flash: the state stays ready across the handover
+    expect(result.current.state.status).toBe('ready');
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({ status: 'ready', items: cachedFeed.items })
+    );
   });
 });

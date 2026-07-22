@@ -25,6 +25,7 @@ import { Spacing } from '@/constants/theme';
 import { useAreaName } from '@/hooks/use-area-name';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
+import { setPin, usePin } from '@/hooks/use-pin';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { featuredStories } from '@/utils/featured';
@@ -57,9 +58,12 @@ export function standingOn(
 
 export function LocationGate({ children }: { children: (props: GateProps) => ReactNode }) {
   const { status, coordinates, requestPermission } = useLocation();
-  // The pin remembers how it was dropped: blind (no fix at the time —
-  // an emergency hatch) or sighted (deliberate exploring with GPS live).
-  const [pin, setPin] = useState<{ center: Coordinates; blind: boolean } | null>(null);
+  // ONE pin app-wide (see use-pin): both tabs' gates read the same
+  // store, so pinning on Nearby pins History too, and either tab's
+  // "Back to near me" releases both. The pin remembers how it was
+  // dropped: blind (no fix at the time — an emergency hatch) or
+  // sighted (deliberate exploring with GPS live).
+  const pin = usePin();
 
   const onManualCenter = useCallback(
     (center: Coordinates) => setPin({ center, blind: !coordinates }),
@@ -215,7 +219,7 @@ export function StoriesScreen() {
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <SectionHeader {...gate} eyebrow="Nearby" />
-            <HistoryBody center={gate.center} />
+            <HistoryBody center={gate.center} exploring={gate.exploring} />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -375,7 +379,13 @@ export function FeaturedRail({
   );
 }
 
-export function HistoryBody({ center }: { center: Coordinates }) {
+export function HistoryBody({
+  center,
+  exploring,
+}: {
+  center: Coordinates;
+  exploring?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
@@ -412,7 +422,9 @@ export function HistoryBody({ center }: { center: Coordinates }) {
   // unphotographed live in the Gazetteer next door.
   const items = state.items.filter((item) => item.thumbnailUrl && !item.pastTag);
 
-  const standing = state.status === 'ready' ? standingOn(state.items, center) : null;
+  // No standing-on while exploring: the pinned center is somewhere the
+  // user is NOT, and "16 m from you" about a town 300 miles away lies
+  const standing = state.status === 'ready' && !exploring ? standingOn(state.items, center) : null;
 
   return (
     <>

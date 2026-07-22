@@ -63,6 +63,15 @@ export type HistoryFetchResult = HistoryFeed & {
   revalidate?: Promise<HistoryFetchResult>;
 };
 
+/** Synchronous probe: does this bucket hold anything to paint right
+ * now — a fresh feed or an expired placeholder? useHistory asks it on
+ * a bucket change to decide between a seamless handover and an honest
+ * loading state. (Before hydration resolves it can under-report;
+ * that errs toward a spinner, never toward the wrong area's feed.) */
+export function hasCachedFeed(center: Coordinates): boolean {
+  return listCache.peek(cacheKey(center)) !== undefined;
+}
+
 export async function fetchNearbyHistory(
   center: Coordinates,
   options?: { forceRefresh?: boolean }

@@ -12,9 +12,12 @@ import { Pressable, Text } from 'react-native';
 import {
   GateProps,
   HistoryArchiveScreen,
+  HistoryBody,
   LocationGate,
   StoriesScreen,
 } from '@/components/section-screen';
+import { clearPin } from '@/hooks/use-pin';
+import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 const greenwich: Coordinates = { latitude: 51.4826, longitude: -0.0077 };
@@ -35,8 +38,9 @@ jest.mock('expo-location', () => ({
   geocodeAsync: (...args: unknown[]) => mockGeocodeAsync(...args),
 }));
 
+const mockUseHistory = jest.fn();
 jest.mock('@/hooks/use-history', () => ({
-  useHistory: () => ({ state: { status: 'ready', items: [] }, refresh: jest.fn() }),
+  useHistory: (...args: unknown[]) => mockUseHistory(...args),
 }));
 
 // The Gazetteer hero is its own tested surface — a stub keeps these
@@ -64,7 +68,10 @@ function gpsDenied() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // The pin store is module-level and app-wide — start every test unpinned
+  clearPin();
   mockGeocodeAsync.mockResolvedValue([{ latitude: alnwick.latitude, longitude: alnwick.longitude }]);
+  mockUseHistory.mockReturnValue({ state: { status: 'ready', items: [] }, refresh: jest.fn() });
 });
 
 /** Drive the header's search: open via the title, type, submit. */
@@ -210,6 +217,80 @@ describe('the Exploring header (StoriesScreen)', () => {
     await waitFor(() => expect(screen.getByText('Exploring')).toBeOnTheScreen());
     expect(screen.getByText('Alnwick')).toBeOnTheScreen();
     expect(screen.getByText('Back to near me')).toBeOnTheScreen();
+  });
+});
+
+describe('the pin is shared across tabs', () => {
+  // Both tabs stay mounted in the real app — render both against the
+  // one store. The first cut kept the pin per-gate and these screens
+  // disagreed on where the user was (sim-caught); this class of test
+  // exists so that can never pass again.
+  const bothTabs = () => (
+    <>
+      <StoriesScreen />
+      <HistoryArchiveScreen />
+    </>
+  );
+
+  test('a pin dropped on Nearby pins History too — same center, both headers', async () => {
+    gpsLive();
+    const screen = await render(bothTabs());
+    // GPS live: only Nearby has a header to search from
+    expect(screen.getAllByTestId('area-title')).toHaveLength(1);
+
+    await searchFor(screen, 'Alnwick');
+
+    await waitFor(() => expect(screen.getAllByText('Exploring')).toHaveLength(2));
+    expect(screen.getAllByText('Alnwick')).toHaveLength(2); // the SAME pinned center
+    expect(screen.getAllByText('Back to near me')).toHaveLength(2);
+  });
+
+  test('Back to near me on one tab releases both', async () => {
+    gpsLive();
+    const screen = await render(bothTabs());
+    await searchFor(screen, 'Alnwick');
+    await waitFor(() => expect(screen.getAllByText('Back to near me')).toHaveLength(2));
+
+    // Release from the History tab — the far end from where it was set
+    await fireEvent.press(screen.getAllByText('Back to near me')[1]);
+
+    expect(screen.queryByText('Exploring')).toBeNull();
+    expect(screen.queryByText('Back to near me')).toBeNull();
+    expect(screen.getByText('Nearby')).toBeOnTheScreen();
+    expect(screen.getByText('Greenwich')).toBeOnTheScreen();
+  });
+});
+
+describe('standing-on suppression while exploring', () => {
+  // A story right on top of the pinned center — underfoot only if the
+  // user were actually there
+  const townHall: HistoryItem = {
+    pageId: 7,
+    title: 'Alnwick Town Hall',
+    coordinates: { latitude: alnwick.latitude, longitude: alnwick.longitude },
+    distanceMeters: 5,
+    thumbnailUrl: 'https://img/hall.jpg',
+    url: 'https://x',
+    source: 'Wikipedia',
+  };
+
+  test('pinned: no "standing on it" — the user is not there', async () => {
+    mockUseHistory.mockReturnValue({
+      state: { status: 'ready', items: [townHall] },
+      refresh: jest.fn(),
+    });
+    const screen = await render(<HistoryBody center={alnwick} exploring />);
+    expect(screen.queryByText(/standing on it/)).toBeNull();
+    expect(screen.getByText('Alnwick Town Hall')).toBeOnTheScreen();
+  });
+
+  test('unpinned: the banner leads the screen as ever', async () => {
+    mockUseHistory.mockReturnValue({
+      state: { status: 'ready', items: [townHall] },
+      refresh: jest.fn(),
+    });
+    const screen = await render(<HistoryBody center={alnwick} />);
+    expect(screen.getByText(/standing on it/)).toBeOnTheScreen();
   });
 });
 
