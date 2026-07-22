@@ -18,6 +18,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChapterFolds } from '@/components/chapter-folds';
+import { ExternalLink } from '@/components/external-link';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { ThemedText } from '@/components/themed-text';
@@ -253,6 +254,7 @@ export function AreaGazetteer({
   onRefresh,
   lead,
   empty,
+  sourceUrl,
 }: {
   areaName: string | null;
   /** False while the area-name cascade is still resolving: a null
@@ -271,6 +273,11 @@ export function AreaGazetteer({
   /** Rendered when NO article exists (never while loading) — a place
    * screen's fallback story. Areas keep the default empty text. */
   empty?: ReactNode;
+  /** The original article's URL. When an unretold place shows the
+   * article in full, this adds a "Read the original article" link out
+   * to the source (Wikipedia has more than we parse — the reference
+   * apparatus, every image). Areas don't carry one, so it's optional. */
+  sourceUrl?: string;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -533,12 +540,19 @@ export function AreaGazetteer({
         );
       case 'fallback-article':
         // No retelling earned this place (a short article, under the
-        // MinSourceChars gate): the original stands AS the story. It
-        // must say so — an unlabelled article body under the hero reads
-        // as a retelling that failed to load (device-triaged: the
-        // Spanish Galleon). The eyebrow mirrors the retold banner's
-        // frame so a stub screen looks deliberate, not broken.
-        return <ArticleBody intro={intro} chapters={chapters} label="From Wikipedia" />;
+        // MinSourceChars gate): the original stands AS the story, in
+        // full. The eyebrow frames it as deliberate (not a retelling
+        // that failed to load — device-triaged: the Spanish Galleon),
+        // and the link out reaches the source, which holds more than we
+        // parse (the reference apparatus, every image).
+        return (
+          <ArticleBody
+            intro={intro}
+            chapters={chapters}
+            label="From Wikipedia"
+            sourceUrl={sourceUrl}
+          />
+        );
       case 'original':
         // The original behind the door: the door itself already labels
         // it, so no eyebrow here.
@@ -692,10 +706,13 @@ function ArticleBody({
   intro,
   chapters,
   label,
+  sourceUrl,
 }: {
   intro: string[];
   chapters: ArticleChapter[];
   label?: string;
+  /** When set, a "Read the original article" link out follows the body. */
+  sourceUrl?: string;
 }) {
   return (
     <View style={styles.article}>
@@ -710,6 +727,13 @@ function ArticleBody({
         </ThemedText>
       ))}
       <ChapterFolds chapters={chapters} />
+      {sourceUrl && (
+        <ExternalLink href={sourceUrl as `https://${string}`} style={styles.sourceLink}>
+          <ThemedText type="small" themeColor="accent">
+            Read the original article ›
+          </ThemedText>
+        </ExternalLink>
+      )}
     </View>
   );
 }
@@ -945,6 +969,9 @@ const styles = StyleSheet.create({
   },
   articleLabel: {
     marginBottom: Spacing.three,
+  },
+  sourceLink: {
+    marginTop: Spacing.three,
   },
   partWrap: {
     paddingHorizontal: Spacing.four,

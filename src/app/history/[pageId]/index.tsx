@@ -198,6 +198,7 @@ export default function HistoryDetailScreen() {
         allStories={others}
         refreshing={false}
         onRefresh={() => {}}
+        sourceUrl={item.url}
         lead={
           <>
             <ActionsLead item={item} />

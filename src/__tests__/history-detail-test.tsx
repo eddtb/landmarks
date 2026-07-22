@@ -66,11 +66,14 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
     expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
 
-    // No retelling exists → the original article stands as the story:
-    // intro first, then the folds (first chapter open, the rest peeking)
+    // No retelling exists → the original article stands as the story
+    // IN FULL: intro first, then the folds (first chapter open, the
+    // rest peeking) — not shortened behind a door
     expect(await screen.findByText('The intro, the surprising true thing.')).toBeOnTheScreen();
     expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
     expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen();
+    // …and a link out to the source, which holds more than we parse
+    expect(screen.getByText('Read the original article ›')).toBeOnTheScreen();
   });
 
   test('a place with NO article of its own keeps the extract story', async () => {
