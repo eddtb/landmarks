@@ -13,7 +13,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
-import { ONE_DOOR_DISMISSED_KEY, OneDoorGate, resetOneDoorForTests } from '@/components/one-door';
+import {
+  ONE_DOOR_DISMISSED_KEY,
+  OneDoorBackdrop,
+  OneDoorGate,
+  resetOneDoorForTests,
+} from '@/components/one-door';
 import { StoriesScreen } from '@/components/section-screen';
 import { clearPin } from '@/hooks/use-pin';
 
@@ -62,7 +67,9 @@ function permissionDetermined(status: 'granted' | 'denied') {
 /** The root gate next to the app, the way _layout.tsx mounts it. */
 const atRoot = () => (
   <>
-    <Text>the app underneath</Text>
+    <OneDoorBackdrop>
+      <Text>the app underneath</Text>
+    </OneDoorBackdrop>
     <OneDoorGate />
   </>
 );
@@ -82,8 +89,11 @@ describe('the root overlay (OneDoorGate)', () => {
     const screen = await render(atRoot());
 
     expect(await screen.findByTestId('one-door')).toBeOnTheScreen();
-    // The app still renders underneath…
-    expect(screen.getByText('the app underneath')).toBeOnTheScreen();
+    // The app still renders underneath (hidden from the a11y tree by
+    // the backdrop, hence includeHiddenElements)…
+    expect(
+      screen.getByText('the app underneath', { includeHiddenElements: true })
+    ).toBeOnTheScreen();
     // …but the overlay is a full-screen absolute layer above the tab
     // navigator (zIndex 500, under only the splash's 1000) — nothing
     // beneath it, the floating pill included, is reachable
@@ -102,6 +112,36 @@ describe('the root overlay (OneDoorGate)', () => {
     ).toBeOnTheScreen();
     expect(screen.getByTestId('one-door-enable')).toBeOnTheScreen();
     expect(screen.getByTestId('one-door-not-now')).toBeOnTheScreen();
+  });
+
+  test('the door is modal to the accessibility tree, and the app behind leaves it', async () => {
+    permissionUndetermined();
+    const screen = await render(atRoot());
+
+    expect(await screen.findByTestId('one-door')).toBeOnTheScreen();
+    // iOS: without this the tab items keep their bounds under the
+    // gate — taps can't reach them but VoiceOver focus could
+    expect(screen.getByTestId('one-door-overlay')).toHaveProp('accessibilityViewIsModal', true);
+    // The backdrop hides everything behind the door on both platforms
+    // (it hides itself from queries too — hence includeHiddenElements)
+    const backdrop = screen.getByTestId('one-door-backdrop', { includeHiddenElements: true });
+    expect(backdrop).toHaveProp('accessibilityElementsHidden', true);
+    expect(backdrop).toHaveProp('importantForAccessibility', 'no-hide-descendants');
+  });
+
+  test('door dismissed: the backdrop returns the app to the accessibility tree', async () => {
+    await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
+    permissionUndetermined();
+
+    const screen = await render(atRoot());
+
+    await waitFor(() =>
+      expect(AsyncStorage.getItem).toHaveBeenCalledWith(ONE_DOOR_DISMISSED_KEY)
+    );
+    expect(screen.queryByTestId('one-door')).toBeNull();
+    const backdrop = screen.getByTestId('one-door-backdrop');
+    expect(backdrop).toHaveProp('accessibilityElementsHidden', false);
+    expect(backdrop).toHaveProp('importantForAccessibility', 'auto');
   });
 
   test('"Enable location" is the one permission-request path', async () => {

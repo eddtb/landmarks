@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useSyncExternalStore } from 'react';
+import { PropsWithChildren, useEffect, useSyncExternalStore } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -183,20 +183,53 @@ export function OneDoor({ onEnable, onNotNow }: Props) {
  * path — nothing else asks iOS, so no double prompts.
  */
 export function OneDoorGate() {
-  const permission = useLocationPermission();
-  const doorDismissed = useOneDoorDismissed();
+  const doorUp = useOneDoorVisible();
 
-  if (permission?.status !== 'undetermined' || doorDismissed !== false) {
+  if (!doorUp) {
     return null;
   }
   return (
-    <View testID="one-door-overlay" style={styles.overlay}>
+    <View
+      testID="one-door-overlay"
+      style={styles.overlay}
+      // Modal to the accessibility tree (iOS): without it the tab
+      // items keep their bounds under the gate — taps can't reach
+      // them but VoiceOver focus could (sim-caught)
+      accessibilityViewIsModal>
       <OneDoor
         onEnable={() => {
           requestLocationPermission();
         }}
         onNotNow={dismissOneDoor}
       />
+    </View>
+  );
+}
+
+/** Whether the door is up — the gate renders on it, and the backdrop
+ * hides the app behind it from the accessibility tree with it. */
+export function useOneDoorVisible(): boolean {
+  const permission = useLocationPermission();
+  const doorDismissed = useOneDoorDismissed();
+  return permission?.status === 'undetermined' && doorDismissed === false;
+}
+
+/**
+ * Wraps the app the door covers (_layout puts the whole navigator in
+ * here). While the door is up, everything inside leaves the
+ * accessibility tree — the Android path and the iOS belt to the
+ * overlay's accessibilityViewIsModal braces; the moment the door goes,
+ * the app comes straight back.
+ */
+export function OneDoorBackdrop({ children }: PropsWithChildren) {
+  const doorUp = useOneDoorVisible();
+  return (
+    <View
+      testID="one-door-backdrop"
+      style={styles.backdrop}
+      accessibilityElementsHidden={doorUp}
+      importantForAccessibility={doorUp ? 'no-hide-descendants' : 'auto'}>
+      {children}
     </View>
   );
 }
@@ -211,6 +244,9 @@ const styles = StyleSheet.create({
     // Above the tab pill and every screen, below the animated splash
     // (zIndex 1000) — while the door is up it is the only surface
     zIndex: 500,
+  },
+  backdrop: {
+    flex: 1,
   },
   screen: {
     flex: 1,
