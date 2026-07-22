@@ -85,6 +85,59 @@ describe('buildGazetteerRows', () => {
     expect(failed.map((row) => row.kind)).toEqual(['fallback-article']);
   });
 
+  test('streaming: the label lands with the first part; the story grows part by part', () => {
+    const nothingYet = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'streaming',
+      retold: null,
+      streamedParts: [],
+      originalOpen: false,
+      relics: [],
+    });
+    expect(nothingYet.map((row) => row.kind)).toEqual(['retelling-pending']);
+
+    const rows = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'streaming',
+      retold: null,
+      streamedParts: retold.parts.slice(0, 2),
+      originalOpen: false,
+      relics: [relic(1, 'Palace of Placentia')],
+    });
+    // No timeline, no door — both are end-of-telling business
+    expect(rows.map((row) => row.kind)).toEqual([
+      'ai-label',
+      'part',
+      'part',
+      'retelling-pending',
+      'section',
+      'relic',
+    ]);
+  });
+
+  test('halted: what arrived stays, and the rest is offered — words, not silence', () => {
+    const rows = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'halted',
+      retold: null,
+      streamedParts: retold.parts.slice(0, 1),
+      originalOpen: false,
+      relics: [],
+    });
+    expect(rows.map((row) => row.kind)).toEqual(['ai-label', 'part', 'retelling-halted']);
+
+    // Halted before anything arrived: the original article stands
+    const nothing = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'halted',
+      retold: null,
+      streamedParts: [],
+      originalOpen: false,
+      relics: [],
+    });
+    expect(nothing.map((row) => row.kind)).toEqual(['fallback-article']);
+  });
+
   test('no article: the relics stand alone, immediately', () => {
     const rows = buildGazetteerRows({
       hasArticle: false,
