@@ -30,7 +30,10 @@ jest.mock('@/hooks/use-location', () => ({
 
 // Area names keyed off the center so tests can read where the app is
 jest.mock('@/hooks/use-area-name', () => ({
-  useAreaName: (center: Coordinates) => (center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich'),
+  useAreaName: (center: Coordinates) => ({
+    name: center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
+    settled: true,
+  }),
 }));
 
 const mockGeocodeAsync = jest.fn();

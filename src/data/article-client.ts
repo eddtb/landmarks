@@ -65,7 +65,9 @@ export async function fetchArticleLight(title: string): Promise<Article> {
   }
   const response = await fetch(apiUrl(`/api/article?title=${encodeURIComponent(title)}&light=1`));
   if (!response.ok) {
-    throw new Error(`Light article request failed with status ${response.status}`);
+    // ApiError, not a bare Error: the area-name cascade probes through
+    // this leg and must tell a definite 404 from a flaky 5xx
+    throw new ApiError('Light article', response.status);
   }
   const body = (await response.json()) as { article: Article };
   return body.article;

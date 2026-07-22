@@ -21,7 +21,7 @@ jest.mock('@/hooks/use-location', () => ({
 }));
 
 jest.mock('@/hooks/use-area-name', () => ({
-  useAreaName: () => 'Greenwich',
+  useAreaName: () => ({ name: 'Greenwich', settled: true }),
 }));
 
 jest.mock('expo-location', () => ({
