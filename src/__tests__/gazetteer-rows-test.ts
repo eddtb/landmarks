@@ -65,7 +65,7 @@ describe('buildGazetteerRows', () => {
     ]);
   });
 
-  test('pending shows the shimmer, not the fallback; failed shows the original article', () => {
+  test('pending shows the shimmer, not the fallback', () => {
     const pending = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'pending',
@@ -74,15 +74,49 @@ describe('buildGazetteerRows', () => {
       relics: [],
     });
     expect(pending.map((row) => row.kind)).toEqual(['retelling-pending']);
+  });
 
-    const failed = buildGazetteerRows({
+  test('no retelling, a stub with no chapters: the lede stands alone, no door to open', () => {
+    const rows = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'none',
       retold: null,
       originalOpen: false,
+      hasChapters: false,
       relics: [],
     });
-    expect(failed.map((row) => row.kind)).toEqual(['fallback-article']);
+    expect(rows.map((row) => row.kind)).toEqual(['fallback-article']);
+  });
+
+  test('no retelling, chapters present: the lede, then the same door the retold screens use', () => {
+    const closed = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'none',
+      retold: null,
+      originalOpen: false,
+      hasChapters: true,
+      relics: [],
+    });
+    expect(closed.map((row) => row.kind)).toEqual(['fallback-article', 'door']);
+
+    // Opened, the door reveals the REST of the chapters (the lede
+    // already showed the opening) — a fallback-original, not the full
+    // original a retold screen's door opens onto.
+    const open = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'none',
+      retold: null,
+      originalOpen: true,
+      hasChapters: true,
+      relics: [relic(1, 'Palace of Placentia')],
+    });
+    expect(open.map((row) => row.kind)).toEqual([
+      'fallback-article',
+      'door',
+      'fallback-original',
+      'section',
+      'relic',
+    ]);
   });
 
   test('streaming: the label lands with the first part; the story grows part by part', () => {
@@ -126,16 +160,18 @@ describe('buildGazetteerRows', () => {
     });
     expect(rows.map((row) => row.kind)).toEqual(['ai-label', 'part', 'retelling-halted']);
 
-    // Halted before anything arrived: the original article stands
+    // Halted before anything arrived: the article stands, same lede +
+    // door as a place that never earned a retelling
     const nothing = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'halted',
       retold: null,
       streamedParts: [],
       originalOpen: false,
+      hasChapters: true,
       relics: [],
     });
-    expect(nothing.map((row) => row.kind)).toEqual(['fallback-article']);
+    expect(nothing.map((row) => row.kind)).toEqual(['fallback-article', 'door']);
   });
 
   test('no article: the relics stand alone, immediately', () => {
