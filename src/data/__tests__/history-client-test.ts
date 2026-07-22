@@ -197,6 +197,52 @@ describe('fetchNearbyHistory persistence (relaunch simulated by pre-import seedi
   });
 });
 
+// The early-serve contract (#201): a dressing:true feed is stored —
+// flag included, never as final — and the upgrade re-ask reaches the
+// server without fresh=1 (the dressed verdict is in its bucket cache;
+// a full recompose would be waste).
+describe('fetchNearbyHistory dressing upgrade', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  test('a dressing feed persists WITH its flag — honest offline material, never a quiet final', async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [item], dressing: true }) });
+    const center = freshCenter();
+
+    const first = await fetchNearbyHistory(center);
+    expect(first.dressing).toBe(true);
+
+    // The cached read-back still carries the flag — that is what lets
+    // useHistory see it after a relaunch and fire the one-shot upgrade
+    const second = await fetchNearbyHistory(center);
+    expect(second).toBe(first);
+    expect(second.dressing).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('upgrade skips the client cache but never sends fresh=1 — and the dressed feed replaces the flagged one', async () => {
+    const center = freshCenter();
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ items: [item], dressing: true }),
+    });
+    await fetchNearbyHistory(center);
+
+    const dressedItem = { ...item, thumbnailUrl: 'https://img/1.jpg' };
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ items: [dressedItem] }) });
+    const upgraded = await fetchNearbyHistory(center, { upgrade: true });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2); // the cache did not swallow the upgrade
+    expect(String(mockFetch.mock.calls[1][0])).not.toContain('fresh=1');
+    expect(upgraded.dressing).toBeUndefined();
+    expect(upgraded.items[0].thumbnailUrl).toBe('https://img/1.jpg');
+
+    // The dressed verdict is now the bucket's answer
+    const after = await fetchNearbyHistory(center);
+    expect(after).toBe(upgraded);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('fetchStory', () => {
   beforeEach(() => mockFetch.mockReset());
 

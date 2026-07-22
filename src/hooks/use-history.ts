@@ -9,6 +9,10 @@ export type HistoryState =
   | { status: 'error' }
   | { status: 'ready'; items: HistoryItem[]; sparse?: boolean; stale?: boolean };
 
+/** How long the server's photo leg gets before the one-shot upgrade
+ * re-ask — comfortably past dressWithPhotos' 1.5s response deadline. */
+const DressingUpgradeDelayMs = 4000;
+
 export function useHistory(center: Coordinates): {
   state: HistoryState;
   refresh: () => Promise<void>;
@@ -21,6 +25,18 @@ export function useHistory(center: Coordinates): {
   const latitude = Number(center.latitude.toFixed(3));
   const longitude = Number(center.longitude.toFixed(3));
   const requestId = useRef(0);
+  // The dressing upgrade: EXACTLY one delayed re-ask per bucket visit
+  // (or per pull) — `done` stops a still-dressing upgrade result from
+  // scheduling another, so there is no poll loop; the timer dies with
+  // the bucket (effect cleanup) and with a pull (refresh resets both).
+  const upgradeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const upgradeDone = useRef(false);
+  const clearUpgrade = useCallback(() => {
+    if (upgradeTimer.current) {
+      clearTimeout(upgradeTimer.current);
+      upgradeTimer.current = null;
+    }
+  }, []);
 
   // An expired persisted bucket paints instantly as a placeholder; the
   // fresh answer (or the offline-stale flag) follows when it lands.
@@ -30,30 +46,57 @@ export function useHistory(center: Coordinates): {
   // Same answer, same state: a repeated bucket hit returns the cache's
   // own result object (see history-client), so identical items + flags
   // bail out of setState instead of re-rendering the feed every tick.
-  const applyResult = useCallback(async (id: number, result: HistoryFetchResult) => {
-    const apply = (next: HistoryFetchResult) =>
-      setState((prev) =>
-        prev.status === 'ready' &&
-        prev.items === next.items &&
-        prev.sparse === next.sparse &&
-        prev.stale === next.stale
-          ? prev
-          : { status: 'ready', items: next.items, sparse: next.sparse, stale: next.stale }
-      );
-    if (id === requestId.current) {
-      apply(result);
-    }
-    if (result.revalidate) {
-      try {
-        const fresh = await result.revalidate;
-        if (id === requestId.current) {
-          apply(fresh);
+  const applyResult = useCallback(
+    async (id: number, result: HistoryFetchResult, bucket: Coordinates) => {
+      const apply = (next: HistoryFetchResult) => {
+        setState((prev) =>
+          prev.status === 'ready' &&
+          prev.items === next.items &&
+          prev.sparse === next.sparse &&
+          prev.stale === next.stale
+            ? prev
+            : { status: 'ready', items: next.items, sparse: next.sparse, stale: next.stale }
+        );
+        // A dressing feed (fresh from the server, or a persisted flagged
+        // bucket surviving a relaunch) gets its ONE upgrade re-ask: the
+        // server's photo leg has landed by then, so the same bucket
+        // answers dressed and the new items replace these (the identical-
+        // items bail can't swallow it — dressed items are a new array).
+        // If the upgrade itself still comes back dressing, it stands
+        // until the bucket changes or the user pulls — never a loop.
+        if (next.dressing && !upgradeDone.current && id === requestId.current) {
+          upgradeDone.current = true;
+          upgradeTimer.current = setTimeout(() => {
+            upgradeTimer.current = null;
+            fetchNearbyHistory(bucket, { upgrade: true }).then(
+              (upgraded) => {
+                if (id === requestId.current) {
+                  apply(upgraded); // still-dressing? upgradeDone blocks a second timer
+                }
+              },
+              () => {
+                // Offline or wobbling: the undressed list stands
+              }
+            );
+          }, DressingUpgradeDelayMs);
         }
-      } catch {
-        // Nothing newer to show — the placeholder stands
+      };
+      if (id === requestId.current) {
+        apply(result);
       }
-    }
-  }, []);
+      if (result.revalidate) {
+        try {
+          const fresh = await result.revalidate;
+          if (id === requestId.current) {
+            apply(fresh);
+          }
+        } catch {
+          // Nothing newer to show — the placeholder stands
+        }
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const id = ++requestId.current;
@@ -69,7 +112,7 @@ export function useHistory(center: Coordinates): {
       }
       try {
         const result = await fetchNearbyHistory({ latitude, longitude });
-        await applyResult(id, result);
+        await applyResult(id, result, { latitude, longitude });
       } catch (error) {
         console.warn('Failed to load history:', error);
         if (id === requestId.current) {
@@ -77,20 +120,30 @@ export function useHistory(center: Coordinates): {
         }
       }
     })();
-  }, [latitude, longitude, applyResult]);
+    // Leaving the bucket cancels its pending upgrade — the new bucket
+    // earns its own — and re-arms the one-shot for the next visit
+    return () => {
+      clearUpgrade();
+      upgradeDone.current = false;
+    };
+  }, [latitude, longitude, applyResult, clearUpgrade]);
 
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
+    // A pull is a fresh compose: drop any pending upgrade and let the
+    // pull's own result schedule a new one if it arrives undressed
+    clearUpgrade();
+    upgradeDone.current = false;
     try {
       const result = await fetchNearbyHistory({ latitude, longitude }, { forceRefresh: true });
-      await applyResult(id, result);
+      await applyResult(id, result, { latitude, longitude });
     } catch (error) {
       console.warn('Failed to refresh history:', error);
       if (id === requestId.current) {
         setState({ status: 'error' });
       }
     }
-  }, [latitude, longitude, applyResult]);
+  }, [latitude, longitude, applyResult, clearUpgrade]);
 
   return { state, refresh };
 }

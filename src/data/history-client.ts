@@ -8,8 +8,11 @@ import { Coordinates } from '@/utils/geo';
 const HourMs = 60 * 60 * 1000;
 
 /** The feed plus how it was gathered: `sparse` means the server found
- * a quiet corner and widened the Wikipedia search to fill it. */
-export type HistoryFeed = { items: HistoryItem[]; sparse?: boolean };
+ * a quiet corner and widened the Wikipedia search to fill it;
+ * `dressing` means the server answered before its photo leg finished —
+ * the text is complete, thumbnails are still being fetched, and one
+ * delayed re-ask (useHistory's job) will collect them. */
+export type HistoryFeed = { items: HistoryItem[]; sparse?: boolean; dressing?: boolean };
 
 // Same session-cache pattern as the places list: keyed on the server's
 // own ~111m grid (3 dp — see cacheKey), individual items kept for the
@@ -72,12 +75,21 @@ export function hasCachedFeed(center: Coordinates): boolean {
   return listCache.peek(cacheKey(center)) !== undefined;
 }
 
+export type HistoryFetchOptions = {
+  /** A deliberate pull: bypass every cache, client and server (fresh=1). */
+  forceRefresh?: boolean;
+  /** The one-shot dressing upgrade: skip the client cache so the ask
+   * reaches the server (whose bucket cache holds the dressed verdict by
+   * now), but WITHOUT fresh=1 — never a full upstream recompose. */
+  upgrade?: boolean;
+};
+
 export async function fetchNearbyHistory(
   center: Coordinates,
-  options?: { forceRefresh?: boolean }
+  options?: HistoryFetchOptions
 ): Promise<HistoryFetchResult> {
   const key = cacheKey(center);
-  if (!options?.forceRefresh) {
+  if (!options?.forceRefresh && !options?.upgrade) {
     let cached = listCache.get(key);
     if (cached === undefined) {
       // Cache miss: persisted entries may still be loading — await
@@ -118,10 +130,13 @@ const inFlight = new Map<string, Promise<HistoryFetchResult>>();
 function fetchFresh(
   center: Coordinates,
   key: string,
-  options?: { forceRefresh?: boolean }
+  options?: HistoryFetchOptions
 ): Promise<HistoryFetchResult> {
   const pending = inFlight.get(key);
-  if (pending && !options?.forceRefresh) {
+  // Both deliberate re-asks (pull, dressing upgrade) must actually
+  // reach the network — an in-flight plain ask may be about to resolve
+  // with the very undressed list the upgrade exists to replace
+  if (pending && !options?.forceRefresh && !options?.upgrade) {
     return pending;
   }
   const request = requestFeed(center, key, options);
@@ -140,7 +155,7 @@ function fetchFresh(
 async function requestFeed(
   center: Coordinates,
   key: string,
-  options?: { forceRefresh?: boolean }
+  options?: HistoryFetchOptions
 ): Promise<HistoryFetchResult> {
   const params = new URLSearchParams({
     lat: String(center.latitude),
@@ -156,10 +171,24 @@ async function requestFeed(
       throw new Error(`History request failed with status ${response.status}`);
     }
 
-    const body = (await response.json()) as { items: HistoryItem[]; sparse?: boolean };
-    const feed: HistoryFeed = body.sparse
-      ? { items: body.items, sparse: true }
-      : { items: body.items };
+    const body = (await response.json()) as {
+      items: HistoryItem[];
+      sparse?: boolean;
+      dressing?: boolean;
+    };
+    const feed: HistoryFeed = {
+      items: body.items,
+      ...(body.sparse ? { sparse: true } : {}),
+      ...(body.dressing ? { dressing: true } : {}),
+    };
+    // A dressing:true feed IS persisted — flag included, never as
+    // final. The items are real, text-complete stories: offline (or
+    // after a force-quit) an undressed list beats an empty screen, and
+    // location-first keying still holds. The persisted flag is what
+    // keeps it honest — any online session that reads it back sees
+    // `dressing` and fires the one-shot upgrade (useHistory), so a
+    // flagged bucket can never quietly masquerade as the dressed
+    // verdict for its whole TTL.
     listCache.set(key, feed);
     for (const item of body.items) {
       itemCache.set(String(item.pageId), item);
