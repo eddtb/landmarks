@@ -30,25 +30,26 @@ const HourMs = 60 * 60 * 1000;
 
 // Seed "last session's" persisted buckets BEFORE the client module
 // loads — its caches hydrate at import, so this is the app relaunching
-// after a force-quit. Keys are the client's own ~11m grid buckets;
-// values are whole feeds (items plus sparse metadata).
+// after a force-quit. Keys are the client's own ~111m (3 dp — the
+// server's own grid) buckets; values are whole feeds (items plus
+// sparse metadata).
 const store = (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> })
   .__INTERNAL_MOCK_STORAGE__;
 store['cache-history-feed-v1'] = JSON.stringify([
   [
-    '50.1000|-0.0900',
+    '50.100|-0.090',
     { value: { items: [persistedItem(1, 'Persisted Fresh')] }, at: Date.now() },
   ],
   [
-    '50.2000|-0.0900',
+    '50.200|-0.090',
     { value: { items: [persistedItem(2, 'Persisted Stale')] }, at: Date.now() - 2 * HourMs },
   ],
   [
-    '50.3000|-0.0900',
+    '50.300|-0.090',
     { value: { items: [persistedItem(3, 'Persisted Offline')] }, at: Date.now() - 2 * HourMs },
   ],
   [
-    '50.4000|-0.0900',
+    '50.400|-0.090',
     {
       value: { items: [persistedItem(4, 'Persisted Sparse Village')], sparse: true },
       at: Date.now() - 2 * HourMs,
@@ -226,5 +227,97 @@ describe('fetchStory', () => {
     mockFetch.mockResolvedValue({ ok: false, status: 502 });
 
     await expect(fetchStory(4244)).rejects.toThrow('502');
+  });
+});
+
+// These mint fresh feed buckets, and the feed cache caps at 8 — they
+// run LAST so any eviction lands after the persistence assertions above.
+describe('fetchNearbyHistory bucket grain (the walking-tick fix)', () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  test("4th-decimal GPS jitter lands in one 3 dp bucket — one fetch, the server's own grain", async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [item] }) });
+    const base = freshCenter();
+
+    await fetchNearbyHistory(base);
+    // ~30m of drift: below the ~111m bucket, previously a fresh ~124KB
+    // fetch (4 dp buckets were ~11m — finer than the ~10m GPS tick)
+    await fetchNearbyHistory({
+      latitude: base.latitude + 0.0004,
+      longitude: base.longitude + 0.0003,
+    });
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('a repeated bucket hit returns the identical result object', async () => {
+    // The reference useHistory's setState bail hangs on: same bucket,
+    // same object — not a fresh spread per tick
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [item] }) });
+    const center = freshCenter();
+
+    const first = await fetchNearbyHistory(center);
+    const second = await fetchNearbyHistory(center);
+
+    expect(second).toBe(first);
+  });
+});
+
+// Both tabs stay mounted and each runs useHistory — entering a fresh
+// bucket is always TWO concurrent cache misses. (Same cap note as
+// above: these mint buckets, so they run after the persistence tests.)
+describe('fetchNearbyHistory in-flight dedupe', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => mockFetch.mockReset());
+
+  test('concurrent callers for one fresh bucket share one network ask — and its result object', async () => {
+    let resolveFetch!: (response: unknown) => void;
+    mockFetch.mockReturnValue(new Promise((resolve) => (resolveFetch = resolve)));
+    const center = freshCenter();
+
+    const one = fetchNearbyHistory(center);
+    const two = fetchNearbyHistory(center); // the other tab, same tick
+    await tick();
+    resolveFetch({ ok: true, json: async () => ({ items: [item] }) });
+
+    const [first, second] = await Promise.all([one, two]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(second).toBe(first);
+  });
+
+  test('a failed in-flight ask never poisons the bucket — the next caller retries', async () => {
+    const center = freshCenter();
+    mockFetch.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await expect(fetchNearbyHistory(center)).rejects.toThrow('Network request failed');
+
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [item] }) });
+    const retried = await fetchNearbyHistory(center);
+
+    expect(retried.items).toHaveLength(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2); // the retry really fetched
+  });
+
+  test('forceRefresh cuts past an in-flight plain ask; a later plain caller rides the refresh', async () => {
+    let resolvePlain!: (response: unknown) => void;
+    let resolveForced!: (response: unknown) => void;
+    mockFetch
+      .mockReturnValueOnce(new Promise((resolve) => (resolvePlain = resolve)))
+      .mockReturnValueOnce(new Promise((resolve) => (resolveForced = resolve)));
+    const center = freshCenter();
+
+    const plain = fetchNearbyHistory(center);
+    await tick(); // let the plain ask register in-flight first
+    const forced = fetchNearbyHistory(center, { forceRefresh: true }); // starts its own
+    const rider = fetchNearbyHistory(center); // plain, arrives after — shares the refresh
+    await tick();
+    expect(mockFetch).toHaveBeenCalledTimes(2); // plain + forced, never a third
+
+    resolvePlain({ ok: true, json: async () => ({ items: [item] }) });
+    resolveForced({ ok: true, json: async () => ({ items: [persistedItem(99, 'Fresher')] }) });
+
+    expect((await plain).items[0].pageId).toBe(42);
+    expect((await forced).items[0].pageId).toBe(99); // the pull reached the network
+    expect(await rider).toBe(await forced); // and served the concurrent plain caller
   });
 });
