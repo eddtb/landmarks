@@ -33,7 +33,9 @@ const HourMs = 60 * 60 * 1000;
 // material at ~2KB apiece for ~1MB worst case.
 const FeedBucketCap = 8;
 const ItemCap = 500;
-const listCache = persistedMap<HistoryFeed>('history-feed', HourMs, {
+// v2: items may carry event:true (events-are-history ruling) — a
+// pre-flag persisted feed would keep leaking events into Nearby
+const listCache = persistedMap<HistoryFeed>('history-feed-v2', HourMs, {
   maxEntries: FeedBucketCap,
 });
 const itemCache = persistedMap<HistoryItem>('history-item', 7 * 24 * HourMs, {

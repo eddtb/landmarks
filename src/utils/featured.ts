@@ -6,7 +6,8 @@ import { HistoryItem } from '@/types/history';
  * heavy hitters, not merely the closest: a Historic England grade
  * outranks everything (Grade I > II* > II/listed), and the richness of
  * the story breaks ties. Only visitable things qualify — a photo to
- * recognise it by, no evidence of pastness — and the standing-on-it
+ * recognise it by, no evidence of pastness, not an event (events-are-
+ * history: the rail is part of Nearby too) — and the standing-on-it
  * item is never double-featured.
  */
 
@@ -24,7 +25,7 @@ export function featuredStories(
 ): HistoryItem[] {
   return items
     .filter(
-      (item) => item.thumbnailUrl && !item.pastTag && item.pageId !== excludePageId
+      (item) => item.thumbnailUrl && !item.pastTag && !item.event && item.pageId !== excludePageId
     )
     .sort(
       (a, b) =>

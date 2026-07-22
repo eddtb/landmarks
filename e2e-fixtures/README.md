@@ -43,7 +43,11 @@ curl -s "http://localhost:8081/api/history?lat=50.9169&lng=0.9762" > e2e-fixture
 ```
 
 Nearby order (which items surface first in the app) is
-`thumbnailUrl && !pastTag` items first — record articles for those.
+`thumbnailUrl && !pastTag && !event` items first — record articles for
+those. (The Dove crash item in `history-sparse.json` carries a
+surgically added `"event": true` — the events-are-history ruling — so
+the recording matches what the server now ships; do not drop it on a
+re-record, the live compose will re-mint it.)
 Retellings only exist where `.ai-cache` already holds one (REPLAY_ONLY
 can't mint new ones); missing retolds are fine — the app falls back to
 the original article.

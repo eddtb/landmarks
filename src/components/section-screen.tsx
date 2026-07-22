@@ -315,7 +315,7 @@ function GazetteerBody({ center }: { center: Coordinates }) {
     );
   }
 
-  const relics = state.items.filter((item) => !item.thumbnailUrl || item.pastTag);
+  const relics = state.items.filter((item) => !item.thumbnailUrl || item.pastTag || item.event);
   return (
     <AreaGazetteer
       areaName={areaName}
@@ -470,7 +470,7 @@ export function HistoryBody({
   // Nearby = things you can visit AND recognise: a subject photo and
   // no structured evidence of pastness. The past and the
   // unphotographed live in the Gazetteer next door.
-  const items = state.items.filter((item) => item.thumbnailUrl && !item.pastTag);
+  const items = state.items.filter((item) => item.thumbnailUrl && !item.pastTag && !item.event);
 
   // No standing-on unless the center is a real GPS fix: while
   // exploring the pinned center is somewhere the user is NOT, and with
