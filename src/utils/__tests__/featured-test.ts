@@ -1,15 +1,5 @@
-import { HistoryItem } from '@/types/history';
+import { story } from '@/test-utils/story';
 import { featuredStories } from '@/utils/featured';
-
-const story = (overrides: Partial<HistoryItem> & { pageId: number }): HistoryItem => ({
-  title: 'S',
-  coordinates: { latitude: 51.48, longitude: 0 },
-  distanceMeters: 300,
-  thumbnailUrl: 'https://img/x.jpg',
-  url: 'https://x',
-  source: 'Wikipedia',
-  ...overrides,
-});
 
 describe('featuredStories (the mini featured listings)', () => {
   test('a Historic England grade outranks a longer story, Grade I above II* above II', () => {

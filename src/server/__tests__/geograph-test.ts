@@ -6,6 +6,7 @@ import {
   GeographPhoto,
   pickMatchingPhoto,
 } from '@/server/geograph';
+import { story as baseStory } from '@/test-utils/story';
 import { HistoryItem } from '@/types/history';
 
 // Recorded from the live syndicator response, 2026-07-20
@@ -21,15 +22,11 @@ const syndicatorItems = [
   { title: 'No position', thumb: 'https://s2.geograph.org.uk/x_120x120.jpg' }, // dropped
 ];
 
-const story = (overrides: Partial<HistoryItem>): HistoryItem => ({
-  pageId: 1,
-  title: 'Greenwich Observatory', // shares two name tokens with the recorded photo
-  coordinates: { latitude: 51.4779, longitude: -0.0015 },
-  distanceMeters: 10,
-  url: 'https://example.org',
-  source: 'Wikipedia',
-  ...overrides,
-});
+// The shared factory, with this suite's two load-bearing differences:
+// the title shares two name tokens with the recorded photo, and no
+// thumbnail — dressWithPhotos only dresses unillustrated stories
+const story = (overrides: Partial<HistoryItem> = {}): HistoryItem =>
+  baseStory({ title: 'Greenwich Observatory', thumbnailUrl: undefined, ...overrides });
 
 beforeEach(() => {
   diskBackedMap('subject-photos').clear(); // the disk cache outlives runs BY DESIGN

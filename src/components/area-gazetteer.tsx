@@ -3,7 +3,6 @@ import { router } from 'expo-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
   Pressable,
   RefreshControl,
@@ -11,6 +10,11 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import Animated, {
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChapterFolds } from '@/components/chapter-folds';
@@ -219,8 +223,19 @@ export function AreaGazetteer({
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  // Lazy state, not a ref: stable identity, render-safe under the compiler
-  const [readProgress] = useState(() => new Animated.Value(0));
+  // A reanimated shared value: scroll ticks land on the UI thread and
+  // the bar's width answers there too — no JS-bridge traffic at all
+  const readProgress = useSharedValue(0);
+  // The reading bar: recompute on every scroll tick, no re-render —
+  // the whole exchange stays on the UI thread
+  const onScroll = useAnimatedScrollHandler((event) => {
+    readProgress.set(
+      readingProgress(event.contentOffset.y, event.contentSize.height, event.layoutMeasurement.height)
+    );
+  });
+  const fillStyle = useAnimatedStyle(() => ({
+    width: `${readProgress.get() * 100}%`,
+  }));
   // The bar earns its place: the track shows only when the story is
   // taller than the screen — the same "nothing to read, no bar" rule
   // readingProgress enforces for the fill
@@ -245,9 +260,16 @@ export function AreaGazetteer({
     setRetold(null);
     setRetoldStatus('pending');
     setOriginalOpen(false);
-    // …and must not inherit its reading progress
-    readProgress.setValue(0);
   }
+
+  // …and must not inherit its reading progress. An effect, not the
+  // adjust block above: writing a shared value during render trips
+  // Reanimated's strict mode (verified on the sim), and the reset
+  // only needs to land before the next area's story can scroll —
+  // its fetches haven't even resolved by the time this runs.
+  useEffect(() => {
+    readProgress.set(0);
+  }, [areaName, readProgress]);
 
   // Two INDEPENDENT fetches: the hero paints the moment the article
   // lands; the retelling streams in when ready (Edd: "loading too
@@ -410,19 +432,15 @@ export function AreaGazetteer({
 
   return (
     <View style={styles.wrap}>
-    <FlatList
+    <Animated.FlatList
       ref={listRef}
       data={rows}
       keyExtractor={(row) => row.key}
       renderItem={({ item: row }) => renderRow(row)}
-      // The reading bar: recompute on every scroll tick, no re-render
-      onScroll={(event) => {
-        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-        readProgress.setValue(
-          readingProgress(contentOffset.y, contentSize.height, layoutMeasurement.height)
-        );
-      }}
-      scrollEventThrottle={32}
+      onScroll={onScroll}
+      // 16, not 32: the events no longer cross the bridge, so every
+      // frame can feed the bar for free
+      scrollEventThrottle={16}
       onContentSizeChange={(_, height) => {
         frame.current.content = height;
         remeasure();
@@ -514,16 +532,7 @@ export function AreaGazetteer({
         style={[styles.progressTrack, { backgroundColor: theme.accentSoft }]}
         testID="reading-progress">
         <Animated.View
-          style={[
-            styles.progressFill,
-            {
-              backgroundColor: theme.accent,
-              width: readProgress.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['0%', '100%'],
-              }),
-            },
-          ]}
+          style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
         />
       </View>
     )}

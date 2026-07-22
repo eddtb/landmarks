@@ -7,21 +7,12 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
 import { FeaturedRail, StandingOnIt } from '@/components/section-screen';
-import { HistoryItem } from '@/types/history';
+import { story } from '@/test-utils/story';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => {
   const actual = jest.requireActual('expo-router');
   return { ...actual, router: { ...actual.router, push: (...args: unknown[]) => mockPush(...args) } };
-});
-
-const story = (overrides: Partial<HistoryItem> & { pageId: number; title: string }): HistoryItem => ({
-  coordinates: { latitude: 51.48, longitude: 0 },
-  distanceMeters: 400,
-  thumbnailUrl: 'https://img/x.jpg',
-  url: 'https://x',
-  source: 'Wikipedia',
-  ...overrides,
 });
 
 beforeEach(() => mockPush.mockClear());

@@ -5,7 +5,7 @@ import {
   plaqueTitle,
   titleCaseName,
 } from '@/server/heritage';
-import { HistoryItem } from '@/types/history';
+import { story } from '@/test-utils/story';
 
 const Center = { latitude: 51.4779, longitude: -0.0015 };
 
@@ -85,16 +85,6 @@ describe('buildPlaqueItems', () => {
 });
 
 describe('mergeHistorySources', () => {
-  const story = (overrides: Partial<HistoryItem>): HistoryItem => ({
-    pageId: 1,
-    title: 'Royal Observatory',
-    coordinates: { latitude: 51.4778, longitude: -0.0014 },
-    distanceMeters: 10,
-    url: 'https://en.wikipedia.org/wiki/Royal_Observatory',
-    source: 'Wikipedia',
-    ...overrides,
-  });
-
   test('many register records at one place become ONE badge — the best grade', () => {
     const listed = buildListedBuildingItems(
       [
