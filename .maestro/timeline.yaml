@@ -6,16 +6,9 @@
 appId: com.eddtb.landmarks
 ---
 - launchApp
-- runFlow:
-    when:
-      visible: 'Development servers'
-    commands:
-      - openLink: exp+landmarks://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081
+- runFlow: subflows/setup.yaml
 
-# The floating tab pill ignores text taps intermittently (verifier's
-# observation, confirmed 2/3 local failures) — tap by position
-- tapOn:
-    point: 61%, 94%
+- runFlow: subflows/open-history-tab.yaml
 - extendedWaitUntil:
     visible:
       id: 'timeline-stop'

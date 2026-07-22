@@ -1,4 +1,4 @@
-import { fixtureSlug, fixturesEnabled, readFixture } from '@/server/fixtures';
+import { fixtureSlug, fixturesEnabled, outageActive, readFixture, setOutage } from '@/server/fixtures';
 
 // Same guarded require the module itself uses — the app tsconfig has
 // no node types, and this test only runs under node
@@ -59,6 +59,17 @@ describe('E2E fixtures helper', () => {
   test('unparseable file — null, never a throw', () => {
     writeFileSync(`${dir}/broken.json`, '{not json');
     expect(readFixture('broken')).toBeNull();
+  });
+
+  test('outage switch round-trips through the flag file', () => {
+    expect(outageActive()).toBe(false);
+    setOutage(true);
+    expect(outageActive()).toBe(true);
+    setOutage(false);
+    expect(outageActive()).toBe(false);
+    // Switching off an already-off outage must never throw
+    setOutage(false);
+    expect(outageActive()).toBe(false);
   });
 });
 

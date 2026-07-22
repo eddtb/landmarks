@@ -1,0 +1,32 @@
+# Sparse-area honesty with location denied: the denied banner offers
+# the search box, a faraway search serves the sparse-area recording,
+# and the count line admits the server looked further.
+#
+# launchApp silently grants ALL permissions unless `permissions:` is
+# given — and the iOS value that actually denies location is `never`,
+# not `deny`.
+#
+# The search itself geocodes on-device (Apple's geocoder, keyless) —
+# the one non-fixture network touch in the suite; it has no rate-limit
+# history on runners. The resulting faraway coords make /api/history
+# serve e2e-fixtures/history-sparse.json (recorded at Dungeness, Kent).
+appId: com.eddtb.landmarks
+---
+- launchApp:
+    permissions:
+      location: never
+- runFlow: subflows/setup.yaml
+
+# Denied: the honest banner and the search escape hatch
+- extendedWaitUntil:
+    visible: '.*Location is off.*'
+    timeout: 45000
+- tapOn:
+    id: 'place-search'
+- inputText: 'Dungeness, Kent'
+- pressKey: Enter
+
+# The sparse count line — full-string regex, so substring is wrapped
+- extendedWaitUntil:
+    visible: '.*looked further.*'
+    timeout: 30000

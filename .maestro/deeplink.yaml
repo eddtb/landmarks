@@ -1,0 +1,35 @@
+# Deep links into a RUNNING app: landmarks://history/<pageId> opens
+# the story screen; a bogus id lands on "Not found" without crashing.
+#
+# Deliberately not a cold start: on dev builds expo-dev-launcher
+# swallows the initial URL (locally and in CI) — the app opens to the
+# launcher home, never the route. Cold-start deep linking is only
+# honest on a release build, which this harness doesn't have; it
+# stays device-triage territory.
+appId: com.eddtb.landmarks
+---
+- launchApp
+- runFlow: subflows/setup.yaml
+- extendedWaitUntil:
+    visible:
+      id: 'history-card'
+    timeout: 45000
+
+# A real story: Royal Naval College, Greenwich — pageId 40729675 in
+# the committed e2e-fixtures/history.json (re-record both together)
+- openLink: landmarks://history/40729675
+- extendedWaitUntil:
+    visible:
+      id: 'story-screen'
+    timeout: 20000
+# iOS has no back button — the edge swipe is the back gesture
+- swipe:
+    start: 2%, 50%
+    end: 90%, 50%
+
+# A bogus id: /api/story 404s, the screen says so, nothing crashes.
+# Maestro text asserts are FULL-STRING regexes — wrap substrings.
+- openLink: landmarks://history/999999
+- extendedWaitUntil:
+    visible: '.*could not be found.*'
+    timeout: 20000

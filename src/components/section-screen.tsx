@@ -198,6 +198,7 @@ function SectionHeader({
       )}
       {(locationDenied || searchOpen) && (
         <TextInput
+          testID="place-search"
           value={searchText}
           onChangeText={setSearchText}
           onSubmitEditing={onSearchSubmit}

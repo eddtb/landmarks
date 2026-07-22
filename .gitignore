@@ -45,4 +45,7 @@ example
 # Disk-persisted AI result caches (dev)
 .ai-cache/
 .ai-cache-test/
+
+# E2E outage switch (runtime state, never data — see src/server/fixtures.ts)
+e2e-fixtures/outage.flag
 .claude/worktrees/

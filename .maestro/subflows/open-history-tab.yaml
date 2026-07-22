@@ -1,0 +1,12 @@
+# The magic numbers, explained once: the floating tab pill ignores
+# text taps intermittently (verifier's observation, confirmed 2/3
+# local failures — PR #187), so the History tab is tapped by position:
+# 61%, 94% is the History half of the pill on the simulator sizes we
+# run. Let the frame settle first — slow runners swallow taps that
+# land mid-layout (run 8's failure mode).
+appId: com.eddtb.landmarks
+---
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: 61%, 94%

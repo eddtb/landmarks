@@ -1,0 +1,32 @@
+# Shared setup: every flow runs this right after launchApp (except
+# onboarding.yaml, which consumes boot.yaml directly because it must
+# assert the very cards this file dismisses).
+#
+# It exists because only smoke.yaml carried these guards while
+# `maestro test .maestro/` runs flows ALPHABETICALLY — on a fresh
+# install the first flow up used to be lightbox, whose opening tap
+# landed on the onboarding overlay instead of the app (the nightly's
+# lightbox-before-smoke bug). Now every flow is safe to run first.
+appId: com.eddtb.landmarks
+---
+- runFlow: boot.yaml
+# Fresh installs (CI is always one) see the first-run onboarding cards
+# covering the tabs — dismiss them the way a hurried user would.
+# The dismissal swipes to the last card and taps its Start-exploring
+# button rather than tapping Skip: the dev client's floating Tools
+# gear sits top-right exactly over the Skip button on fresh installs
+# and intercepts the tap (sim sweep finding — see verifier-simulator
+# skill). The Done button lives centre-screen where nothing floats.
+- runFlow:
+    when:
+      visible:
+        id: 'onboarding'
+    commands:
+      - swipe:
+          start: 85%, 50%
+          end: 15%, 50%
+      - swipe:
+          start: 85%, 50%
+          end: 15%, 50%
+      - tapOn:
+          id: 'onboarding-done'
