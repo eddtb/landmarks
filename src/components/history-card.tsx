@@ -34,7 +34,15 @@ export function HistoryCard({ item, archive }: Props) {
         archive && [styles.archive, { borderLeftColor: theme.accentSoft }],
       ]}>
         {item.thumbnailUrl && (
-          <Image source={{ uri: item.thumbnailUrl }} style={styles.photo} contentFit="cover" />
+          <Image
+            source={{ uri: item.thumbnailUrl }}
+            style={styles.photo}
+            contentFit="cover"
+            // Feed thumbnails re-render constantly while walking —
+            // memory-disk keeps them off the network (the FeaturedRail/
+            // gallery precedent, #200)
+            cachePolicy="memory-disk"
+          />
         )}
         <View style={styles.body}>
           {archive && (item.pastTag || item.source.startsWith('Open Plaques')) && (
