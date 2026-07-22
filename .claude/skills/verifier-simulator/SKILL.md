@@ -71,6 +71,39 @@ iOS has no back button: `- back` is Android-only; use an edge swipe
 
 Current state without a flow: `xcrun simctl io booted screenshot out.png`.
 
+## Maestro iOS gotchas (each cost a debugging round)
+
+- **Permissions auto-grant**: `launchApp` silently grants ALL
+  permissions unless a `permissions:` map is given. To actually deny
+  location the value is `never` — `deny` is not a thing on iOS.
+- **Text asserts are FULL-STRING regexes.** `visible: 'This is the
+  developer menu'` never matches the mat's whole paragraph — wrap
+  substrings: `'.*developer menu.*'`. A prefix-only guard fails
+  silently (SKIPPED), which reads exactly like "the overlay wasn't
+  there".
+- **The dev Tools gear** (blue FAB, top-right) floats over the app in
+  dev builds and INTERCEPTS top-right taps — it sits exactly on the
+  onboarding Skip button on fresh installs. Drag it aside for manual
+  probes; in flows, prefer centre-screen targets (onboarding is
+  dismissed via card 3's `onboarding-done`, not Skip).
+- **Cold-start deep links can't be tested on dev builds**:
+  expo-dev-launcher swallows the app's initial URL (locally and in
+  CI) — the app opens to the launcher, not the route. Deep-link flows
+  must `openLink` into an already-running app; cold-start linking is
+  release-build/device-triage territory.
+- **Settle before position taps**: `waitForAnimationToEnd` before any
+  `point:` tap — slow runners swallow taps that land mid-layout.
+- **Stale driver hosts kill the next run**: maestro leaves its
+  `xcodebuild test-without-building` driver process running after a
+  suite; the next invocation's driver fights it and dies ~20s in
+  ("Transport unreachable … Restarting after unexpected exit"),
+  failing every flow in 0s. `scripts/e2e-local.sh` pkills leftovers
+  before each run — do the same before ad-hoc `maestro test` loops.
+- **Env precedence is file-over-CLI**: a flow-file `env:` default
+  silently beats `-e` from the command line. Never give `METRO_URL` a
+  file-level default — pass it per invocation (e2e-local.sh derives
+  it from `METRO_PORT`).
+
 ## Evidence
 
 Read every screenshot (Read tool renders PNGs) and LOOK at it before

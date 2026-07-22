@@ -1,0 +1,24 @@
+# Workspace config for `maestro test .maestro/`.
+#
+# flows: only top-level YAMLs are runnable — subflows/ holds library
+# files (setup/boot guards, scripts) that must never execute as flows
+# of their own. Maestro doesn't recurse by default; this makes the
+# exclusion explicit rather than incidental.
+#
+# executionOrder: onboarding runs first (it IS the fresh-install
+# path — clearState, dev-client relink, welcome mat, cards), then
+# onboarding-return proves the dismissal persisted across a relaunch.
+# The rest run in a fixed order so failures reproduce: without this
+# the order is filesystem-dependent (observed non-alphabetical).
+flows:
+  - '*.yaml'
+executionOrder:
+  flowsOrder:
+    - onboarding
+    - onboarding-return
+    - deeplink
+    - lightbox
+    - offline-stale
+    - smoke
+    - sparse
+    - timeline

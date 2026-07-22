@@ -82,16 +82,19 @@ jobs:
           # welcome mat blocked the assertion) — mark it already seen
           xcrun simctl spawn booted defaults write com.eddtb.landmarks EXDevMenuIsOnboardingFinished -bool true
 
-      # CI runs the smoke flow ONLY — deliberately, not silently.
-      # E2E_FIXTURES now satisfies the data dependencies the wider
-      # flows used to lack (lightbox's history/article payloads come
-      # from committed fixtures, not rate-limited runner IPs; retold
-      # fixtures cover timeline's cache dependency), but widening the
-      # scoping is a separate follow-up — this run stays the
-      # boot-and-render spine. timeline.yaml and lightbox.yaml still
-      # run locally via scripts/e2e-local.sh.
-      - name: Run the smoke flow
-        run: maestro test --debug-output e2e-debug .maestro/smoke.yaml
+      # The whole suite, one Maestro invocation (the flows share the
+      # 25-minute build — separate steps would only add teardown).
+      # Running the full folder also fixes a live bug the old
+      # smoke-only scoping hid: `maestro test .maestro/` would have
+      # run flows WITHOUT the dev-menu/onboarding guards before
+      # smoke.yaml on a fresh install and died on the first-run
+      # overlay — now every flow runs subflows/setup.yaml (or
+      # boot.yaml) first and .maestro/config.yaml pins the order.
+      # METRO_URL rides in via -e (URL-encoded origin for the
+      # dev-client relink after onboarding's clearState); local
+      # worktree runs pass their own port via scripts/e2e-local.sh.
+      - name: Run the E2E suite
+        run: maestro test --debug-output e2e-debug -e METRO_URL=http%3A%2F%2Flocalhost%3A8081 .maestro/
 
       - name: Capture the simulator screen on failure
         if: failure()

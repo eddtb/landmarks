@@ -12,6 +12,7 @@ import { HistoryItem } from '@/types/history';
 jest.mock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map() }));
 jest.mock('@/server/fixtures', () => ({
   fixturesEnabled: () => false,
+  outageActive: () => false,
   readFixture: () => null,
 }));
 jest.mock('@/server/geograph', () => ({

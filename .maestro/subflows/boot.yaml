@@ -1,0 +1,58 @@
+# Boot guards ONLY — no onboarding dismissal. Consumed directly by
+# onboarding.yaml (which must SEE the cards) and via setup.yaml by
+# every other flow.
+#
+# Lives in subflows/ because `maestro test .maestro/` executes every
+# YAML at the top level of the directory (alphabetically) and does not
+# recurse into subdirectories — a guard file beside the flows would be
+# run as a flow of its own.
+appId: com.eddtb.landmarks
+---
+# Let the launch transition settle before the first visibility check:
+# a view-hierarchy snapshot fired the instant the process spawns can
+# crash the XCUITest runner ("Restarting after unexpected exit" — it
+# took the whole suite down twice locally). waitForAnimationToEnd
+# watches pixels, not the AX hierarchy, so it is safe this early.
+- waitForAnimationToEnd:
+    timeout: 3000
+# The dev client needs pointing at Metro; a release/CI build ignores
+# this link and is already the app. METRO_URL (URL-encoded origin)
+# comes from the command line ONLY — a file-level env default would
+# silently WIN over -e in Maestro 2.x (verified: a -e 8084 run still
+# linked to 8081 and drove the wrong Metro), so there is none. Every
+# invocation passes it: scripts/e2e-local.sh derives it from
+# METRO_PORT, CI passes 8081 explicitly:
+#   maestro test -e METRO_URL=http%3A%2F%2Flocalhost%3A8084 .maestro/
+- runFlow:
+    when:
+      visible: 'Development servers'
+    commands:
+      - openLink: exp+landmarks://expo-development-client/?url=${METRO_URL}
+      # The dev-menu welcome mat only rides in AFTER the JS bundle
+      # loads — a one-shot guard here races it and loses (verified on
+      # the sim: guard checked, SKIPPED, mat arrived a beat later).
+      # Bounded optional wait: gone in a blink when the mat is
+      # suppressed or already handled, patient when the bundle is cold.
+      - extendedWaitUntil:
+          optional: true
+          visible: 'This is the developer menu.*'
+          timeout: 20000
+# Belt to the workflow's defaults-write braces: a fresh install's dev
+# menu onboarding sheet covers the app (run 7's welcome mat). The
+# match must be 'This is the developer menu.*' — Maestro text matches
+# are FULL-STRING regexes and the mat renders one whole paragraph, so
+# the old prefix-only guard never matched anything (a dead belt).
+- runFlow:
+    when:
+      visible: 'This is the developer menu.*'
+    commands:
+      - tapOn: 'Continue'
+      # Continue dismisses only the mat — the dev-menu sheet it rode
+      # in on stays open underneath (verified on the sim); close it
+      - runFlow:
+          when:
+            visible:
+              id: 'xmark'
+          commands:
+            - tapOn:
+                id: 'xmark'

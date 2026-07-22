@@ -1,5 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
-import { fixturesEnabled, readFixture } from '@/server/fixtures';
+import { fixturesEnabled, outageActive, readFixture } from '@/server/fixtures';
 import { dressWithPhotos } from '@/server/geograph';
 import {
   enrichStandaloneListed,
@@ -13,6 +13,7 @@ import { fetchExistenceTags } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 import { wikiTitleFromUrl } from '@/utils/format';
+import { distanceMeters } from '@/utils/geo';
 
 /**
  * GET /api/history?lat=51.5&lng=-0.09[&fresh=1]
@@ -41,16 +42,14 @@ function bucketKey(lat: number, lng: number): string {
   return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
 }
 
-export async function GET(request: Request) {
-  // Hermetic E2E: recorded Greenwich payload regardless of coords
-  // (CI pins the simulator there) — runner IPs get 429'd upstream
-  if (fixturesEnabled()) {
-    const fixture = readFixture<{ items: HistoryItem[] }>('history');
-    if (fixture) {
-      return Response.json(fixture);
-    }
-  }
+// The CI pin (and the fixtures' home): anything asked near here gets
+// the dense Greenwich recording; anything far away gets the sparse
+// one. 20km clears the FallbackCoordinates case (central London,
+// ~9km) so a denied-location boot still sees the dense feed.
+const FixturePin = { latitude: 51.4826, longitude: -0.0077 };
+const SparseFixtureMeters = 20000;
 
+export async function GET(request: Request) {
   const url = new URL(request.url);
   const latParam = url.searchParams.get('lat');
   const lngParam = url.searchParams.get('lng');
@@ -63,6 +62,27 @@ export async function GET(request: Request) {
     return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
   }
   const center = { latitude: lat, longitude: lng };
+
+  // Hermetic E2E: recorded payloads instead of upstreams — runner IPs
+  // get 429'd by Wikipedia/Wikidata. Near the pinned simulator it's
+  // the dense Greenwich feed; a faraway search (the sparse flow's
+  // geocoded village) gets the sparse-area recording, falling back to
+  // the dense one so a missing sparse fixture never blanks the app.
+  // The outage flag (offline-stale flow) refuses first — a dead
+  // network answers nobody. Flag off: this whole block is skipped and
+  // the route is byte-identical to the live one.
+  if (fixturesEnabled()) {
+    if (outageActive()) {
+      return Response.json({ error: 'Deliberate E2E outage' }, { status: 503 });
+    }
+    const sparseArea = distanceMeters(center, FixturePin) > SparseFixtureMeters;
+    const fixture =
+      (sparseArea ? readFixture<{ items: HistoryItem[] }>('history-sparse') : null) ??
+      readFixture<{ items: HistoryItem[] }>('history');
+    if (fixture) {
+      return Response.json(fixture);
+    }
+  }
 
   // The photo verdict routes, it doesn't delete: the client puts
   // subject-photo stories in Nearby (findable on arrival — Edd's rule)
