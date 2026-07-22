@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { fetchNearbyHistory, HistoryFetchResult } from '@/data/history-client';
+import { fetchNearbyHistory, hasCachedFeed, HistoryFetchResult } from '@/data/history-client';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
@@ -57,7 +57,16 @@ export function useHistory(center: Coordinates): {
 
   useEffect(() => {
     const id = ++requestId.current;
+    // Loading honesty on a bucket jump: this effect only refires when
+    // the BUCKET changes (walking ticks inside one don't), and if the
+    // new bucket has nothing cached the old area's feed — old-area
+    // distances and all — must not keep painting under the new header
+    // for the fetch window. A cached bucket (adjacent ground while
+    // walking, revisits) still hands over seamlessly, no flash.
     (async () => {
+      if (!hasCachedFeed({ latitude, longitude })) {
+        setState((prev) => (prev.status === 'loading' ? prev : { status: 'loading' }));
+      }
       try {
         const result = await fetchNearbyHistory({ latitude, longitude });
         await applyResult(id, result);
