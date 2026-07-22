@@ -18,6 +18,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChapterFolds } from '@/components/chapter-folds';
+import { ExternalLink } from '@/components/external-link';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { ThemedText } from '@/components/themed-text';
@@ -61,7 +62,6 @@ export type GazetteerRow =
   | { kind: 'fallback-article'; key: string }
   | { kind: 'door'; key: string; open: boolean }
   | { kind: 'original'; key: string }
-  | { kind: 'fallback-original'; key: string }
   | { kind: 'section'; key: string; title: string }
   | { kind: 'relic'; key: string; item: HistoryItem };
 
@@ -76,29 +76,11 @@ export function buildGazetteerRows(options: {
   /** Complete parts landed so far by a live (or halted) stream. */
   streamedParts?: RetoldPart[];
   originalOpen: boolean;
-  /** The article has titled chapters beyond its lede — so an unretold
-   * place's "Read the original article" door has something to reveal. */
-  hasChapters?: boolean;
   relics: HistoryItem[];
 }): GazetteerRow[] {
-  const { hasArticle, storyMissing, retoldStatus, retold, originalOpen, hasChapters, relics } =
-    options;
+  const { hasArticle, storyMissing, retoldStatus, retold, originalOpen, relics } = options;
   const streamedParts = options.streamedParts ?? [];
   const rows: GazetteerRow[] = [];
-
-  // No retelling: the article's lede stands as the story, and the rest
-  // of its chapters sit behind the SAME "Read the original article"
-  // door the retold screens use (Edd's ask — one recognisable
-  // affordance across both). Only when there are chapters to reveal.
-  const pushFallbackArticle = () => {
-    rows.push({ kind: 'fallback-article', key: 'fallback-article' });
-    if (hasChapters) {
-      rows.push({ kind: 'door', key: 'door', open: originalOpen });
-      if (originalOpen) {
-        rows.push({ kind: 'fallback-original', key: 'fallback-original' });
-      }
-    }
-  };
 
   if (!hasArticle && storyMissing && relics.length > 0) {
     // The wordless miss gets words: a named area whose article simply
@@ -129,13 +111,11 @@ export function buildGazetteerRows(options: {
       // are end-of-telling business. A halted stream keeps what
       // arrived and offers the rest.
       if (streamedParts.length === 0) {
-        if (retoldStatus === 'streaming') {
-          rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
-        } else {
-          // Halted before any part arrived: the article stands, same as
-          // a place that never earned a retelling.
-          pushFallbackArticle();
-        }
+        rows.push(
+          retoldStatus === 'streaming'
+            ? { kind: 'retelling-pending', key: 'retelling-pending' }
+            : { kind: 'fallback-article', key: 'fallback-article' }
+        );
       } else {
         rows.push({ kind: 'ai-label', key: 'ai-label' });
         rows.push(
@@ -152,9 +132,8 @@ export function buildGazetteerRows(options: {
     } else if (retoldStatus === 'pending') {
       rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
     } else {
-      // No retelling exists: the lede stands as the story, the rest
-      // behind the door
-      pushFallbackArticle();
+      // No retelling exists: the original article stands as the story
+      rows.push({ kind: 'fallback-article', key: 'fallback-article' });
     }
   }
 
@@ -275,6 +254,7 @@ export function AreaGazetteer({
   onRefresh,
   lead,
   empty,
+  sourceUrl,
 }: {
   areaName: string | null;
   /** False while the area-name cascade is still resolving: a null
@@ -293,6 +273,11 @@ export function AreaGazetteer({
   /** Rendered when NO article exists (never while loading) — a place
    * screen's fallback story. Areas keep the default empty text. */
   empty?: ReactNode;
+  /** The original article's URL. When an unretold place shows the
+   * article in full, this adds a "Read the original article" link out
+   * to the source (Wikipedia has more than we parse — the reference
+   * apparatus, every image). Areas don't carry one, so it's optional. */
+  sourceUrl?: string;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -443,12 +428,6 @@ export function AreaGazetteer({
   const resolvedArticleStatus = areaMissing ? 'none' : articleStatus;
   const resolvedRetoldStatus = areaMissing ? 'none' : retoldStatus;
 
-  // The lede is the untitled opening; the chapters are the rest —
-  // derived here (not just at render) so the row model knows whether
-  // an unretold place's door has anything to reveal.
-  const intro = article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [];
-  const chapters = article?.chapters.filter((chapter) => chapter.title !== '') ?? [];
-
   // The area's own article leads the screen, not the list
   const listRelics = relics.filter(
     (item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase()
@@ -460,7 +439,6 @@ export function AreaGazetteer({
     retold,
     streamedParts,
     originalOpen,
-    hasChapters: chapters.length > 0,
     relics: listRelics,
   });
 
@@ -485,6 +463,9 @@ export function AreaGazetteer({
       listRef.current?.scrollToIndex({ index, viewPosition: 0, viewOffset: 8 });
     }
   };
+
+  const intro = article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [];
+  const chapters = article?.chapters.filter((chapter) => chapter.title !== '') ?? [];
 
   const renderRow = (row: GazetteerRow) => {
     switch (row.kind) {
@@ -559,18 +540,22 @@ export function AreaGazetteer({
         );
       case 'fallback-article':
         // No retelling earned this place (a short article, under the
-        // MinSourceChars gate): the lede stands AS the story, labelled
-        // so a stub screen looks deliberate, not a retelling that
-        // failed to load (device-triaged: the Spanish Galleon). The
-        // rest of the article sits behind the door below.
-        return <ArticleBody intro={intro} chapters={chapters} label="From Wikipedia" show="lede" />;
-      case 'fallback-original':
-        // The rest of the chapters the door reveals — the lede above
-        // already showed the opening.
-        return <ArticleBody intro={intro} chapters={chapters} show="chapters" />;
+        // MinSourceChars gate): the original stands AS the story, in
+        // full. The eyebrow frames it as deliberate (not a retelling
+        // that failed to load — device-triaged: the Spanish Galleon),
+        // and the link out reaches the source, which holds more than we
+        // parse (the reference apparatus, every image).
+        return (
+          <ArticleBody
+            intro={intro}
+            chapters={chapters}
+            label="From Wikipedia"
+            sourceUrl={sourceUrl}
+          />
+        );
       case 'original':
-        // The original behind a retold screen's door: the whole article,
-        // and the door itself already labels it, so no eyebrow here.
+        // The original behind the door: the door itself already labels
+        // it, so no eyebrow here.
         return <ArticleBody intro={intro} chapters={chapters} />;
       case 'door':
         return (
@@ -712,25 +697,22 @@ export function AreaGazetteer({
 }
 
 /**
- * The Wikipedia article as the story body, shared by every row that
- * shows it:
- * - 'full' — the whole article (the `original` behind a retold screen's
- *   door; the door already labels it, so no eyebrow).
- * - 'lede' — just the opening, labelled "From Wikipedia": an unretold
- *   place's story, with the rest one tap away behind its own door.
- * - 'chapters' — the rest of the chapters an unretold place's door
- *   reveals (the lede already showed the opening).
+ * The Wikipedia article as the story body — shared by the two rows
+ * that show it: the `fallback-article` (no retelling, so the original
+ * stands as the story, labelled) and the `original` behind the door
+ * (already labelled by the door, so no eyebrow).
  */
 function ArticleBody({
   intro,
   chapters,
   label,
-  show = 'full',
+  sourceUrl,
 }: {
   intro: string[];
   chapters: ArticleChapter[];
   label?: string;
-  show?: 'full' | 'lede' | 'chapters';
+  /** When set, a "Read the original article" link out follows the body. */
+  sourceUrl?: string;
 }) {
   return (
     <View style={styles.article}>
@@ -739,13 +721,19 @@ function ArticleBody({
           {label}
         </ThemedText>
       )}
-      {show !== 'chapters' &&
-        intro.map((paragraph, index) => (
-          <ThemedText key={index} type="default" style={styles.para}>
-            {paragraph}
+      {intro.map((paragraph, index) => (
+        <ThemedText key={index} type="default" style={styles.para}>
+          {paragraph}
+        </ThemedText>
+      ))}
+      <ChapterFolds chapters={chapters} />
+      {sourceUrl && (
+        <ExternalLink href={sourceUrl as `https://${string}`} style={styles.sourceLink}>
+          <ThemedText type="small" themeColor="accent">
+            Read the original article ›
           </ThemedText>
-        ))}
-      {show !== 'lede' && <ChapterFolds chapters={chapters} />}
+        </ExternalLink>
+      )}
     </View>
   );
 }
@@ -981,6 +969,9 @@ const styles = StyleSheet.create({
   },
   articleLabel: {
     marginBottom: Spacing.three,
+  },
+  sourceLink: {
+    marginTop: Spacing.three,
   },
   partWrap: {
     paddingHorizontal: Spacing.four,
