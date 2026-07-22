@@ -26,7 +26,7 @@ import { Spacing } from '@/constants/theme';
 import { fetchArticle, fetchArticleLight } from '@/data/article-client';
 import { ApiError } from '@/data/cached-get';
 import { fetchRetold } from '@/data/retold-client';
-import { Article, ArticleImage } from '@/types/article';
+import { Article, ArticleChapter, ArticleImage } from '@/types/article';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
 import { LinkCandidate, linkifyParagraph, planStoryLinks } from '@/utils/linkify';
 import { withoutPullQuote } from '@/utils/pull-quote';
@@ -532,17 +532,17 @@ export function AreaGazetteer({
           </View>
         );
       case 'fallback-article':
+        // No retelling earned this place (a short article, under the
+        // MinSourceChars gate): the original stands AS the story. It
+        // must say so — an unlabelled article body under the hero reads
+        // as a retelling that failed to load (device-triaged: the
+        // Spanish Galleon). The eyebrow mirrors the retold banner's
+        // frame so a stub screen looks deliberate, not broken.
+        return <ArticleBody intro={intro} chapters={chapters} label="From Wikipedia" />;
       case 'original':
-        return (
-          <View style={styles.article}>
-            {intro.map((paragraph, index) => (
-              <ThemedText key={index} type="default" style={styles.para}>
-                {paragraph}
-              </ThemedText>
-            ))}
-            <ChapterFolds chapters={chapters} />
-          </View>
-        );
+        // The original behind the door: the door itself already labels
+        // it, so no eyebrow here.
+        return <ArticleBody intro={intro} chapters={chapters} />;
       case 'door':
         return (
           <DoorRow open={row.open} minutes={article?.minutes ?? 0} onToggle={() => setOriginalOpen((open) => !open)} />
@@ -678,6 +678,38 @@ export function AreaGazetteer({
       initialIndex={viewerIndex}
       onClose={() => setViewerIndex(null)}
     />
+    </View>
+  );
+}
+
+/**
+ * The Wikipedia article as the story body — shared by the two rows
+ * that show it: the `fallback-article` (no retelling, so the original
+ * stands as the story, labelled) and the `original` behind the door
+ * (already labelled by the door, so no eyebrow).
+ */
+function ArticleBody({
+  intro,
+  chapters,
+  label,
+}: {
+  intro: string[];
+  chapters: ArticleChapter[];
+  label?: string;
+}) {
+  return (
+    <View style={styles.article}>
+      {label && (
+        <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.articleLabel}>
+          {label}
+        </ThemedText>
+      )}
+      {intro.map((paragraph, index) => (
+        <ThemedText key={index} type="default" style={styles.para}>
+          {paragraph}
+        </ThemedText>
+      ))}
+      <ChapterFolds chapters={chapters} />
     </View>
   );
 }
@@ -910,6 +942,9 @@ const styles = StyleSheet.create({
   article: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
+  },
+  articleLabel: {
+    marginBottom: Spacing.three,
   },
   partWrap: {
     paddingHorizontal: Spacing.four,
