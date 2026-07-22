@@ -34,6 +34,9 @@ import { featuredStories } from '@/utils/featured';
 import { formatWalkTimeForMeters } from '@/utils/format';
 import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
 
+const PrivacyUrl = 'https://eddtb-landmarks.expo.app/privacy';
+const SupportUrl = 'https://eddtb-landmarks.expo.app/support';
+
 /** Pure and unit-tested: the story you are physically standing on. */
 export function standingOn(
   items: HistoryItem[],
@@ -510,6 +513,23 @@ export function HistoryBody({
           </ThemedText>
         </View>
       )}
+      <View style={styles.legalLinks}>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Privacy policy"
+          onPress={() => Linking.openURL(PrivacyUrl)}>
+          <ThemedText type="linkPrimary">Privacy</ThemedText>
+        </Pressable>
+        <ThemedText type="small" themeColor="textSecondary">
+          ·
+        </ThemedText>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Venture support"
+          onPress={() => Linking.openURL(SupportUrl)}>
+          <ThemedText type="linkPrimary">Support</ThemedText>
+        </Pressable>
+      </View>
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.pageId)}
@@ -645,6 +665,13 @@ const styles = StyleSheet.create({
   },
   emptyCopy: {
     textAlign: 'center',
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.one,
   },
   search: {
     borderRadius: Spacing.three - Spacing.one,
