@@ -58,6 +58,9 @@ store['cache-history-feed-v2-v1'] = JSON.stringify([
 ]);
 store['cache-history-item-v1'] = JSON.stringify([
   ['7', { value: persistedItem(7, 'Persisted Detail'), at: Date.now() }],
+  // Older than the 7d TTL but younger than the 14d prune: invisible
+  // to get, alive to peek — the offline fallback's whole clientele
+  ['8', { value: persistedItem(8, 'Persisted Expired'), at: Date.now() - 8 * 24 * HourMs }],
 ]);
 
 const { fetchNearbyHistory, fetchStory, getCachedHistoryItem, getStoriesAround } =
@@ -281,6 +284,27 @@ describe('fetchStory', () => {
     mockFetch.mockResolvedValue({ ok: false, status: 502 });
 
     await expect(fetchStory(4244)).rejects.toThrow('502');
+  });
+
+  test('a fresh persisted story answers without touching the network', async () => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    expect((await fetchStory(7))?.title).toBe('Persisted Detail');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('offline, an EXPIRED persisted story still answers — never "not found"', async () => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    // Past the 7d TTL, so the fresh path missed and the network was
+    // tried; the fallback peek serves what the device still holds
+    expect((await fetchStory(8))?.title).toBe('Persisted Expired');
+  });
+
+  test('offline with nothing persisted rethrows — an honest failure, not a 404', async () => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    await expect(fetchStory(9999)).rejects.toThrow('Network request failed');
   });
 });
 
