@@ -39,6 +39,11 @@ jest.mock('@/data/article-client', () => ({
 // No retelling in these tests: the original article stands as the story
 jest.mock('@/data/retold-client', () => ({ fetchRetold: jest.fn(async () => null) }));
 
+// …and the telling that leads it writes instantly
+jest.mock('@/data/telling-client', () => ({
+  fetchTelling: jest.fn(async () => 'The compter held debtors two centuries before the railway ate it.'),
+}));
+
 describe('<HistoryDetailScreen />', () => {
   beforeAll(() => {
     cacheHistoryItems([
@@ -69,8 +74,16 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText('Compass')).toBeOnTheScreen();
     expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
 
-    // No retelling exists → the original article stands as the story
-    // IN FULL: intro first, then the folds (first chapter open, the
+    // No retelling exists → the TELLING opens the story (App Store
+    // 4.2.2: the AI-told opening is the first thing read, with Listen)
+    expect(await screen.findByTestId('telling-lead')).toBeOnTheScreen();
+    expect(
+      screen.getByText('The compter held debtors two centuries before the railway ate it.')
+    ).toBeOnTheScreen();
+    expect(screen.getByText('✦ Told by AI from Wikipedia — original below')).toBeOnTheScreen();
+
+    // …and the original article still stands as the story IN FULL
+    // beneath it: intro first, then the folds (first chapter open, the
     // rest peeking) — not shortened behind a door
     expect(await screen.findByText('The intro, the surprising true thing.')).toBeOnTheScreen();
     expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
