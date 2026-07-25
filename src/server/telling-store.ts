@@ -16,8 +16,12 @@ import { createClient, type Client } from '@libsql/client/web';
  *
  * The iron rule, inherited from the budget breaker's caching law:
  * the store NEVER gates a read. Any error logs once and answers
- * "not stored"; writes are fire-and-forget. Couldn't-reach-the-store
- * must be indistinguishable from a store miss.
+ * "not stored"; writes never throw. Writes ARE awaited by callers —
+ * fire-and-forget dies on Workers, which freeze the isolate the
+ * moment the response returns and kill in-flight promises (proved in
+ * production: generations answered, nothing landed in the table).
+ * The ~100ms a write costs rides on responses that already spent
+ * seconds generating.
  */
 
 let client: Client | null | undefined;
@@ -85,25 +89,28 @@ export async function storeGet<V>(
   }
 }
 
-/** Fire-and-forget: a failed write never delays or breaks the answer. */
-export function storePut(kind: string, key: string, value: unknown, at: number): void {
+/** Never throws; await it so the platform can't kill it mid-flight. */
+export async function storePut(
+  kind: string,
+  key: string,
+  value: unknown,
+  at: number
+): Promise<void> {
   const c = resolveClient();
   if (!c) {
     return;
   }
-  void (async () => {
-    try {
-      await withTable(c);
-      await c.execute({
-        sql:
-          'INSERT INTO tellings (kind, key, value, written_at) VALUES (?, ?, ?, ?) ' +
-          'ON CONFLICT(kind, key) DO UPDATE SET value = excluded.value, written_at = excluded.written_at',
-        args: [kind, key, JSON.stringify(value), at],
-      });
-    } catch (error) {
-      warnOnce(error);
-    }
-  })();
+  try {
+    await withTable(c);
+    await c.execute({
+      sql:
+        'INSERT INTO tellings (kind, key, value, written_at) VALUES (?, ?, ?, ?) ' +
+        'ON CONFLICT(kind, key) DO UPDATE SET value = excluded.value, written_at = excluded.written_at',
+      args: [kind, key, JSON.stringify(value), at],
+    });
+  } catch (error) {
+    warnOnce(error);
+  }
 }
 
 /** Tests only: module state must not leak between them. */

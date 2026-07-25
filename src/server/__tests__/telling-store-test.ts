@@ -72,8 +72,9 @@ describe('telling-store', () => {
     mockExecute.mockRejectedValue(new Error('connect ETIMEDOUT'));
 
     await expect(store.storeGet('telling', '42')).resolves.toBeUndefined();
-    // The write is fire-and-forget: nothing to await, nothing thrown
-    expect(() => store.storePut('telling', '42', { text: 'x' }, 1)).not.toThrow();
+    // The write is awaited by callers (Workers kill floating promises
+    // after the response) but must still never reject
+    await expect(store.storePut('telling', '42', { text: 'x' }, 1)).resolves.toBeUndefined();
   });
 
   test('a corrupt stored value answers like a miss', async () => {
@@ -89,9 +90,7 @@ describe('telling-store', () => {
     const store = loadStore({ url: 'libsql://test.turso.io' });
     mockExecute.mockResolvedValue({ rows: [] });
 
-    store.storePut('retold', 'greenwich', { retold: null }, 1700000000000);
-    // Drain the fire-and-forget chain
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await store.storePut('retold', 'greenwich', { retold: null }, 1700000000000);
 
     expect(mockExecute).toHaveBeenLastCalledWith(
       expect.objectContaining({
