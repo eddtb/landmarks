@@ -214,22 +214,37 @@ export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {
  * caller can tell the difference.
  */
 export async function fetchStory(pageId: number): Promise<HistoryItem | null> {
+  // The cold start this function exists for arrives BEFORE hydration
+  // finishes — without the await, a story sitting in AsyncStorage was
+  // invisible here and an offline open said "not found" (the same
+  // race fetchNearbyHistory and fetchArticle already wait out)
+  await itemCache.hydrated;
   const cached = itemCache.get(String(pageId));
   if (cached) {
     return cached;
   }
 
-  const response = await fetch(apiUrl(`/api/story?pageId=${pageId}`));
-  if (response.status === 404) {
-    return null;
-  }
-  if (!response.ok) {
-    throw new Error(`Story request failed with status ${response.status}`);
-  }
+  try {
+    const response = await fetch(apiUrl(`/api/story?pageId=${pageId}`));
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`Story request failed with status ${response.status}`);
+    }
 
-  const body = (await response.json()) as { item: HistoryItem };
-  itemCache.set(String(body.item.pageId), body.item);
-  return body.item;
+    const body = (await response.json()) as { item: HistoryItem };
+    itemCache.set(String(body.item.pageId), body.item);
+    return body.item;
+  } catch (error) {
+    // Offline, the story you once had still answers: an expired entry
+    // beats "could not be found" (the article client's own rule)
+    const saved = itemCache.peek(String(pageId));
+    if (saved) {
+      return saved.value;
+    }
+    throw error;
+  }
 }
 
 /** Stable "no neighbourhood": one shared reference, so render-time
