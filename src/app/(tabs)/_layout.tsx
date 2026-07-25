@@ -9,9 +9,11 @@ const AccentTint: ColorValue =
     : Colors.light.accent;
 
 /**
- * Two questions, two tabs: what can I go see (Nearby — subject-photo
- * stories, findable on arrival) and what happened here (History — the
- * archive, photo optional).
+ * Three questions, three tabs: what can I go see (Nearby —
+ * subject-photo stories, findable on arrival), what did I keep
+ * (Saved — the shelf the user fills, place-agnostic where the others
+ * follow the feet), and what happened here (History — the archive,
+ * photo optional).
  */
 export default function TabsLayout() {
   return (
@@ -19,6 +21,10 @@ export default function TabsLayout() {
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Nearby</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="sparkles" md="auto_awesome" />
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="saved">
+        <NativeTabs.Trigger.Label>Saved</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="bookmark" md="bookmark" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
         <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>

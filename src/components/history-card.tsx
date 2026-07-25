@@ -12,9 +12,13 @@ type Props = {
   item: HistoryItem;
   /** Archive cards wear the lavender spine and the honest tag. */
   archive?: boolean;
+  /** Shelf cards drop the walk time: distanceMeters was minted where
+   * the feed fetched it, and on the saved shelf — possibly another
+   * town, another week — it is a lie. */
+  saved?: boolean;
 };
 
-export function HistoryCard({ item, archive }: Props) {
+export function HistoryCard({ item, archive, saved }: Props) {
   const theme = useTheme();
 
   return (
@@ -67,7 +71,9 @@ export function HistoryCard({ item, archive }: Props) {
           })()}
           <ThemedText type="small" themeColor="textSecondary">
             {/* Same walking estimate as demo mode: ~1.33 m/s */}
-            {formatWalkTime(Math.round(item.distanceMeters / 1.33))} · {item.source}
+            {saved
+              ? item.source
+              : `${formatWalkTime(Math.round(item.distanceMeters / 1.33))} · ${item.source}`}
           </ThemedText>
         </View>
       </Pressable>

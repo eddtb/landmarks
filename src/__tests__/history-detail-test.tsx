@@ -97,6 +97,26 @@ describe('<HistoryDetailScreen />', () => {
     });
   });
 
+  test('the Save pill toggles: Save → Saved → Save, shelf and pill in the same frame', async () => {
+    const { setSavedForTests, isSaved } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@/data/saved') as typeof import('@/data/saved');
+    setSavedForTests([]);
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
+    await render(<HistoryDetailScreen />);
+
+    const pill = await screen.findByTestId('save-button');
+    expect(screen.getByText('Save')).toBeOnTheScreen();
+
+    fireEvent.press(pill);
+    expect(await screen.findByText('Saved')).toBeOnTheScreen();
+    expect(isSaved(42)).toBe(true);
+
+    fireEvent.press(pill);
+    expect(await screen.findByText('Save')).toBeOnTheScreen();
+    expect(isSaved(42)).toBe(false);
+  });
+
   test('the Compass button opens the story compass modal', async () => {
     mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
     await render(<HistoryDetailScreen />);
