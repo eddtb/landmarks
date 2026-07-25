@@ -2,6 +2,7 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 import { ApiError, cachedGet } from '@/data/cached-get';
+import { packStory } from '@/data/offline-pack';
 import { persistedMap } from '@/data/persisted-cache';
 import { Article } from '@/types/article';
 
@@ -42,6 +43,12 @@ export async function fetchArticle(title: string): Promise<Article> {
     const saved = articleCache.peek(title);
     if (saved) {
       return saved.value;
+    }
+    // …and a story the keep-offline toggle downloaded beats both:
+    // the pack never expires and never gets evicted by browsing
+    const packed = packStory(title)?.article;
+    if (packed) {
+      return packed;
     }
     throw error;
   }

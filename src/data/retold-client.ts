@@ -2,6 +2,7 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 import { ApiError } from '@/data/cached-get';
+import { packStory } from '@/data/offline-pack';
 import { makeSseFrameReader } from '@/data/sse';
 import { Retold, RetoldPart } from '@/types/retold';
 
@@ -43,6 +44,27 @@ export async function fetchRetold(
     return cached;
   }
 
+  try {
+    return await fetchRetoldLive(areaName, key, onPart);
+  } catch (error) {
+    // Offline: a retelling the keep-offline toggle downloaded still
+    // reads. Only a real retelling answers — a pack entry whose
+    // retold is null is the server's remembered "under the gate"
+    // verdict, and the caller's 404 handling must keep meaning that.
+    const packed = packStory(key)?.retold;
+    if (packed) {
+      cache.set(key, packed);
+      return packed;
+    }
+    throw error;
+  }
+}
+
+async function fetchRetoldLive(
+  areaName: string,
+  key: string,
+  onPart?: (part: RetoldPart, index: number) => void
+): Promise<Retold> {
   const response = await fetch(apiUrl(`/api/retold?area=${encodeURIComponent(areaName)}`), {
     headers: { Accept: 'text/event-stream, application/json' },
   });

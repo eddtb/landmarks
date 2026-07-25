@@ -85,6 +85,12 @@ export function toggleSaved(item: HistoryItem) {
   }
 }
 
+/** Module-level subscription — the download engine keeps the pack in
+ * step with the shelf through this, outside any component. */
+export function onSavedChange(listener: () => void): () => void {
+  return subscribe(listener);
+}
+
 export function useSavedList(): SavedPlace[] | null {
   return useSyncExternalStore(subscribe, savedList, savedList);
 }
