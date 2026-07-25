@@ -1,5 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Compass } from '@/components/compass';
 import { ThemedText } from '@/components/themed-text';
@@ -11,11 +12,16 @@ import { getCachedHistoryItem } from '@/data/history-client';
 export default function CompassScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
+  const insets = useSafeAreaInsets();
 
   return (
     <ThemedView style={styles.container} testID="compass-screen">
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
+      {/* Top inset respected like Go's — a modal can still peek under
+          the dynamic island. Close is a word, and violet: it's a
+          button, and interactive means accent (the no-third-case rule
+          the old grey ✕ broke). */}
+      <View style={[styles.header, { paddingTop: Spacing.four + insets.top }]}>
         <ThemedText type="headline" numberOfLines={1} style={styles.title}>
           {item?.title ?? ''}
         </ThemedText>
@@ -23,9 +29,9 @@ export default function CompassScreen() {
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={() => router.back()}
-          hitSlop={Spacing.two}>
-          <ThemedText type="headline" themeColor="textSecondary">
-            ✕
+          hitSlop={Spacing.three}>
+          <ThemedText type="smallBold" themeColor="accent">
+            Close
           </ThemedText>
         </Pressable>
       </View>
