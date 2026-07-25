@@ -27,19 +27,52 @@
       "koreaAgeRatingOverride": "NONE"
     },
     "info": {
-      "en-GB": {
+      "en-US": {
         "title": "Venture: History Nearby",
-        "subtitle": "Discover stories around you",
-        "description": "The history of where you stand.\n\nVenture reveals the palaces, ships, plaques, buildings and vanished places within a walk of you. Open the app to see nearby stories, hear a concise telling, read the original source, or follow walking directions to the place itself.\n\nDISCOVER WHAT'S NEARBY\nSee historic places around your current location, ordered by distance and illustrated with photographs where available.\n\nHEAR THE STORY\nListen to short spoken tellings that bring each place to life, then continue into the source material whenever you want the full detail.\n\nFIND YOUR WAY\nUse the compass for a quick bearing or view a walking route with distance and time.\n\nBUILD A WALK\nAdd interesting stops to your walk, reorder them, and play their stories in sequence as a personal local history tour.\n\nEXPLORE WITHOUT LOCATION\nLocation is optional. Search near a place to explore somewhere else or use Venture without granting location access.\n\nVenture draws on credited historical and geographic sources including Wikipedia, Wikimedia Commons, Historic England, Open Plaques and Geograph. Availability varies by area. Walking directions should be checked against signs and current local conditions.",
+        "subtitle": "History hiding around you",
+        "promoText": "Step outside and uncover the ships, statues, plaques and hidden histories around you. Venture turns an ordinary walk into a journey through the past.",
+        "description": "What happened here?\n\nVenture turns an ordinary walk into a journey through the past. Open the app and discover the ships, palaces, statues, plaques, buildings and vanished places hiding all around you.\n\nDISCOVER WHAT OTHERS WALK PAST\nSee nearby history ordered by walking distance, with photographs that make each discovery instantly recognisable.\n\nWALK INTO THE STORY\nChoose something that catches your eye and follow a real walking route straight to it, complete with distance, time and turn-by-turn guidance.\n\nLET THE PLACE COME ALIVE\nRead or listen to concise, engaging tellings. Explore visual timelines and historical photographs, then go deeper whenever curiosity takes hold.\n\nTRUST THE SOURCE\nEvery story keeps you connected to its credited source. Continue into the original article for the full history and follow photo credits back to their creators.\n\nEXPLORE ANYWHERE\nSearch another place to explore before a day out or discover somewhere new without sharing your location. No account is required.\n\nVenture draws on credited historical and geographic sources including Wikipedia, Wikimedia Commons, Historic England, Open Plaques and Geograph. Coverage varies by area. Always check walking directions against signs and current local conditions.",
         "keywords": [
           "history",
-          "local history",
+          "local",
           "landmarks",
           "heritage",
           "walking",
-          "stories",
+          "audio",
+          "guide",
+          "museum",
+          "tour",
           "nearby",
-          "audio guide",
+          "London"
+        ],
+        "supportUrl": "https://eddtb-landmarks.expo.app/support",
+        "privacyPolicyUrl": "https://eddtb-landmarks.expo.app/privacy",
+        "screenshots": {
+          "APP_IPHONE_67": [
+            "app-store/screenshots/marketing/en-GB/01-history-all-around-you.png",
+            "app-store/screenshots/marketing/en-GB/02-walk-into-the-story.png",
+            "app-store/screenshots/marketing/en-GB/03-places-come-alive.png",
+            "app-store/screenshots/marketing/en-GB/04-centuries-at-a-glance.png",
+            "app-store/screenshots/marketing/en-GB/05-never-walk-past.png"
+          ]
+        }
+      },
+      "en-GB": {
+        "title": "Venture: History Nearby",
+        "subtitle": "History hiding around you",
+        "promoText": "Step outside and uncover the ships, statues, plaques and hidden histories around you. Venture turns an ordinary walk into a journey through the past.",
+        "description": "What happened here?\n\nVenture turns an ordinary walk into a journey through the past. Open the app and discover the ships, palaces, statues, plaques, buildings and vanished places hiding all around you.\n\nDISCOVER WHAT OTHERS WALK PAST\nSee nearby history ordered by walking distance, with photographs that make each discovery instantly recognisable.\n\nWALK INTO THE STORY\nChoose something that catches your eye and follow a real walking route straight to it, complete with distance, time and turn-by-turn guidance.\n\nLET THE PLACE COME ALIVE\nRead or listen to concise, engaging tellings. Explore visual timelines and historical photographs, then go deeper whenever curiosity takes hold.\n\nTRUST THE SOURCE\nEvery story keeps you connected to its credited source. Continue into the original article for the full history and follow photo credits back to their creators.\n\nEXPLORE ANYWHERE\nSearch another place to explore before a day out or discover somewhere new without sharing your location. No account is required.\n\nVenture draws on credited historical and geographic sources including Wikipedia, Wikimedia Commons, Historic England, Open Plaques and Geograph. Coverage varies by area. Always check walking directions against signs and current local conditions.",
+        "keywords": [
+          "history",
+          "local",
+          "landmarks",
+          "heritage",
+          "walking",
+          "audio",
+          "guide",
+          "museum",
+          "tour",
+          "nearby",
           "London"
         ],
         "supportUrl": "https://eddtb-landmarks.expo.app/support",
