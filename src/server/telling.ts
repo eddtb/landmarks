@@ -73,7 +73,9 @@ export async function getTelling(
   if (text) {
     const at = Date.now();
     cache.set(key, { text, at });
-    storePut('telling', key, { text, at }, at);
+    // Awaited: Workers freeze the isolate once the response returns —
+    // a floating write here silently never lands (production-proved)
+    await storePut('telling', key, { text, at }, at);
   }
   return text;
 }

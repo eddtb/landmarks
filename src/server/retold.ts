@@ -318,7 +318,9 @@ export async function startRetoldStream(areaName: string): Promise<RetoldStreamS
       // next open, on ANY worker (the verdict is durable too)
       const at = Date.now();
       cache.set(key, { retold: null, at });
-      storePut('retold', key, { retold: null }, at);
+      // Awaited: a floating write dies with the isolate (Workers
+      // freeze on response) — the verdict must land before we answer
+      await storePut('retold', key, { retold: null }, at);
       finish(null);
       return { kind: 'unavailable' };
     }
@@ -384,7 +386,9 @@ async function* pumpRetold(
     const retold = parseRetold(extractAnswerText([{ text: raw }]));
     const at = Date.now();
     cache.set(key, { retold, at });
-    storePut('retold', key, { retold }, at);
+    // Awaited before the final frame: the SSE response is still open
+    // here, so the isolate stays alive for the write
+    await storePut('retold', key, { retold }, at);
     finish(retold);
     settled = true;
     if (retold) {
