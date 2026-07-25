@@ -21,6 +21,7 @@ import { ChapterFolds } from '@/components/chapter-folds';
 import { ExternalLink } from '@/components/external-link';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
+import { TellingLead } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
@@ -59,6 +60,7 @@ export type GazetteerRow =
   | { kind: 'part'; key: string; part: RetoldPart; index: number }
   | { kind: 'retelling-pending'; key: string }
   | { kind: 'retelling-halted'; key: string }
+  | { kind: 'telling-lead'; key: string }
   | { kind: 'fallback-article'; key: string }
   | { kind: 'door'; key: string; open: boolean }
   | { kind: 'original'; key: string }
@@ -77,10 +79,22 @@ export function buildGazetteerRows(options: {
   streamedParts?: RetoldPart[];
   originalOpen: boolean;
   relics: HistoryItem[];
+  /** A place screen with a telling to hand: wherever the original
+   * article would stand alone as the story, the telling opens it. */
+  tellingLead?: boolean;
 }): GazetteerRow[] {
   const { hasArticle, storyMissing, retoldStatus, retold, originalOpen, relics } = options;
   const streamedParts = options.streamedParts ?? [];
   const rows: GazetteerRow[] = [];
+
+  // The fallback pair: the telling (when a place carries one) leads,
+  // the original article stands in full beneath — never gated by it
+  const pushFallbackArticle = () => {
+    if (options.tellingLead) {
+      rows.push({ kind: 'telling-lead', key: 'telling-lead' });
+    }
+    rows.push({ kind: 'fallback-article', key: 'fallback-article' });
+  };
 
   if (!hasArticle && storyMissing && relics.length > 0) {
     // The wordless miss gets words: a named area whose article simply
@@ -111,11 +125,11 @@ export function buildGazetteerRows(options: {
       // are end-of-telling business. A halted stream keeps what
       // arrived and offers the rest.
       if (streamedParts.length === 0) {
-        rows.push(
-          retoldStatus === 'streaming'
-            ? { kind: 'retelling-pending', key: 'retelling-pending' }
-            : { kind: 'fallback-article', key: 'fallback-article' }
-        );
+        if (retoldStatus === 'streaming') {
+          rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
+        } else {
+          pushFallbackArticle();
+        }
       } else {
         rows.push({ kind: 'ai-label', key: 'ai-label' });
         rows.push(
@@ -133,7 +147,7 @@ export function buildGazetteerRows(options: {
       rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
     } else {
       // No retelling exists: the original article stands as the story
-      rows.push({ kind: 'fallback-article', key: 'fallback-article' });
+      pushFallbackArticle();
     }
   }
 
@@ -255,6 +269,7 @@ export function AreaGazetteer({
   lead,
   empty,
   sourceUrl,
+  tellingItem,
 }: {
   areaName: string | null;
   /** False while the area-name cascade is still resolving: a null
@@ -278,6 +293,10 @@ export function AreaGazetteer({
    * to the source (Wikipedia has more than we parse — the reference
    * apparatus, every image). Areas don't carry one, so it's optional. */
   sourceUrl?: string;
+  /** When a place has a story to tell (its own extract, no separate
+   * subject), the fallback article gets a telling lead: the AI-told
+   * opening above the original, with Listen. Areas pass none. */
+  tellingItem?: HistoryItem;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -440,6 +459,7 @@ export function AreaGazetteer({
     streamedParts,
     originalOpen,
     relics: listRelics,
+    tellingLead: tellingItem !== undefined,
   });
 
   const linkCandidates: LinkCandidate[] = allStories
@@ -538,6 +558,8 @@ export function AreaGazetteer({
             </Pressable>
           </View>
         );
+      case 'telling-lead':
+        return tellingItem ? <TellingLead item={tellingItem} /> : null;
       case 'fallback-article':
         // No retelling earned this place (a short article, under the
         // MinSourceChars gate): the original stands AS the story, in

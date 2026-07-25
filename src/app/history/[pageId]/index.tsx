@@ -215,6 +215,11 @@ export default function HistoryDetailScreen() {
         refreshing={false}
         onRefresh={() => {}}
         sourceUrl={item.url}
+        // The telling can only open the place's OWN story: a plaque
+        // screen tells its subject's article, and a telling written
+        // from the inscription would speak past it. No extract, no
+        // telling — the model must never write from nothing.
+        tellingItem={!item.subject && item.extract?.trim() ? item : undefined}
         lead={
           <>
             <ActionsLead item={item} />

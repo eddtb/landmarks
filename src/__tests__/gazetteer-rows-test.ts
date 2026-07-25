@@ -138,6 +138,50 @@ describe('buildGazetteerRows', () => {
     expect(nothing.map((row) => row.kind)).toEqual(['fallback-article']);
   });
 
+  test('a place with a telling to hand: the telling leads the fallback article', () => {
+    const rows = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'none',
+      retold: null,
+      originalOpen: false,
+      relics: [],
+      tellingLead: true,
+    });
+    expect(rows.map((row) => row.kind)).toEqual(['telling-lead', 'fallback-article']);
+  });
+
+  test('the telling lead also opens a halted-before-anything fallback', () => {
+    const rows = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'halted',
+      retold: null,
+      streamedParts: [],
+      originalOpen: false,
+      relics: [],
+      tellingLead: true,
+    });
+    expect(rows.map((row) => row.kind)).toEqual(['telling-lead', 'fallback-article']);
+  });
+
+  test('a READY retelling never doubles up with a telling lead', () => {
+    const rows = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'ready',
+      retold,
+      originalOpen: false,
+      relics: [],
+      tellingLead: true,
+    });
+    expect(rows.map((row) => row.kind)).toEqual([
+      'ai-label',
+      'timeline',
+      'part',
+      'part',
+      'part',
+      'door',
+    ]);
+  });
+
   test('no article: the relics stand alone, immediately', () => {
     const rows = buildGazetteerRows({
       hasArticle: false,
