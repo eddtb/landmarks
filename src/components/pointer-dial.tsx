@@ -9,6 +9,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { bearingDegrees, Coordinates } from '@/utils/geo';
 
 const DefaultDialSize = 200;
+const TickCount = 60; // every 6°, majors on the cardinals
 
 type Props = {
   user: Coordinates;
@@ -18,14 +19,73 @@ type Props = {
   secondary?: string;
   /** Dial diameter; needle scales with it. */
   size?: number;
-  /** Sheet-sized variant: tiny primary text inside, nothing else. */
+  /** Sheet-sized variant: tiny primary text inside, nothing else —
+   * Go's directions sheet. No ticks, no cardinals, no coach line. */
   compact?: boolean;
+  /** Within arm's reach of the target: the needle rests at the top
+   * and the coach line says so — a compass pointing at your feet
+   * reads as broken. */
+  arrived?: boolean;
+  /** No position yet: the dial still stands (the void was the bug),
+   * needle hidden, the words say what's happening. */
+  locating?: boolean;
 };
 
 /**
+ * A rotation that always takes the shortest arc, so 359° -> 1°
+ * doesn't spin the long way round. Both moving layers (needle,
+ * cardinal card) turn through this.
+ */
+function useShortestArc(target: number | null) {
+  const rotation = useSharedValue(0);
+  useEffect(() => {
+    if (target === null) {
+      return;
+    }
+    const next = ((target % 360) + 360) % 360;
+    const current = ((rotation.value % 360) + 360) % 360;
+    let delta = next - current;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    rotation.value = withTiming(rotation.value + delta, { duration: 300 });
+  }, [target, rotation]);
+  return useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+}
+
+/** The fixed tick ring: sixty accentSoft marks, longer on the cardinals. */
+function TickRing({ size, color }: { size: number; color: string }) {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none" testID="dial-ticks">
+      {Array.from({ length: TickCount }, (_, index) => {
+        const major = index % (TickCount / 4) === 0;
+        return (
+          <View
+            key={index}
+            style={[styles.tickArm, { transform: [{ rotate: `${(index * 360) / TickCount}deg` }] }]}>
+            <View
+              style={{
+                width: major ? 2.5 : 1.5,
+                height: major ? Math.round(size * 0.055) : Math.round(size * 0.035),
+                borderRadius: 1,
+                backgroundColor: color,
+              }}
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
  * The shared dial: a needle that points at `target` relative to the
- * direction the phone is facing, with text in the middle. Hides the
- * needle where no heading exists (e.g. the simulator).
+ * direction the phone is facing, with text in the middle. The full
+ * variant is an instrument — tick ring, a cardinal card that turns
+ * with the earth (letters tilt like a real compass card), a coach
+ * line in words beneath. Hides the needle where no heading exists
+ * (e.g. the simulator).
  */
 export function PointerDial({
   user,
@@ -34,33 +94,33 @@ export function PointerDial({
   secondary,
   size = DefaultDialSize,
   compact = false,
+  arrived = false,
+  locating = false,
 }: Props) {
   const heading = useHeading(true);
   const theme = useTheme();
-  const rotation = useSharedValue(0);
 
-  const pointable = heading !== null;
+  const pointable = heading !== null && !locating;
   const targetBearing = bearingDegrees(user, target);
 
-  useEffect(() => {
-    if (!pointable) {
-      return;
-    }
-    const next = (targetBearing - (heading ?? 0) + 360) % 360;
-    // Rotate via the shortest arc so 359° -> 1° doesn't spin the long way round
-    const current = ((rotation.value % 360) + 360) % 360;
-    let delta = next - current;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    rotation.value = withTiming(rotation.value + delta, { duration: 300 });
-  }, [pointable, targetBearing, heading, rotation]);
-
-  const needleStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
+  // Arrived: the needle comes home to the top instead of chasing a
+  // bearing computed between two nearly identical points
+  const needleStyle = useShortestArc(
+    !pointable ? null : arrived ? 0 : (targetBearing - (heading ?? 0) + 360) % 360
+  );
+  // The cardinal card counter-rotates: N stays pinned to the world
+  const cardStyle = useShortestArc(!pointable ? null : (360 - (heading ?? 0)) % 360);
 
   const needleWidth = Math.round(size * 0.055);
   const needleHeight = Math.round(size * 0.15);
+
+  const coach = locating
+    ? 'Hold on — finding you'
+    : arrived
+      ? 'You’re here — look around'
+      : pointable
+        ? 'Turn until the needle sits at the top'
+        : 'Distance updates as you move';
 
   return (
     <View style={compact ? styles.compactContainer : styles.container}>
@@ -71,9 +131,29 @@ export function PointerDial({
             width: size,
             height: size,
             borderRadius: size / 2,
-            borderColor: theme.accent + '40',
+            borderColor: theme.accentSoft,
           },
         ]}>
+        {!compact && <TickRing size={size} color={theme.accentSoft} />}
+        {!compact && pointable && (
+          <Animated.View
+            style={[StyleSheet.absoluteFill, cardStyle]}
+            pointerEvents="none"
+            testID="cardinal-card">
+            <ThemedText type="eyebrow" style={[styles.cardinal, styles.cardinalN]}>
+              N
+            </ThemedText>
+            <ThemedText type="eyebrow" themeColor="textSecondary" style={[styles.cardinal, styles.cardinalE]}>
+              E
+            </ThemedText>
+            <ThemedText type="eyebrow" themeColor="textSecondary" style={[styles.cardinal, styles.cardinalS]}>
+              S
+            </ThemedText>
+            <ThemedText type="eyebrow" themeColor="textSecondary" style={[styles.cardinal, styles.cardinalW]}>
+              W
+            </ThemedText>
+          </Animated.View>
+        )}
         {pointable && (
           <Animated.View
             style={[StyleSheet.absoluteFill, styles.needleLayer, needleStyle]}
@@ -97,7 +177,9 @@ export function PointerDial({
           </ThemedText>
         ) : (
           <>
-            <ThemedText type="subtitle">{primary}</ThemedText>
+            <ThemedText type="subtitle" style={styles.primary}>
+              {primary}
+            </ThemedText>
             {secondary !== undefined && (
               <ThemedText type="small" themeColor="textSecondary">
                 {secondary}
@@ -106,9 +188,9 @@ export function PointerDial({
           </>
         )}
       </View>
-      {!pointable && !compact && (
+      {!compact && (
         <ThemedText type="small" themeColor="textSecondary">
-          Distance updates as you move
+          {coach}
         </ThemedText>
       )}
     </View>
@@ -129,6 +211,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  tickArm: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    paddingTop: 6,
+  },
+  cardinal: {
+    position: 'absolute',
+  },
+  cardinalN: {
+    top: Spacing.three - Spacing.half,
+    alignSelf: 'center',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+  },
+  // Letters sit upright at rest and tilt with the card as it turns —
+  // how a physical compass card behaves (and Apple's)
+  cardinalS: {
+    bottom: Spacing.three - Spacing.half,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+  },
+  cardinalE: {
+    right: Spacing.three - Spacing.half,
+    top: '50%',
+    marginTop: -7,
+  },
+  cardinalW: {
+    left: Spacing.three - Spacing.half,
+    top: '50%',
+    marginTop: -7,
+  },
   needleLayer: {
     alignItems: 'center',
   },
@@ -138,6 +257,10 @@ const styles = StyleSheet.create({
     height: 0,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
+  },
+  primary: {
+    textAlign: 'center',
+    paddingHorizontal: Spacing.four,
   },
   compactPrimary: {
     fontSize: 10,

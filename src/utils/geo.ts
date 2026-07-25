@@ -47,6 +47,13 @@ const CompassArrows = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'] a
  * Which arrow points at the target, given the direction the user is facing.
  * "Relative bearing 0" = straight ahead = ↑.
  */
+const CompassPoints = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
+
+/** The bearing as a spoken compass point — "away · NE" on the dial. */
+export function compassPoint(bearing: number): (typeof CompassPoints)[number] {
+  return CompassPoints[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
+}
+
 export function arrowTowards(
   from: Coordinates,
   to: Coordinates,
