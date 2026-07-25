@@ -47,7 +47,14 @@
         }
       ],
       "expo-maps",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false,
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-asset"
     ],
     "experiments": {
