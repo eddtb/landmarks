@@ -12,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { fetchStory, getCachedHistoryItem, getStoriesAround } from '@/data/history-client';
+import { toggleSaved, useSaved, useSavedItem } from '@/data/saved';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem, isWikiPageId } from '@/types/history';
 import { formatWalkTime, storyParagraphs } from '@/utils/format';
@@ -32,10 +33,11 @@ function mapsWalkingUrl(coordinates: Coordinates): string {
   );
 }
 
-/** The journey controls ride under the hero: violet Go, then Compass. */
+/** The journey controls ride under the hero: violet Go, Compass, Save. */
 function ActionsLead({ item }: { item: HistoryItem }) {
   const theme = useTheme();
   const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
+  const saved = useSaved(item.pageId);
 
   return (
     <View style={styles.lead}>
@@ -71,6 +73,22 @@ function ActionsLead({ item }: { item: HistoryItem }) {
           pressed && { opacity: 0.85 },
         ]}>
         <ThemedText type="smallBold">Compass</ThemedText>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        testID="save-button"
+        accessibilityLabel={saved ? 'Remove from saved' : 'Save this story'}
+        onPress={() => toggleSaved(item)}
+        style={({ pressed }) => [
+          styles.compass,
+          // Saved wears the door colours — accentSoft ground, accent
+          // word — because violet means tappable and this stays a button
+          { backgroundColor: saved ? theme.accentSoft : theme.backgroundElement },
+          pressed && { opacity: 0.85 },
+        ]}>
+        <ThemedText type="smallBold" themeColor={saved ? 'accent' : undefined}>
+          {saved ? 'Saved' : 'Save'}
+        </ThemedText>
       </Pressable>
       <ThemedText type="small" themeColor="textSecondary" style={styles.leadMeta}>
         {item.source}
@@ -127,8 +145,15 @@ export default function HistoryDetailScreen() {
   // screen is allowed to say "not found".
   const [fetched, setFetched] = useState<HistoryItem | null>(null);
   const [missingPageId, setMissingPageId] = useState<number | null>(null);
+  // The saved shelf is a peer source, not a cache: the item cache
+  // evicts and expires, but a story the user chose to keep must open
+  // from its snapshot forever (for synthetic heritage ids it is the
+  // only copy anywhere). Reactive, so the screen recovers the moment
+  // the shelf hydrates.
+  const savedSnapshot = useSavedItem(numericPageId);
   const item =
     getCachedHistoryItem(numericPageId) ??
+    savedSnapshot ??
     (fetched?.pageId === numericPageId ? fetched : undefined);
 
   useEffect(() => {
