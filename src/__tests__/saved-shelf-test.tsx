@@ -30,6 +30,15 @@ describe('<SavedScreen />', () => {
     expect(screen.getByText('Nothing saved yet — Save on any story keeps it here.')).toBeOnTheScreen();
   });
 
+  test('the shelf carries the keep-offline switch once something is saved', async () => {
+    setSavedForTests([{ item: item(61, 'Brunel Engine House'), savedAt: 1 }]);
+    await render(<SavedScreen />);
+
+    expect(screen.getByTestId('keep-offline-switch')).toBeOnTheScreen();
+    expect(screen.getByText('Keep saved stories offline')).toBeOnTheScreen();
+    expect(screen.getByText('Download every saved story to this phone')).toBeOnTheScreen();
+  });
+
   test('saved cards show the story, the hook, the count — and NO walk time', async () => {
     setSavedForTests([
       { item: item(61, 'Brunel Engine House'), savedAt: 2 },

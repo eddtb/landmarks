@@ -81,3 +81,21 @@ describe('fetchArticle persistence', () => {
     expect(onDisk.has('Light Only')).toBe(false);
   });
 });
+
+describe('fetchArticle offline-pack fallback', () => {
+  test('a story the keep-offline toggle downloaded answers when the network and both caches cannot', async () => {
+    const { setPackForTests } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@/data/offline-pack') as typeof import('@/data/offline-pack');
+    setPackForTests({
+      enabled: true,
+      stories: { 'packed pier': { article: savedArticle, retold: null } },
+      tellings: {},
+    });
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    const article = await fetchArticle('Packed Pier');
+
+    expect(article.minutes).toBe(4);
+  });
+});

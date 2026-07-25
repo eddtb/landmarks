@@ -149,3 +149,26 @@ describe('fetchRetold (dual transport)', () => {
     expect((await fetchRetold('Nowhere').catch((error) => error)) instanceof ApiError).toBe(true);
   });
 });
+
+describe('fetchRetold offline-pack fallback', () => {
+  test('offline, a downloaded retelling still reads — but a packed "under the gate" verdict stays a miss', async () => {
+    const { setPackForTests } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@/data/offline-pack') as typeof import('@/data/offline-pack');
+    setPackForTests({
+      enabled: true,
+      stories: {
+        'kept area': { article: null, retold: telling },
+        'gated area': { article: null, retold: null },
+      },
+      tellings: {},
+    });
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    expect((await fetchRetold('Kept Area')).parts.length).toBe(3);
+    // null retold is the remembered 404 — the fallback must not
+    // resurrect it as a story, and the caller's fallback-article
+    // path must still fire
+    await expect(fetchRetold('Gated Area')).rejects.toThrow('Network request failed');
+  });
+});
