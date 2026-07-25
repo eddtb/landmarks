@@ -42,6 +42,6 @@ free-keyed and unmetered — they don't belong in this table.
 
 | Call (kind)          | Cache                    | Cost |
 |----------------------|--------------------------|------|
-| Gemini telling (ungrounded) | tellings 30d (per story) + device session cache | free tier, 300-calls/day breaker |
+| Gemini telling (ungrounded) | tellings 30d (per story): Turso durable store (survives worker recycles; off without TURSO_DATABASE_URL) + per-process map + device session cache. Retold shares the same store ('retold' kind, incl. 7d no-retell verdicts) | free tier, 300-calls/day breaker |
 | Valhalla walking route (FOSSGIS) | routes 24h (per ~27m origin bucket + destination) | free community server; 300-calls/day breaker out of politeness |
 | Anthropic (dormant fallback) | n/a — only via explicit AI_PROVIDER=anthropic | paid; assertBudget breaker; boot log asks "is this intended?" |

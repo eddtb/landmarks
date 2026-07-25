@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~56.0.22",
+    "@libsql/client": "^0.17.4",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~56.0.16",
     "expo-asset": "~56.0.20",
@@ -55,8 +56,13 @@
   "jest": {
     "preset": "jest-expo",
     "resolver": "react-native-worklets/jest/resolver",
-    "testPathIgnorePatterns": ["/node_modules/", "<rootDir>/.claude/"],
-    "modulePathIgnorePatterns": ["<rootDir>/.claude/worktrees/"],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/.claude/"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/.claude/worktrees/"
+    ],
     "setupFilesAfterEnv": [
       "./jest-setup.js"
     ],

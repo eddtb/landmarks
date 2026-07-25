@@ -1,4 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { storeGet, storePut } from '@/server/telling-store';
 import { researchStream } from '@/server/anthropic';
 import { getArticle } from '@/server/article';
 import { extractAnswerText } from '@/server/gemini';
@@ -218,6 +219,7 @@ export type RetoldStreamEvent =
 export type RetoldStreamStart =
   | { kind: 'unavailable' } // no article, or too thin to retell — a 404
   | { kind: 'join' } // a generation is already running — share it as JSON
+  | { kind: 'cached' } // the durable store answered — peek now hits, serve JSON
   | { kind: 'stream'; events: AsyncGenerator<RetoldStreamEvent, void, void> };
 
 /** The fresh cache entry (a null retold is the "no retelling" verdict), or undefined. */
@@ -231,6 +233,28 @@ export function peekRetold(areaName: string): { retold: Retold | null } | undefi
 
 export function retellingInFlight(areaName: string): boolean {
   return inFlight.has(areaName.toLowerCase());
+}
+
+/**
+ * The durable store's answer for a key, re-seeded into the
+ * per-process map at its ORIGINAL age so both TTL clocks (30d told,
+ * 7d "no retelling") keep one truth. On production edge runtimes the
+ * map dies with every isolate — without this, each recycle rewrote
+ * the same stories, one free-tier call at a time. Undefined means
+ * miss, stale, store off, or store unreachable — all one answer:
+ * generate.
+ */
+async function restoreRetold(key: string): Promise<{ retold: Retold | null } | undefined> {
+  const stored = await storeGet<{ retold: Retold | null }>('retold', key);
+  if (!stored) {
+    return undefined;
+  }
+  const ttl = stored.value.retold ? TtlMs : NoRetellTtlMs;
+  if (Date.now() - stored.at >= ttl) {
+    return undefined;
+  }
+  cache.set(key, { retold: stored.value.retold, at: stored.at });
+  return { retold: stored.value.retold };
 }
 
 async function retellSource(areaName: string): Promise<string | null> {
@@ -262,6 +286,16 @@ export async function startRetoldStream(areaName: string): Promise<RetoldStreamS
   if (inFlight.has(key)) {
     return { kind: 'join' };
   }
+  // Another worker may have told this story already — ask the durable
+  // store before spending a call. Re-checked join after the await:
+  // a concurrent open may have started generating meanwhile.
+  const restored = await restoreRetold(key);
+  if (restored !== undefined) {
+    return restored.retold ? { kind: 'cached' } : { kind: 'unavailable' };
+  }
+  if (inFlight.has(key)) {
+    return { kind: 'join' };
+  }
   let settle!: (retold: Retold | null) => void;
   const shared = new Promise<Retold | null>((resolve) => {
     settle = resolve;
@@ -280,8 +314,11 @@ export async function startRetoldStream(areaName: string): Promise<RetoldStreamS
       return { kind: 'unavailable' };
     }
     if (source.length < MinSourceChars) {
-      // Stubs don't earn a retelling — not worth a call now, or on the next open
-      cache.set(key, { retold: null, at: Date.now() });
+      // Stubs don't earn a retelling — not worth a call now, or on the
+      // next open, on ANY worker (the verdict is durable too)
+      const at = Date.now();
+      cache.set(key, { retold: null, at });
+      storePut('retold', key, { retold: null }, at);
       finish(null);
       return { kind: 'unavailable' };
     }
@@ -345,7 +382,9 @@ async function* pumpRetold(
     // 30 days; a completed-but-invalid one as the 7-day "no retelling"
     // verdict (the call was spent; re-spending per open compounds it).
     const retold = parseRetold(extractAnswerText([{ text: raw }]));
-    cache.set(key, { retold, at: Date.now() });
+    const at = Date.now();
+    cache.set(key, { retold, at });
+    storePut('retold', key, { retold }, at);
     finish(retold);
     settled = true;
     if (retold) {
@@ -380,6 +419,10 @@ export async function getRetold(areaName: string): Promise<Retold | null> {
   const started = await startRetoldStream(areaName);
   if (started.kind === 'unavailable') {
     return null;
+  }
+  if (started.kind === 'cached') {
+    // The durable store answered and re-seeded the map
+    return peekRetold(areaName)?.retold ?? null;
   }
   if (started.kind === 'join') {
     return inFlight.get(key) ?? getRetold(areaName);

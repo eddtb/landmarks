@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { research } from '@/server/anthropic';
+import { storeGet, storePut } from '@/server/telling-store';
 
 /**
  * The telling: a ~one-minute spoken narration of a story, written by
@@ -50,6 +51,16 @@ export async function getTelling(
     return cached.text;
   }
 
+  // The durable store outlives the worker: on production edge
+  // runtimes the map above dies with every isolate, and each story
+  // was being rewritten per recycle. A store hit re-seeds the map at
+  // its ORIGINAL age, so the 30-day clock keeps one truth.
+  const stored = await storeGet<CachedTelling>('telling', key);
+  if (stored && stored.value.text && Date.now() - stored.at < TtlMs) {
+    cache.set(key, { text: stored.value.text, at: stored.at });
+    return stored.value.text;
+  }
+
   const text = (
     await research({
       prompt: tellingPrompt(subject),
@@ -60,7 +71,9 @@ export async function getTelling(
   ).trim();
 
   if (text) {
-    cache.set(key, { text, at: Date.now() });
+    const at = Date.now();
+    cache.set(key, { text, at });
+    storePut('telling', key, { text, at }, at);
   }
   return text;
 }
