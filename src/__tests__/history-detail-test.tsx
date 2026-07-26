@@ -89,9 +89,9 @@ describe('<HistoryDetailScreen />', () => {
     expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
     expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen();
     // …and a link out to the source, which holds more than we parse
-    expect(screen.getByText('Read the original article ›')).toBeOnTheScreen();
+    expect(screen.getByText('Read more on Wikipedia ›')).toBeOnTheScreen();
     expect(screen.getByText('Wikipedia · source')).toBeOnTheScreen();
-    expect(screen.getByTestId('original-article-link')).toHaveStyle({
+    expect(screen.getByTestId('wikipedia-link')).toHaveStyle({
       backgroundColor: '#EFEAFC',
       borderRadius: 14,
     });
@@ -261,10 +261,14 @@ describe('<HistoryDetailScreen />', () => {
     expect(await screen.findByText('Brunel Engine House')).toBeOnTheScreen();
     expect(screen.queryByText('Tinside Lido')).not.toBeOnTheScreen();
     expect(screen.getByText(/dreamed of Tinside Lido/)).toBeOnTheScreen();
-    expect(await screen.findByTestId('original-article-door')).toHaveStyle({
+    // The retold story ends in a link out to the source — the browser,
+    // not an inline door
+    expect(await screen.findByTestId('wikipedia-link')).toHaveStyle({
       backgroundColor: '#EFEAFC',
       borderRadius: 14,
     });
+    expect(screen.getByText('Read more on Wikipedia ›')).toBeOnTheScreen();
+    expect(screen.queryByText('Read the original article ›')).not.toBeOnTheScreen();
 
     // The retold rows give VirtualizedList a follow-up render batch on
     // a timer — let it fire inside act so the test ends quiet

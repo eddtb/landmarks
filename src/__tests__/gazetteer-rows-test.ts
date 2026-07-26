@@ -26,12 +26,11 @@ const retold: Retold = {
 };
 
 describe('buildGazetteerRows', () => {
-  test('ready: label, timeline, parts, door — then the ground', () => {
+  test('ready: label, timeline, parts, link out — then the ground', () => {
     const rows = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'ready',
       retold,
-      originalOpen: false,
       relics: [relic(1, 'Palace of Placentia')],
     });
     expect(rows.map((row) => row.kind)).toEqual([
@@ -40,28 +39,9 @@ describe('buildGazetteerRows', () => {
       'part',
       'part',
       'part',
-      'door',
+      'source-link',
       'section',
       'relic',
-    ]);
-  });
-
-  test('the door opens onto the original as a row', () => {
-    const rows = buildGazetteerRows({
-      hasArticle: true,
-      retoldStatus: 'ready',
-      retold,
-      originalOpen: true,
-      relics: [],
-    });
-    expect(rows.map((row) => row.kind)).toEqual([
-      'ai-label',
-      'timeline',
-      'part',
-      'part',
-      'part',
-      'door',
-      'original',
     ]);
   });
 
@@ -70,7 +50,6 @@ describe('buildGazetteerRows', () => {
       hasArticle: true,
       retoldStatus: 'pending',
       retold: null,
-      originalOpen: false,
       relics: [],
     });
     expect(pending.map((row) => row.kind)).toEqual(['retelling-pending']);
@@ -79,7 +58,6 @@ describe('buildGazetteerRows', () => {
       hasArticle: true,
       retoldStatus: 'none',
       retold: null,
-      originalOpen: false,
       relics: [],
     });
     expect(failed.map((row) => row.kind)).toEqual(['fallback-article']);
@@ -91,7 +69,6 @@ describe('buildGazetteerRows', () => {
       retoldStatus: 'streaming',
       retold: null,
       streamedParts: [],
-      originalOpen: false,
       relics: [],
     });
     expect(nothingYet.map((row) => row.kind)).toEqual(['retelling-pending']);
@@ -101,10 +78,9 @@ describe('buildGazetteerRows', () => {
       retoldStatus: 'streaming',
       retold: null,
       streamedParts: retold.parts.slice(0, 2),
-      originalOpen: false,
       relics: [relic(1, 'Palace of Placentia')],
     });
-    // No timeline, no door — both are end-of-telling business
+    // No timeline, no link out — both are end-of-telling business
     expect(rows.map((row) => row.kind)).toEqual([
       'ai-label',
       'part',
@@ -121,7 +97,6 @@ describe('buildGazetteerRows', () => {
       retoldStatus: 'halted',
       retold: null,
       streamedParts: retold.parts.slice(0, 1),
-      originalOpen: false,
       relics: [],
     });
     expect(rows.map((row) => row.kind)).toEqual(['ai-label', 'part', 'retelling-halted']);
@@ -132,7 +107,6 @@ describe('buildGazetteerRows', () => {
       retoldStatus: 'halted',
       retold: null,
       streamedParts: [],
-      originalOpen: false,
       relics: [],
     });
     expect(nothing.map((row) => row.kind)).toEqual(['fallback-article']);
@@ -143,7 +117,6 @@ describe('buildGazetteerRows', () => {
       hasArticle: true,
       retoldStatus: 'none',
       retold: null,
-      originalOpen: false,
       relics: [],
       tellingLead: true,
     });
@@ -156,7 +129,6 @@ describe('buildGazetteerRows', () => {
       retoldStatus: 'halted',
       retold: null,
       streamedParts: [],
-      originalOpen: false,
       relics: [],
       tellingLead: true,
     });
@@ -168,7 +140,6 @@ describe('buildGazetteerRows', () => {
       hasArticle: true,
       retoldStatus: 'ready',
       retold,
-      originalOpen: false,
       relics: [],
       tellingLead: true,
     });
@@ -178,7 +149,7 @@ describe('buildGazetteerRows', () => {
       'part',
       'part',
       'part',
-      'door',
+      'source-link',
     ]);
   });
 
@@ -187,7 +158,6 @@ describe('buildGazetteerRows', () => {
       hasArticle: false,
       retoldStatus: 'pending',
       retold: null,
-      originalOpen: false,
       relics: [relic(1, 'Palace of Placentia'), relic(2, 'JASON reactor')],
     });
     expect(rows.map((row) => row.kind)).toEqual(['section', 'relic', 'relic']);
@@ -199,7 +169,6 @@ describe('buildGazetteerRows', () => {
       storyMissing: true,
       retoldStatus: 'none',
       retold: null,
-      originalOpen: false,
       relics: [relic(1, 'Palace of Placentia')],
     });
     expect(rows.map((row) => row.kind)).toEqual(['no-story', 'section', 'relic']);
@@ -211,7 +180,6 @@ describe('buildGazetteerRows', () => {
       storyMissing: true,
       retoldStatus: 'none',
       retold: null,
-      originalOpen: false,
       relics: [],
     });
     expect(rows).toEqual([]);
@@ -224,7 +192,6 @@ describe('partRowIndex (a tapped year finds its part)', () => {
       hasArticle: true,
       retoldStatus: 'ready',
       retold,
-      originalOpen: false,
       relics: [],
     });
     // ai-label, timeline, part0 → part 2 (1-based) sits at row 3

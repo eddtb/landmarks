@@ -39,8 +39,8 @@ import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/u
 
 /**
  * The Gazetteer: a magazine cover for the place. Hero and gallery in
- * the header; EVERYTHING ELSE IS A ROW — the retold parts, the door,
- * the original, the relics — so the story virtualises (the hero
+ * the header; EVERYTHING ELSE IS A ROW — the retold parts, the link
+ * out to the source, the relics — so the story virtualises (the hero
  * paints the moment the article lands; the retelling streams in when
  * ready) and a tapped timeline year can scroll straight to the part
  * that tells it (Edd's ask).
@@ -62,8 +62,7 @@ export type GazetteerRow =
   | { kind: 'retelling-halted'; key: string }
   | { kind: 'telling-lead'; key: string }
   | { kind: 'fallback-article'; key: string }
-  | { kind: 'door'; key: string; open: boolean }
-  | { kind: 'original'; key: string }
+  | { kind: 'source-link'; key: string }
   | { kind: 'section'; key: string; title: string }
   | { kind: 'relic'; key: string; item: HistoryItem };
 
@@ -77,13 +76,12 @@ export function buildGazetteerRows(options: {
   retold: Retold | null;
   /** Complete parts landed so far by a live (or halted) stream. */
   streamedParts?: RetoldPart[];
-  originalOpen: boolean;
   relics: HistoryItem[];
   /** A place screen with a telling to hand: wherever the original
    * article would stand alone as the story, the telling opens it. */
   tellingLead?: boolean;
 }): GazetteerRow[] {
-  const { hasArticle, storyMissing, retoldStatus, retold, originalOpen, relics } = options;
+  const { hasArticle, storyMissing, retoldStatus, retold, relics } = options;
   const streamedParts = options.streamedParts ?? [];
   const rows: GazetteerRow[] = [];
 
@@ -115,14 +113,14 @@ export function buildGazetteerRows(options: {
           (part, index): GazetteerRow => ({ kind: 'part', key: `part-${index}`, part, index })
         )
       );
-      rows.push({ kind: 'door', key: 'door', open: originalOpen });
-      if (originalOpen) {
-        rows.push({ kind: 'original', key: 'original' });
-      }
+      // After the telling, the way to the source: a link out to the
+      // Wikipedia page (Edd's ruling — no inline door, no second copy
+      // of the article behind it)
+      rows.push({ kind: 'source-link', key: 'source-link' });
     } else if (retoldStatus === 'streaming' || retoldStatus === 'halted') {
       // A live stream: the label lands with the first part; the story
-      // grows part by complete part. No timeline, no door yet — both
-      // are end-of-telling business. A halted stream keeps what
+      // grows part by complete part. No timeline, no link out yet —
+      // both are end-of-telling business. A halted stream keeps what
       // arrived and offers the rest.
       if (streamedParts.length === 0) {
         if (retoldStatus === 'streaming') {
@@ -289,9 +287,10 @@ export function AreaGazetteer({
    * screen's fallback story. Areas keep the default empty text. */
   empty?: ReactNode;
   /** The original article's URL. When an unretold place shows the
-   * article in full, this adds a "Read the original article" link out
-   * to the source (Wikipedia has more than we parse — the reference
-   * apparatus, every image). Areas don't carry one, so it's optional. */
+   * article in full, this adds a "Read more on Wikipedia" link out to
+   * the source (Wikipedia has more than we parse — the reference
+   * apparatus, every image). Areas don't carry one, so it's optional;
+   * the retold screen's link derives one from the area name instead. */
   sourceUrl?: string;
   /** When a place has a story to tell (its own extract, no separate
    * subject), the fallback article gets a telling lead: the AI-told
@@ -331,7 +330,6 @@ export function AreaGazetteer({
   const streamedRef = useRef<RetoldPart[]>([]);
   const streamedFor = useRef<string | null>(null);
   const [retoldAttempt, setRetoldAttempt] = useState(0);
-  const [originalOpen, setOriginalOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [areaFor, setAreaFor] = useState<string | null>(null);
   const { speaking, engineFailed, spokeOnce, toggle } = useRetoldSpeaker(retold);
@@ -347,7 +345,6 @@ export function AreaGazetteer({
     // during render trips the hooks rules, and the effect runs before
     // any new part could land
     setStreamedParts([]);
-    setOriginalOpen(false);
   }
 
   // …and must not inherit its reading progress. An effect, not the
@@ -457,7 +454,6 @@ export function AreaGazetteer({
     retoldStatus: resolvedRetoldStatus,
     retold,
     streamedParts,
-    originalOpen,
     relics: listRelics,
     tellingLead: tellingItem !== undefined,
   });
@@ -487,6 +483,15 @@ export function AreaGazetteer({
   const intro = article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [];
   const chapters = article?.chapters.filter((chapter) => chapter.title !== '') ?? [];
 
+  // Where "Read more on Wikipedia" points: places pass the item's own
+  // URL; areas fetch their article by name alone, so the link derives
+  // from the title (Wikipedia resolves spacing and redirects itself).
+  const articleUrl =
+    sourceUrl ??
+    (areaName
+      ? `https://en.wikipedia.org/wiki/${encodeURIComponent(areaName.replace(/ /g, '_'))}`
+      : undefined);
+
   const renderRow = (row: GazetteerRow) => {
     switch (row.kind) {
       case 'no-story':
@@ -501,7 +506,7 @@ export function AreaGazetteer({
           <View>
           <View style={styles.aiLabel}>
             <ThemedText type="small" themeColor="textSecondary" style={styles.aiLabelText}>
-              ✦ Retold by AI from Wikipedia — original below
+              ✦ Retold by AI from Wikipedia — source below
             </ThemedText>
             {speechAvailable && retold && (
               <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.two}>
@@ -575,14 +580,10 @@ export function AreaGazetteer({
             sourceUrl={sourceUrl}
           />
         );
-      case 'original':
-        // The original behind the door: the door itself already labels
-        // it, so no eyebrow here.
-        return <ArticleBody intro={intro} chapters={chapters} />;
-      case 'door':
-        return (
-          <DoorRow open={row.open} minutes={article?.minutes ?? 0} onToggle={() => setOriginalOpen((open) => !open)} />
-        );
+      case 'source-link':
+        // The telling read, the source one tap away — in the browser,
+        // not behind an inline door (Edd's ruling)
+        return articleUrl ? <WikipediaLinkRow href={articleUrl} standalone /> : null;
       case 'section':
         return (
           <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.sectionHead}>
@@ -720,9 +721,8 @@ export function AreaGazetteer({
 
 /**
  * The Wikipedia article as the story body — shared by the two rows
- * that show it: the `fallback-article` (no retelling, so the original
- * stands as the story, labelled) and the `original` behind the door
- * (already labelled by the door, so no eyebrow).
+ * shows it: the `fallback-article` row, where no retelling exists and
+ * the original stands as the story, labelled by its eyebrow.
  */
 function ArticleBody({
   intro,
@@ -733,10 +733,9 @@ function ArticleBody({
   intro: string[];
   chapters: ArticleChapter[];
   label?: string;
-  /** When set, a "Read the original article" link out follows the body. */
+  /** When set, a "Read more on Wikipedia" link out follows the body. */
   sourceUrl?: string;
 }) {
-  const theme = useTheme();
   return (
     <View style={styles.article}>
       {label && (
@@ -750,25 +749,33 @@ function ArticleBody({
         </ThemedText>
       ))}
       <ChapterFolds chapters={chapters} />
-      {sourceUrl && (
-        <ExternalLink
-          href={sourceUrl as `https://${string}`}
-          accessibilityLabel="Read the original article on Wikipedia"
-          testID="original-article-link"
-          style={[
-            styles.originalArticleBlock,
-            styles.sourceLink,
-            { backgroundColor: theme.accentSoft },
-          ]}>
-          <ThemedText type="smallBold" themeColor="accent">
-            Read the original article ›
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            Wikipedia · source
-          </ThemedText>
-        </ExternalLink>
-      )}
+      {sourceUrl && <WikipediaLinkRow href={sourceUrl} />}
     </View>
+  );
+}
+
+/** The one way out to the source, wherever it stands: opens the Wikipedia
+ * page in the browser. `standalone` carries its own side margins for
+ * use as a bare list row (inside ArticleBody the article pads it). */
+function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boolean }) {
+  const theme = useTheme();
+  return (
+    <ExternalLink
+      href={href as `https://${string}`}
+      accessibilityLabel="Read more on Wikipedia"
+      testID="wikipedia-link"
+      style={[
+        styles.linkRow,
+        standalone ? styles.linkRowStandalone : styles.sourceLink,
+        { backgroundColor: theme.accentSoft },
+      ]}>
+      <ThemedText type="smallBold" themeColor="accent">
+        Read more on Wikipedia ›
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        Wikipedia · source
+      </ThemedText>
+    </ExternalLink>
   );
 }
 
@@ -872,37 +879,6 @@ function PartRow({
         </View>
       ))}
     </View>
-  );
-}
-
-function DoorRow({
-  open,
-  minutes,
-  onToggle,
-}: {
-  open: boolean;
-  minutes: number;
-  onToggle: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      testID="original-article-door"
-      onPress={onToggle}
-      style={({ pressed }) => [
-        styles.originalArticleBlock,
-        styles.door,
-        { backgroundColor: theme.accentSoft },
-        pressed && { opacity: 0.85 },
-      ]}>
-      <ThemedText type="smallBold" themeColor="accent">
-        {open ? 'Hide the original article ⌄' : 'Read the original article ›'}
-      </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        Wikipedia · {minutes} min
-      </ThemedText>
-    </Pressable>
   );
 }
 
@@ -1066,7 +1042,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
   },
-  originalArticleBlock: {
+  linkRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1075,7 +1051,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three - 2,
   },
-  door: {
+  linkRowStandalone: {
     marginHorizontal: Spacing.four,
     marginVertical: Spacing.three,
   },
