@@ -193,7 +193,7 @@ function SectionHeader({
   const title = areaName ?? 'Near you';
 
   return (
-    <View style={[styles.header, { borderBottomColor: theme.backgroundElement }]}>
+    <View style={styles.header}>
       <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
         {exploring ? 'Exploring' : eyebrow}
       </ThemedText>
@@ -523,7 +523,7 @@ export function HistoryBody({
       {/* The count stays pinned — Edd asked for the FEATURED items to
           scroll away, nothing else */}
       {items.length > 0 && (
-        <View style={styles.controlLine}>
+        <View style={[styles.countLine, { borderBottomColor: theme.backgroundElement }]}>
           <ThemedText type="small" themeColor="textSecondary">
             {/* Honest in quiet corners: the server widened its search
                 (sparse-area mode) and the count line says so — with a
@@ -586,14 +586,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
-    paddingBottom: Spacing.two,
     gap: Spacing.one,
-    // The feed scrolls UNDER this block, so without an edge a card's
-    // text is simply sliced mid-sentence by the count line and reads
-    // as a collision (seen at the end of the Greenwich feed). A
-    // hairline in the card colour is the quietest thing that says
-    // "the list starts here".
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   titleRow: {
     flexDirection: 'row',
@@ -657,6 +650,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     paddingHorizontal: 2,
     paddingBottom: 2,
+  },
+  // The seam the list scrolls under. The count is pinned while cards
+  // pass beneath it, so with no edge a card's text is sliced
+  // mid-sentence and reads as a collision. The rule belongs HERE, not
+  // on the header block above: the count line is a pinned sibling of
+  // the list, and a border on the header lands one element too early
+  // (caught in a screenshot, after the first attempt shipped).
+  countLine: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   controlLine: {
     flexDirection: 'row',
