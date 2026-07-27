@@ -32,6 +32,7 @@ jest.mock('@/server/ai-cache', () => {
 jest.mock('@/server/telling-store', () => ({
   storeGet: jest.fn(async () => undefined),
   storePut: jest.fn(async () => undefined),
+  lastStoreError: jest.fn(() => null),
 }));
 jest.mock('@/server/geograph', () => ({
   dressWithPhotos: jest.fn(async (items: HistoryItem[]) => items),
