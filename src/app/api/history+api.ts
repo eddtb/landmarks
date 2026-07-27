@@ -9,6 +9,7 @@ import {
 } from '@/server/heritage';
 import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
+import { storeGet, storePut } from '@/server/telling-store';
 import { ExistenceFacts, fetchExistenceFacts } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
@@ -45,9 +46,25 @@ const ListTtlMs = 60 * 60 * 1000;
 // must not be replayed as if it were the honest wide list;
 // v4: plaque items may carry resolved subject titles (option A);
 // v3 and earlier predate photo rules and existence tags
-const listCache = diskBackedMap<{ items: HistoryItem[]; sparse?: boolean; at: number }>(
-  'history-lists-v7'
-);
+type CachedList = { items: HistoryItem[]; sparse?: boolean; at: number };
+const listCache = diskBackedMap<CachedList>('history-lists-v7');
+
+/**
+ * The durable half of the same cache. The map above is per-process,
+ * and on the production edge runtime that means per-ISOLATE: isolates
+ * recycle constantly, so a "1 hour" bucket was in practice minutes
+ * long and nearly every reader paid for a full four-upstream compose
+ * (measured: 2-6s warm-looking, 8-11s under load, and enough
+ * Wikipedia traffic to get the worker's egress rate-limited — which
+ * the app reports, honestly, as "you're offline").
+ *
+ * The tellings solved this in #231 with a Turso store; the feed never
+ * got the same treatment. It does now, under the same iron rule: the
+ * store NEVER gates a read. Absent config, unreachable, corrupt — all
+ * answer "not stored" and the compose proceeds exactly as before.
+ */
+const FeedKind = 'feed';
+
 
 // Serve-once state for a cold compose whose photo leg is still in
 // flight: the text-complete list lives HERE, never in listCache — the
@@ -185,6 +202,15 @@ export async function GET(request: Request) {
     if (pending) {
       return respond(pending.items, pending.sparse, true);
     }
+    // Another isolate may have composed this bucket already. A hit
+    // re-seeds the map at its ORIGINAL age, so the hour is counted
+    // from the compose, not from this worker's luck.
+    const stored = await storeGet<CachedList>(FeedKind, key);
+    if (stored && Date.now() - stored.at < ListTtlMs) {
+      listCache.set(key, { ...stored.value, at: stored.at });
+      const items = await dressWithPhotos(stored.value.items, undefined, undefined, 0, 0);
+      return respond(items, stored.value.sparse);
+    }
   }
 
   try {
@@ -281,8 +307,15 @@ export async function GET(request: Request) {
     // answer must never be an undressed list
     const finalize = ([dressedItems, facts]: [HistoryItem[], Map<number, ExistenceFacts>]) => {
       const items = applyFacts(dressedItems, facts);
-      listCache.set(key, sparse ? { items, sparse, at: Date.now() } : { items, at: Date.now() });
-      return items;
+      const entry: CachedList = sparse
+        ? { items, sparse, at: Date.now() }
+        : { items, at: Date.now() };
+      listCache.set(key, entry);
+      // The durable twin, so the NEXT isolate inherits this compose
+      // instead of repeating it. Fire-and-forget would be wrong on
+      // the edge (frozen at response) and unnecessary on Node — the
+      // callers below await it where it matters.
+      return { items, stored: storePut(FeedKind, key, entry, entry.at) };
     };
 
     const timings = () =>
@@ -306,8 +339,17 @@ export async function GET(request: Request) {
     if (!backgroundWorkSurvives) {
       try {
         const finished = await final;
+        const { items, stored } = finalize(finished);
+        // Awaited: the isolate freezes the moment this response
+        // returns, and a write that never lands leaves the next
+        // reader composing from scratch — the whole point of the store.
+        // Swallowed: the store never gates a read (its iron rule), and
+        // a rejected write must not turn a complete feed into a
+        // degraded one. storePut is contracted not to throw; this is
+        // the belt, and a test pins it.
+        await stored.catch(() => {});
         console.log(`[history] cold compose ${key}: ${timings()}, awaited dressing (edge)`);
-        return respond(finalize(finished), sparse);
+        return respond(items, sparse);
       } catch (error) {
         console.warn('Photo dressing degraded (verdict not cached):', error);
         return respond(classified, sparse, true);
@@ -322,7 +364,7 @@ export async function GET(request: Request) {
     ]).catch(() => null);
     if (settled) {
       console.log(`[history] cold compose ${key}: ${timings()}, decoration made the grace`);
-      return respond(finalize(settled), sparse);
+      return respond(finalize(settled).items, sparse);
     }
 
     const snapshot = { items: classified, ...(sparse ? { sparse } : {}) };
@@ -351,6 +393,17 @@ export async function GET(request: Request) {
     return respond(snapshot.items, sparse, true);
   } catch (error) {
     console.error('History lookup failed:', error);
+    // A refused compose is not an empty world. Wikipedia rate-limits
+    // by egress IP, so one worker's busy minute becomes every reader's
+    // error — and the app says "you're offline" to someone who isn't.
+    // A stored feed past its hour is stale, not wrong: the ground
+    // doesn't change in an hour, and yesterday's stories beat a dead
+    // screen. Only a bucket we have never composed can honestly 502.
+    const salvaged = await storeGet<CachedList>(FeedKind, key);
+    if (salvaged) {
+      console.log(`[history] compose refused for ${key} — serving the stored feed instead`);
+      return respond(salvaged.value.items, salvaged.value.sparse);
+    }
     return Response.json({ error: 'History lookup failed' }, { status: 502 });
   }
 }
