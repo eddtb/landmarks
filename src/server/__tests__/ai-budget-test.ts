@@ -25,36 +25,36 @@ describe('the AI spend circuit breaker', () => {
     }
   });
 
-  test('spends freely under the cap, refuses at it', () => {
-    expect(() => assertBudget()).not.toThrow();
+  test('spends freely under the cap, refuses at it', async () => {
+    await expect(assertBudget()).resolves.toBeUndefined();
 
-    recordSpend(0.4);
-    recordSpend(0.35);
+    await recordSpend(0.4);
+    await recordSpend(0.35);
     expect(todaysSpend().dollars).toBeCloseTo(0.75);
     expect(todaysSpend().calls).toBe(2);
-    expect(() => assertBudget()).not.toThrow();
+    await expect(assertBudget()).resolves.toBeUndefined();
 
-    recordSpend(0.3);
+    await recordSpend(0.3);
     // $1.05 >= the $1 default cap: every further billed call refuses
-    expect(() => assertBudget()).toThrow(BudgetExceededError);
+    await expect(assertBudget()).rejects.toThrow(BudgetExceededError);
   });
 
-  test('a higher configured budget lifts the ceiling', () => {
+  test('a higher configured budget lifts the ceiling', async () => {
     process.env.AI_DAILY_BUDGET_USD = '5';
     try {
-      expect(() => assertBudget()).not.toThrow();
+      await expect(assertBudget()).resolves.toBeUndefined();
     } finally {
       delete process.env.AI_DAILY_BUDGET_USD;
     }
-    expect(() => assertBudget()).toThrow(BudgetExceededError);
+    await expect(assertBudget()).rejects.toThrow(BudgetExceededError);
   });
 });
 
 describe('replay-only dev mode', () => {
-  test('refuses every billed call regardless of budget', () => {
+  test('refuses every billed call regardless of budget', async () => {
     process.env.REPLAY_ONLY = '1';
     try {
-      expect(() => assertBudget()).toThrow(/replay-only/);
+      await expect(assertBudget()).rejects.toThrow(/replay-only/);
     } finally {
       delete process.env.REPLAY_ONLY;
     }

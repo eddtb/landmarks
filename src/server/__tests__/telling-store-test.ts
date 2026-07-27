@@ -98,4 +98,37 @@ describe('telling-store', () => {
       })
     );
   });
+
+  test('a failed first CREATE TABLE is not remembered — the next call retries it', async () => {
+    const store = loadStore({ url: 'libsql://test.turso.io' });
+    mockExecute
+      .mockRejectedValueOnce(new Error('transient blip')) // CREATE TABLE fails once
+      .mockResolvedValueOnce({ rows: [] }) // CREATE TABLE retried
+      .mockResolvedValueOnce({ rows: [{ value: JSON.stringify({ text: 'Alive.' }), written_at: 5 }] });
+
+    expect(await store.storeGet('telling', '42')).toBeUndefined();
+    // A memoized rejection would leave the store off for the isolate's
+    // life; the retry must reach the table and read through
+    expect(await store.storeGet<{ text: string }>('telling', '42')).toEqual({
+      value: { text: 'Alive.' },
+      at: 5,
+    });
+  });
+
+  test('storeAdd increments atomically in one statement and never throws', async () => {
+    const store = loadStore({ url: 'libsql://test.turso.io' });
+    mockExecute.mockResolvedValue({ rows: [] });
+
+    await store.storeAdd('ledger', 'gemini-call-ledger:2026-07-27', 1, 1700000000000);
+
+    const call = mockExecute.mock.calls.at(-1)?.[0] as { sql: string; args: unknown[] };
+    // One upsert, no read-modify-write — concurrent isolates must not
+    // lose each other's increments
+    expect(call.sql).toContain('ON CONFLICT(kind, key) DO UPDATE');
+    expect(call.sql).toContain("json_extract(tellings.value, '$.dollars') + ?");
+    expect(call.args).toEqual(['ledger', 'gemini-call-ledger:2026-07-27', 1, 1700000000000, 1]);
+
+    mockExecute.mockRejectedValue(new Error('gone away'));
+    await expect(store.storeAdd('ledger', 'k', 1, 2)).resolves.toBeUndefined();
+  });
 });

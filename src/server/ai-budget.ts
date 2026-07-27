@@ -24,10 +24,10 @@ export function todaysSpend() {
   return budget.todays();
 }
 
-export function assertBudget() {
-  budget.assert();
+export function assertBudget(): Promise<void> {
+  return budget.assert();
 }
 
-export function recordSpend(dollars: number) {
-  budget.record(dollars);
+export function recordSpend(dollars: number): Promise<void> {
+  return budget.record(dollars);
 }

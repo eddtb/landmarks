@@ -26,14 +26,14 @@ const spend = ((globalThis as { aiSpend?: { calls: number; dollars: number } }).
   dollars: 0,
 });
 
-function logUsage(label: string, usage: MessagesResponse['usage']) {
+async function logUsage(label: string, usage: MessagesResponse['usage']) {
   const input = usage?.input_tokens ?? 0;
   const output = usage?.output_tokens ?? 0;
   const searches = usage?.server_tool_use?.web_search_requests ?? 0;
   const dollars = input / 1e6 + (output * 5) / 1e6 + searches / 100;
   spend.calls += 1;
   spend.dollars += dollars;
-  recordSpend(dollars);
+  await recordSpend(dollars);
   console.log(
     `[ai] ${label}: ${input} in / ${output} out / ${searches} searches ≈ $${dollars.toFixed(4)} ` +
       `(session: ${spend.calls} calls ≈ $${spend.dollars.toFixed(2)}, ` +
@@ -49,10 +49,10 @@ function announceProviderOnce() {
   }
   flag.aiProviderAnnounced = true;
   const provider =
-    process.env.GEMINI_API_KEY && process.env.AI_PROVIDER !== 'anthropic'
-      ? 'gemini (free tier)'
-      : process.env.ANTHROPIC_API_KEY
-        ? 'ANTHROPIC — PAID, is this intended?'
+    process.env.AI_PROVIDER === 'anthropic' && process.env.ANTHROPIC_API_KEY
+      ? 'ANTHROPIC — PAID, is this intended?'
+      : process.env.GEMINI_API_KEY && process.env.AI_PROVIDER !== 'anthropic'
+        ? 'gemini (free tier)'
         : 'none (AI features disabled)';
   console.log(`[ai] provider: ${provider}`);
 }
@@ -103,11 +103,19 @@ export async function research(options: {
       label: options.label,
     });
   }
+  // The paid fallback answers ONLY to the explicit flip — a missing
+  // Gemini key (a rotation slip, a bare env) must fail loudly, never
+  // quietly start billing because an Anthropic key happened to exist
+  if (process.env.AI_PROVIDER !== 'anthropic') {
+    throw new Error(
+      'No AI provider configured (set GEMINI_API_KEY, or AI_PROVIDER=anthropic to use the paid fallback)'
+    );
+  }
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (!anthropicKey) {
-    throw new Error('No AI provider configured');
+    throw new Error('AI_PROVIDER=anthropic but ANTHROPIC_API_KEY is unset');
   }
-  assertBudget();
+  await assertBudget();
   const response = await fetch(MessagesEndpoint, {
     method: 'POST',
     headers: {
@@ -115,6 +123,7 @@ export async function research(options: {
       'x-api-key': anthropicKey,
       'anthropic-version': '2023-06-01',
     },
+    signal: AbortSignal.timeout(30_000),
     body: JSON.stringify({
       model: Model,
       max_tokens: options.maxTokens,
@@ -129,7 +138,7 @@ export async function research(options: {
     throw new Error(`Anthropic API ${response.status}: ${detail.slice(0, 500)}`);
   }
   const body = (await response.json()) as MessagesResponse;
-  logUsage(options.label, body.usage);
+  await logUsage(options.label, body.usage);
   return (body.content ?? [])
     .filter((block) => block.type === 'text' && block.text)
     .map((block) => block.text)

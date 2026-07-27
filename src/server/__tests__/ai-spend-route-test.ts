@@ -13,22 +13,22 @@ describe('GET /api/ai-spend', () => {
   });
 
   test('answers freely outside production', async () => {
-    const response = GET(spendRequest());
+    const response = await GET(spendRequest());
     expect(response.status).toBe(200);
     expect(await response.json()).toHaveProperty('gemini');
   });
 
-  test('production without a configured token tells nobody', () => {
+  test('production without a configured token tells nobody', async () => {
     process.env.NODE_ENV = 'production';
-    expect(GET(spendRequest()).status).toBe(404);
-    expect(GET(spendRequest('?token=guess')).status).toBe(404);
+    expect((await GET(spendRequest())).status).toBe(404);
+    expect((await GET(spendRequest('?token=guess'))).status).toBe(404);
   });
 
-  test('production answers only the configured token', () => {
+  test('production answers only the configured token', async () => {
     process.env.NODE_ENV = 'production';
     process.env.AI_SPEND_TOKEN = 'edd-only';
-    expect(GET(spendRequest()).status).toBe(404);
-    expect(GET(spendRequest('?token=wrong')).status).toBe(404);
-    expect(GET(spendRequest('?token=edd-only')).status).toBe(200);
+    expect((await GET(spendRequest())).status).toBe(404);
+    expect((await GET(spendRequest('?token=wrong'))).status).toBe(404);
+    expect((await GET(spendRequest('?token=edd-only'))).status).toBe(200);
   });
 });

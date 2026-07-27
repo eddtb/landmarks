@@ -55,11 +55,18 @@ function resolveClient(): Client | null {
 }
 
 async function withTable(c: Client): Promise<void> {
-  tableReady ??= c.execute(
-    'CREATE TABLE IF NOT EXISTS tellings (' +
-      'kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, ' +
-      'written_at INTEGER NOT NULL, PRIMARY KEY (kind, key))'
-  );
+  // A rejected first CREATE must not be memoized — one transient blip
+  // would otherwise switch the store off for the isolate's whole life
+  tableReady ??= c
+    .execute(
+      'CREATE TABLE IF NOT EXISTS tellings (' +
+        'kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, ' +
+        'written_at INTEGER NOT NULL, PRIMARY KEY (kind, key))'
+    )
+    .catch((error) => {
+      tableReady = null;
+      throw error;
+    });
   await tableReady;
 }
 
@@ -107,6 +114,39 @@ export async function storePut(
         'INSERT INTO tellings (kind, key, value, written_at) VALUES (?, ?, ?, ?) ' +
         'ON CONFLICT(kind, key) DO UPDATE SET value = excluded.value, written_at = excluded.written_at',
       args: [kind, key, JSON.stringify(value), at],
+    });
+  } catch (error) {
+    warnOnce(error);
+  }
+}
+
+/**
+ * Atomically add to a durable counter — the day-ledger's write path.
+ * One SQL statement, so concurrent isolates never lose each other's
+ * increments the way read-modify-write would. Value shape matches the
+ * ledger's DayEntry: {"dollars": n, "calls": n}. Never throws.
+ */
+export async function storeAdd(
+  kind: string,
+  key: string,
+  dollars: number,
+  at: number
+): Promise<void> {
+  const c = resolveClient();
+  if (!c) {
+    return;
+  }
+  try {
+    await withTable(c);
+    await c.execute({
+      sql:
+        'INSERT INTO tellings (kind, key, value, written_at) ' +
+        "VALUES (?, ?, json_object('dollars', ?, 'calls', 1), ?) " +
+        'ON CONFLICT(kind, key) DO UPDATE SET value = json_object(' +
+        "'dollars', json_extract(tellings.value, '$.dollars') + ?, " +
+        "'calls', json_extract(tellings.value, '$.calls') + 1), " +
+        'written_at = excluded.written_at',
+      args: [kind, key, dollars, at, dollars],
     });
   } catch (error) {
     warnOnce(error);
