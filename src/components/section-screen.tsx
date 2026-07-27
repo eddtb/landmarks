@@ -19,6 +19,7 @@ import { router } from 'expo-router';
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { HistoryCard } from '@/components/history-card';
 import { useOneDoorDismissed } from '@/components/one-door';
+import { OverflowMenu } from '@/components/overflow-menu';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { DrawingWanderLine, WanderLine } from '@/components/wander-line';
@@ -159,7 +160,8 @@ function SectionHeader({
   onManualCenter,
   onBackToNearMe,
   eyebrow,
-}: GateProps & { eyebrow: string }) {
+  overflow,
+}: GateProps & { eyebrow: string; overflow?: boolean }) {
   const [searchText, setSearchText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   // The cascade winner — "Dorking", never the ward "Dorking North"
@@ -220,20 +222,20 @@ function SectionHeader({
           />
           <ThemedText type="largeTitle">{title}</ThemedText>
         </Pressable>
+        {/* Housekeeping lives behind the ⋯, not in the feed: Privacy
+            must stay reachable in-app (Apple 5.1.1(i)), but it was
+            never a story and had no business between the count line
+            and the first card. Support rides along for one row. */}
+        {overflow && (
+          <OverflowMenu
+            actions={[
+              { id: 'privacy', title: 'Privacy Policy' },
+              { id: 'support', title: 'Support' },
+            ]}
+            onAction={(id) => Linking.openURL(id === 'privacy' ? PrivacyUrl : SupportUrl)}
+          />
+        )}
       </View>
-      {/* The tappable title alone was invisible — ink text signals
-          nothing, and this is the only door to exploring anywhere.
-          The rule of use: interactive means violet, in words. */}
-      {!locationDenied && !exploring && (
-        <Pressable
-          accessibilityRole="button"
-          testID="search-toggle"
-          onPress={() => setSearchOpen((open) => !open)}>
-          <ThemedText type="linkPrimary">
-            {searchOpen ? 'Close search' : 'Search a place'}
-          </ThemedText>
-        </Pressable>
-      )}
       {exploring && (
         <Pressable accessibilityRole="button" onPress={onBackToNearMe}>
           <ThemedText type="linkPrimary">Back to near me</ThemedText>
@@ -267,7 +269,7 @@ export function StoriesScreen() {
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <SectionHeader {...gate} eyebrow="Nearby" />
+            <SectionHeader {...gate} eyebrow="Nearby" overflow />
             <HistoryBody
               center={gate.center}
               exploring={gate.exploring}
@@ -533,23 +535,6 @@ export function HistoryBody({
           </ThemedText>
         </View>
       )}
-      <View style={styles.legalLinks}>
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel="Privacy policy"
-          onPress={() => Linking.openURL(PrivacyUrl)}>
-          <ThemedText type="linkPrimary">Privacy</ThemedText>
-        </Pressable>
-        <ThemedText type="small" themeColor="textSecondary">
-          ·
-        </ThemedText>
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel="Venture support"
-          onPress={() => Linking.openURL(SupportUrl)}>
-          <ThemedText type="linkPrimary">Support</ThemedText>
-        </Pressable>
-      </View>
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.pageId)}
@@ -685,13 +670,6 @@ const styles = StyleSheet.create({
   },
   emptyCopy: {
     textAlign: 'center',
-  },
-  legalLinks: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.one,
   },
   search: {
     borderRadius: Spacing.three - Spacing.one,
