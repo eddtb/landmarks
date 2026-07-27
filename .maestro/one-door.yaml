@@ -23,10 +23,20 @@ appId: com.eddtb.landmarks
       location: never
 - runFlow: subflows/setup.yaml
 
-# Determined-denied: the honest banner, not the door
+# Determined-denied: the honest banner, not the door.
+#
+# The long timeout is this flow's alone and it is earned: clearState
+# drops the loaded JS, so THIS flow — first in the order — pays for a
+# cold bundle where the others inherit a warm one. Measured in CI (run
+# 30256308206's metro.log): 44s. The job's pre-warm step doesn't cover
+# it, because the URL it curls builds a 1219-module bundle while the
+# dev client asks for a 1829-module variant — warming one does not
+# warm the other. Until those are reconciled, the first assertion
+# after a clearState must outlast a full cold build, or this flow
+# fails on the bundler's clock rather than on the app's behaviour.
 - extendedWaitUntil:
     visible: '.*Location is off.*'
-    timeout: 45000
+    timeout: 120000
 - assertNotVisible:
     id: 'one-door'
 # …and the search escape hatch is really there
