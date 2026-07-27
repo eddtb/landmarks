@@ -187,12 +187,14 @@ export async function GET(request: Request) {
     return Response.json(feed, {
       headers: {
         'x-feed-cache': cacheOutcome,
+        ...(breakdown ? { 'x-feed-timing': breakdown } : {}),
         ...(failure ? { 'x-feed-store-error': failure } : {}),
       },
     });
   };
   // Set as the request walks its path; reported in the header above.
   let cacheOutcome = 'compose';
+  let breakdown = '';
 
   const key = feedBucketKey(lat, lng);
   if (!fresh) {
@@ -286,14 +288,17 @@ export async function GET(request: Request) {
     }
 
     const enrichStart = Date.now();
-    // These two legs ran abreast for a few hours (#240, chasing 1-2.5s
-    // off a cold compose) and it cost more than it bought: enrichment
-    // and the facts lookup both hammer Wikipedia, and overlapping them
-    // doubled the peak fan-out at a keyless upstream. Measured against
-    // production afterwards: 8 of 12 feed requests came back 502 —
-    // Wikipedia rate-limiting the worker's egress, which the client
-    // reads as "you're offline". Sequential politeness is the standing
-    // rule for keyless upstreams and it outranks the seconds.
+    // Abreast again, but on different terms than #240. That attempt
+    // overlapped two UNBOUNDED legs and doubled a fan-out that was
+    // already too wide; every leg is now capped by its own pool
+    // (plaques 3, enrichment 4, facts 3 batches), so the peak is
+    // roughly ten sockets rather than the forty-plus that got the
+    // worker's egress rate-limited. The seconds matter here: a small
+    // app's readers almost always get a cold compose, because nobody
+    // has warmed their area for them.
+    const backbone = merged.slice(0, 150);
+    const backboneFacts = existenceFactsByPageId(backbone);
+    const queried = new Set(backbone.map((item) => item.pageId));
     const told = await enrichStandaloneListed(merged);
     // The deep feed: everything within the walk, not a top-40 — the list
     // virtualises client-side, and photo lookups stay capped per request
@@ -307,7 +312,16 @@ export async function GET(request: Request) {
     // but a successful area/event verdict is atomic with the response.
     // Photos remain cosmetic and retain the fast-response grace below.
     const decorateStart = Date.now();
-    const facts = await existenceFactsByPageId(capped);
+    const facts = await backboneFacts;
+    // Only faces the first ask never saw (enrichment's additions) go
+    // back to Wikidata — a no-facts answer is a real verdict
+    const newcomers = capped.filter((item) => !queried.has(item.pageId));
+    if (newcomers.length > 0) {
+      for (const [pageId, fact] of await existenceFactsByPageId(newcomers)) {
+        facts.set(pageId, fact);
+      }
+    }
+    const factsDone = Date.now();
     const classified = applyFacts(capped, facts);
     // The edge awaits this leg (below), so every lookup it starts
     // actually completes — where the Node path floats them and the
@@ -337,6 +351,17 @@ export async function GET(request: Request) {
       `sources ${plaquesStart - sourcesStart}ms, plaques+merge ${enrichStart - plaquesStart}ms, ` +
       `enrich ${decorateStart - enrichStart}ms, decorate ${Date.now() - decorateStart}ms` +
       ` (${capped.length} items, sparse=${sparse})`;
+    // The same numbers the log line carries, on the response — the
+    // edge has no log to read, and a cold compose is the ONLY thing
+    // most readers of a small app will ever experience (nobody has
+    // warmed their area for them), so its breakdown has to be visible.
+    breakdown =
+      `sources=${plaquesStart - sourcesStart}` +
+      `,merge=${enrichStart - plaquesStart}` +
+      `,enrich=${decorateStart - enrichStart}` +
+      `,facts=${factsDone - decorateStart}` +
+      `,photos=${Date.now() - factsDone}` +
+      `,items=${capped.length}`;
 
     // The grace: warm caches settle both legs in a few ms — answer
     // complete and unflagged, cached, done. A cold compose won't make
