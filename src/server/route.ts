@@ -103,7 +103,7 @@ export async function fetchWalkingRoute(
     return cached.route;
   }
 
-  budget.assert();
+  await budget.assert();
   const response = await fetch(Endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -120,7 +120,7 @@ export async function fetchWalkingRoute(
   if (!response.ok) {
     throw new Error(`Valhalla route failed with status ${response.status}`);
   }
-  budget.record(1);
+  await budget.record(1);
 
   const body = (await response.json()) as { trip?: ValhallaTrip };
   const route = body.trip ? buildRoute(body.trip) : null;

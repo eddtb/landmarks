@@ -8,7 +8,7 @@ import { geminiBudget } from '@/server/gemini';
  * set AI_SPEND_TOKEN in the hosting env and ask with ?token=…
  * No token configured means nobody reads it — closed by default.
  */
-export function GET(request: Request) {
+export async function GET(request: Request) {
   if (process.env.NODE_ENV === 'production') {
     const token = process.env.AI_SPEND_TOKEN;
     const given = new URL(request.url).searchParams.get('token');
@@ -16,18 +16,19 @@ export function GET(request: Request) {
       return Response.json({ error: 'Not found' }, { status: 404 });
     }
   }
-  const anthropic = anthropicBudget.todays();
-  const gemini = geminiBudget.todays();
+  // The durable-merged view: what every isolate spent, not just this one
+  const anthropic = await anthropicBudget.todaysDurable();
+  const gemini = await geminiBudget.todaysDurable();
   return Response.json({
     gemini: {
-      today: { calls: gemini.dollars, callCount: gemini.calls },
+      today: { calls: gemini.calls, callCount: gemini.calls },
       dailyFreeCallCap: geminiBudget.cap(),
-      lastWeek: geminiBudget.recent(),
+      lastWeek: await geminiBudget.recent(),
     },
     anthropic: {
       today: { dollars: Number(anthropic.dollars.toFixed(4)), calls: anthropic.calls },
       dailyBudgetUsd: anthropicBudget.cap(),
-      lastWeek: anthropicBudget.recent(),
+      lastWeek: await anthropicBudget.recent(),
     },
   });
 }
