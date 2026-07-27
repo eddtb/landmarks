@@ -46,7 +46,8 @@ function ActionsLead({ item }: { item: HistoryItem }) {
   const saved = useSaved(item.pageId);
 
   return (
-    <View style={styles.lead}>
+    <View style={styles.leadBlock}>
+      <View style={styles.lead}>
       <Pressable
         accessibilityRole="button"
         onPress={() =>
@@ -99,11 +100,10 @@ function ActionsLead({ item }: { item: HistoryItem }) {
       {/* One-line grey annotation: with the short denied-state "Go" label
           the meta gets more width and would wrap mid-word — truncate
           with a tail ellipsis instead (DESIGN.md: meta is a meta LINE) */}
-      <ThemedText
-        type="small"
-        themeColor="textSecondary"
-        numberOfLines={1}
-        style={styles.leadMeta}>
+      </View>
+      {/* Its own line: squeezed in beside three pills this ellipsised
+          to a bare "W…", which reads as broken rather than terse. */}
+      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
         {item.source}
       </ThemedText>
     </View>
@@ -328,12 +328,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.three,
   },
+  leadBlock: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    gap: Spacing.two,
+  },
   lead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
   },
   go: {
     paddingVertical: Spacing.two,
@@ -347,9 +350,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.four,
     borderRadius: Spacing.six,
-  },
-  leadMeta: {
-    flexShrink: 1,
   },
   inscription: {
     paddingHorizontal: Spacing.four,

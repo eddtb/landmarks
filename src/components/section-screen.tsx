@@ -193,7 +193,7 @@ function SectionHeader({
   const title = areaName ?? 'Near you';
 
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { borderBottomColor: theme.backgroundElement }]}>
       <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
         {exploring ? 'Exploring' : eyebrow}
       </ThemedText>
@@ -586,7 +586,14 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
+    paddingBottom: Spacing.two,
     gap: Spacing.one,
+    // The feed scrolls UNDER this block, so without an edge a card's
+    // text is simply sliced mid-sentence by the count line and reads
+    // as a collision (seen at the end of the Greenwich feed). A
+    // hairline in the card colour is the quietest thing that says
+    // "the list starts here".
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   titleRow: {
     flexDirection: 'row',

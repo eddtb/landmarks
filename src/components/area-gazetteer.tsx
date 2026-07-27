@@ -844,21 +844,31 @@ function ArticleBody({
 function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boolean }) {
   const theme = useTheme();
   return (
-    <ExternalLink
-      href={href as `https://${string}`}
-      accessibilityLabel="Read more on Wikipedia"
-      testID="wikipedia-link"
-      style={[
-        styles.linkRow,
-        standalone ? styles.linkRowStandalone : styles.sourceLink,
-        { backgroundColor: theme.accentSoft },
-      ]}>
-      <ThemedText type="smallBold" themeColor="accent">
-        Read more on Wikipedia ›
-      </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        Wikipedia · source
-      </ThemedText>
+    // asChild, because ExternalLink renders expo-router's Link, which
+    // is a TEXT on native: flexDirection, justifyContent and gap were
+    // silently doing nothing and the two labels ran together as one
+    // inline run ("Read more on Wikipedia ›Wikipedia · source"). A
+    // Pressable child lays out as intended and keeps the tap.
+    <ExternalLink href={href as `https://${string}`} asChild>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="Read more on Wikipedia"
+        testID="wikipedia-link"
+        // Flattened: expo-router's Slot warns on style arrays reaching
+        // an asChild child, and the warning is a real one — it cannot
+        // merge them for you
+        style={StyleSheet.flatten([
+          styles.linkRow,
+          standalone ? styles.linkRowStandalone : styles.sourceLink,
+          { backgroundColor: theme.accentSoft },
+        ])}>
+        <ThemedText type="smallBold" themeColor="accent">
+          Read more on Wikipedia ›
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          Wikipedia · source
+        </ThemedText>
+      </Pressable>
     </ExternalLink>
   );
 }
