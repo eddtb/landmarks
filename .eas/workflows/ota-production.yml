@@ -1,0 +1,22 @@
+name: Publish OTA update to production
+
+# Intentionally has no event trigger — an update reaches real phones the
+# moment it publishes, with no review in between. That is the whole point
+# and the whole risk, so it stays a deliberate act:
+#   eas workflow:run .eas/workflows/ota-production.yml
+#
+# What may ride an OTA: JavaScript, styles, images and other assets.
+# What may NOT: anything touching the native runtime (a new native
+# module, an SDK bump, a permission string, an app.json plugin change).
+# The fingerprint runtimeVersion policy enforces this rather than
+# trusting anyone to remember — a native change computes a new
+# fingerprint, and phones on the old binary simply stop being offered
+# the update instead of crashing on it. When that happens the answer is
+# a new build, never a policy loosening.
+jobs:
+  publish_production_update:
+    name: Publish update to the production channel
+    type: update
+    params:
+      platform: ios
+      channel: production

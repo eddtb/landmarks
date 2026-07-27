@@ -12,6 +12,9 @@
       "bundleIdentifier": "com.eddtb.landmarks",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "runtimeVersion": {
+        "policy": "fingerprint"
       }
     },
     "android": {
@@ -66,6 +69,9 @@
       "eas": {
         "projectId": "522c780e-a4b2-43f7-8dd7-b668a5ac5533"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/522c780e-a4b2-43f7-8dd7-b668a5ac5533"
     }
   }
 }
