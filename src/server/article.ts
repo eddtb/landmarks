@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { CommonsPage, creditLine } from '@/server/commons';
+import { UserAgent } from '@/server/user-agent';
 import { Article, ArticleChapter, ArticleImage } from '@/types/article';
 import { storyParagraphs } from '@/utils/format';
 
@@ -9,8 +10,6 @@ import { storyParagraphs } from '@/utils/format';
  * 14-chapter article). Fetched by title, parsed into chapters,
  * reference-apparatus culled, cached a week per article.
  */
-
-const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
 
 // The reference apparatus reads as junk in a reading app
 const JunkSections = new Set([

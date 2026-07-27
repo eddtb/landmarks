@@ -55,6 +55,22 @@ export function storyParagraphs(extract: string): string[] {
     .filter(Boolean);
 }
 
+// A full stop after these is an abbreviation, not a sentence end —
+// "St. Paul's" must not truncate the hook to "St."
+const AbbreviationBeforeDot = /(?:^|[\s(])(?:St|Dr|Mr|Mrs|No|c)$/;
+
+/** The first sentence of `text`, or all of it when no boundary earns
+ * the name (an abbreviation's dot never does). */
+function firstSentence(text: string): string {
+  const boundaries = text.matchAll(/\.(?=\s|$)/g);
+  for (const boundary of boundaries) {
+    if (!AbbreviationBeforeDot.test(text.slice(0, boundary.index))) {
+      return text.slice(0, boundary.index + 1);
+    }
+  }
+  return text;
+}
+
 /**
  * The history card's hook: the extract's first sentence, because
  * "a nuclear reactor ran here until 1996" is the reason to tap and
@@ -66,8 +82,7 @@ export function storyHook(extract: string | undefined): string | undefined {
     return undefined;
   }
   const clean = storyParagraphs(extract)[0] ?? '';
-  const match = clean.match(/^.*?\.(?=\s|$)/);
-  const sentence = (match?.[0] ?? clean).trim();
+  const sentence = firstSentence(clean).trim();
   if (sentence.length <= 160) {
     return sentence;
   }

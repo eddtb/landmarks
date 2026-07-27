@@ -24,10 +24,13 @@ const telling: Retold = {
   timeline: [],
 };
 
-/** The wire as expo/fetch sees it: an SSE body arriving in chunks. */
+/** The wire as expo/fetch sees it: an SSE body arriving in chunks.
+ * `cancel` is observable so tests can hold the client to releasing
+ * the socket on early exit. */
 function sseResponse(chunks: string[]) {
   const encoder = new TextEncoder();
   const queue = chunks.map((chunk) => encoder.encode(chunk));
+  const cancel = jest.fn(async () => undefined);
   return {
     ok: true,
     status: 200,
@@ -36,8 +39,10 @@ function sseResponse(chunks: string[]) {
       getReader: () => ({
         read: async () =>
           queue.length > 0 ? { done: false, value: queue.shift() } : { done: true, value: undefined },
+        cancel,
       }),
     },
+    cancel,
   };
 }
 
@@ -112,6 +117,16 @@ describe('fetchRetold (dual transport)', () => {
     // The finished telling is session-cached — one wire ask total
     expect(await fetchRetold('Deptford')).toEqual(telling);
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('the done verdict cancels the reader — the socket is released, not drained', async () => {
+    const response = sseResponse([
+      frame('done', { retold: telling }) + frame('part', { index: 9, part: telling.parts[0] }),
+    ]);
+    mockFetch.mockResolvedValue(response);
+
+    expect(await fetchRetold('Charlton')).toEqual(telling);
+    expect(response.cancel).toHaveBeenCalled();
   });
 
   test('an in-band failed frame throws, keeps the arrived count, caches nothing', async () => {

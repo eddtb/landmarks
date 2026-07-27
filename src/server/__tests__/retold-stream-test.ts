@@ -36,7 +36,7 @@ function loadRetold(options: { streamImpl?: () => AsyncGenerator<string, void, v
   );
   const getArticle = jest.fn(async () => ({ minutes: 3, images: [], chapters: richChapters }));
   const backing = new Map<string, unknown>();
-  jest.doMock('@/server/anthropic', () => ({ researchStream }));
+  jest.doMock('@/server/ai-router', () => ({ researchStream }));
   jest.doMock('@/server/article', () => ({ getArticle }));
   jest.doMock('@/server/ai-cache', () => ({ diskBackedMap: () => backing }));
   // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -1,9 +1,10 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  ListRenderItemInfo,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -52,6 +53,10 @@ const PartWords = [
 ];
 
 export type RetoldStatus = 'pending' | 'streaming' | 'ready' | 'halted' | 'none';
+
+// Module-level: a stable identity, so the FlatList never sees a new
+// extractor and its rows can honour their memoization
+const keyExtractor = (row: GazetteerRow) => row.key;
 
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
@@ -221,7 +226,9 @@ function useRetoldSpeaker(retold: Retold | null) {
     };
   }, []);
 
-  const toggle = async () => {
+  // Stable while nothing it reads changes — renderItem depends on it,
+  // and a new toggle every render would defeat the row memoization
+  const toggle = useCallback(async () => {
     if (speaking) {
       cancelled.current = true;
       await stopSpeech();
@@ -254,7 +261,7 @@ function useRetoldSpeaker(retold: Retold | null) {
     if (!cancelled.current) {
       setSpeaking(false);
     }
-  };
+  }, [speaking, retold]);
 
   return { speaking, engineFailed, spokeOnce, toggle };
 }
@@ -451,44 +458,75 @@ export function AreaGazetteer({
   const resolvedArticleStatus = areaMissing ? 'none' : articleStatus;
   const resolvedRetoldStatus = areaMissing ? 'none' : retoldStatus;
 
+  // Memoized from here down: renderItem's inputs must hold their
+  // identity across unrelated re-renders (scroll, speech, the image
+  // viewer) or every visible row pays for them
   // The area's own article leads the screen, not the list
-  const listRelics = relics.filter(
-    (item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase()
+  const listRelics = useMemo(
+    () => relics.filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase()),
+    [relics, areaName]
   );
-  const rows = buildGazetteerRows({
-    hasArticle: article !== null,
-    storyMissing: resolvedArticleStatus === 'none' && areaName !== null,
-    retoldStatus: resolvedRetoldStatus,
-    retold,
-    streamedParts,
-    relics: listRelics,
-    tellingLead: tellingItem !== undefined,
-  });
+  const rows = useMemo(
+    () =>
+      buildGazetteerRows({
+        hasArticle: article !== null,
+        storyMissing: resolvedArticleStatus === 'none' && areaName !== null,
+        retoldStatus: resolvedRetoldStatus,
+        retold,
+        streamedParts,
+        relics: listRelics,
+        tellingLead: tellingItem !== undefined,
+      }),
+    [article, resolvedArticleStatus, areaName, resolvedRetoldStatus, retold, streamedParts, listRelics, tellingItem]
+  );
 
-  const linkCandidates: LinkCandidate[] = allStories
-    .filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase())
-    .map((item) => ({ title: item.title, pageId: item.pageId }));
+  const linkCandidates: LinkCandidate[] = useMemo(
+    () =>
+      allStories
+        .filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase())
+        .map((item) => ({ title: item.title, pageId: item.pageId })),
+    [allStories, areaName]
+  );
 
   // The parts on screen: the finished telling once ready, the live
   // stream's complete parts while it writes (or stands halted)
-  const partsShown = resolvedRetoldStatus === 'ready' && retold ? retold.parts : streamedParts;
+  const partsShown = useMemo(
+    () => (resolvedRetoldStatus === 'ready' && retold ? retold.parts : streamedParts),
+    [resolvedRetoldStatus, retold, streamedParts]
+  );
 
   // Story-level, once: the pull-quote excision and the link plan
   // (first mention per STORY — a repeated name is prose, not a door)
-  const partParagraphs = partsShown.map((part) =>
-    withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote)
+  const partParagraphs = useMemo(
+    () =>
+      partsShown.map((part) =>
+        withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote)
+      ),
+    [partsShown]
   );
-  const linkPlan = planStoryLinks(partParagraphs, linkCandidates);
+  const linkPlan = useMemo(
+    () => planStoryLinks(partParagraphs, linkCandidates),
+    [partParagraphs, linkCandidates]
+  );
 
-  const jumpToPart = (stop: TimelineStop) => {
-    const index = partRowIndex(rows, stop.part);
-    if (index >= 0) {
-      listRef.current?.scrollToIndex({ index, viewPosition: 0, viewOffset: 8 });
-    }
-  };
+  const jumpToPart = useCallback(
+    (stop: TimelineStop) => {
+      const index = partRowIndex(rows, stop.part);
+      if (index >= 0) {
+        listRef.current?.scrollToIndex({ index, viewPosition: 0, viewOffset: 8 });
+      }
+    },
+    [rows]
+  );
 
-  const intro = article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [];
-  const chapters = article?.chapters.filter((chapter) => chapter.title !== '') ?? [];
+  const intro = useMemo(
+    () => article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [],
+    [article]
+  );
+  const chapters = useMemo(
+    () => article?.chapters.filter((chapter) => chapter.title !== '') ?? [],
+    [article]
+  );
 
   // Where "Read more on Wikipedia" points: places pass the item's own
   // URL; areas fetch their article by name alone, so the link derives
@@ -499,7 +537,8 @@ export function AreaGazetteer({
       ? `https://en.wikipedia.org/wiki/${encodeURIComponent(areaName.replace(/ /g, '_'))}`
       : undefined);
 
-  const renderRow = (row: GazetteerRow) => {
+  const renderItem = useCallback(
+    ({ item: row }: ListRenderItemInfo<GazetteerRow>) => {
     switch (row.kind) {
       case 'no-story':
         // Honest, in the house voice — where the hero would have stood
@@ -608,15 +647,31 @@ export function AreaGazetteer({
           </View>
         );
     }
-  };
+    },
+    [
+      speaking,
+      engineFailed,
+      spokeOnce,
+      toggle,
+      retold,
+      jumpToPart,
+      partParagraphs,
+      linkPlan,
+      tellingItem,
+      intro,
+      chapters,
+      sourceUrl,
+      articleUrl,
+    ]
+  );
 
   return (
     <View style={styles.wrap}>
     <Animated.FlatList
       ref={listRef}
       data={rows}
-      keyExtractor={(row) => row.key}
-      renderItem={({ item: row }) => renderRow(row)}
+      keyExtractor={keyExtractor}
+      renderItem={renderItem}
       onScroll={onScroll}
       // 16, not 32: the events no longer cross the bridge, so every
       // frame can feed the bar for free
@@ -828,7 +883,10 @@ function TimelineStrip({
   );
 }
 
-function PartRow({
+// memo: the heaviest row by far (a full story part, linkified). Its
+// props hold their identity across unrelated re-renders — that's what
+// the useMemo blocks in AreaGazetteer exist to guarantee.
+const PartRow = memo(function PartRow({
   part,
   index,
   paragraphs,
@@ -891,7 +949,7 @@ function PartRow({
       ))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: {

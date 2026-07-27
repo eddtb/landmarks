@@ -20,12 +20,19 @@ import { storeAdd, storeGet } from '@/server/telling-store';
 
 type DayEntry = { dollars: number; calls: number };
 
+/** What the cap counts: dollars for paid providers, calls for free
+ * tiers whose cliff is a daily quota. Every record() counts a call;
+ * only a 'usd' budget accrues dollars — a call-unit ledger's dollars
+ * stay zero instead of smuggling a call count. */
+export type BudgetUnit = 'calls' | 'usd';
+
 const LedgerKind = 'ledger';
 
 export class BudgetExceededError extends Error {
-  constructor(provider: string, spent: number, cap: number) {
+  constructor(provider: string, spent: number, cap: number, unit: BudgetUnit = 'usd') {
+    const reached = unit === 'usd' ? `$${spent.toFixed(2)} of $${cap.toFixed(2)}` : `${spent} of ${cap} calls`;
     super(
-      `${provider} daily budget reached ($${spent.toFixed(2)} of $${cap.toFixed(2)}) — ` +
+      `${provider} daily budget reached (${reached}) — ` +
         'billed calls refused until tomorrow or a higher cap'
     );
     this.name = 'BudgetExceededError';
@@ -41,8 +48,9 @@ export type SpendBudget = {
   assert: () => Promise<void>;
   /** Test hook: the module-level ledger hydrates at import, so tests reset contents, not instances. */
   reset: () => void;
-  /** Await it: a floating write dies with the isolate on Workers. */
-  record: (dollars: number) => Promise<void>;
+  /** Await it: a floating write dies with the isolate on Workers.
+   * Always counts one call; dollars only mean anything on 'usd'. */
+  record: (dollars?: number) => Promise<void>;
   /** The local (per-process) view — cheap, for log lines. */
   todays: () => DayEntry;
   /** The shared view: local merged with the durable ledger. */
@@ -56,14 +64,15 @@ export function makeBudget(options: {
   provider: string;
   ledgerName: string;
   envVar: string;
-  defaultDailyUsd: number;
+  unit: BudgetUnit;
+  defaultDailyCap: number;
 }): SpendBudget {
-  const { provider, ledgerName, envVar, defaultDailyUsd } = options;
+  const { provider, ledgerName, envVar, unit, defaultDailyCap } = options;
   const ledger = diskBackedMap<DayEntry>(ledgerName);
 
   const cap = () => {
     const configured = Number(process.env[envVar]);
-    return Number.isFinite(configured) && configured > 0 ? configured : defaultDailyUsd;
+    return Number.isFinite(configured) && configured > 0 ? configured : defaultDailyCap;
   };
 
   const todays = () => ledger.get(dayKey()) ?? { dollars: 0, calls: 0 };
@@ -93,14 +102,15 @@ export function makeBudget(options: {
       // recorded caches; a cache miss refuses rather than bills. The
       // real app never sets it. This is how dev work stays at zero.
       if (process.env.REPLAY_ONLY === '1') {
-        throw new BudgetExceededError(`${provider} [replay-only dev mode]`, 0, 0);
+        throw new BudgetExceededError(`${provider} [replay-only dev mode]`, 0, 0, unit);
       }
       const spent = await merged(dayKey());
-      if (spent.dollars >= cap()) {
-        throw new BudgetExceededError(provider, spent.dollars, cap());
+      const used = unit === 'usd' ? spent.dollars : spent.calls;
+      if (used >= cap()) {
+        throw new BudgetExceededError(provider, used, cap(), unit);
       }
     },
-    record: async (dollars: number) => {
+    record: async (dollars = 0) => {
       const key = dayKey();
       const entry = ledger.get(key) ?? { dollars: 0, calls: 0 };
       ledger.set(key, { dollars: entry.dollars + dollars, calls: entry.calls + 1 });

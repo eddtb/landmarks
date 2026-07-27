@@ -9,7 +9,8 @@ const budget = makeBudget({
   provider: 'Anthropic',
   ledgerName: 'spend-ledger',
   envVar: 'AI_DAILY_BUDGET_USD',
-  defaultDailyUsd: 1,
+  unit: 'usd',
+  defaultDailyCap: 1,
 });
 
 export const anthropicBudget = budget;

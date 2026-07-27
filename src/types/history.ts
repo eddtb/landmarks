@@ -53,6 +53,17 @@ export type HistoryFeed = {
 };
 
 /**
+ * The feed's area bucket, ~111m × ~70m at UK latitudes — ONE truth for
+ * both sides of the wire (src/app/api/history+api.ts caches the
+ * composed feed by it, src/data/history-client.ts persists by it), so
+ * walking mints a new client bucket exactly when the server would mint
+ * a new answer.
+ */
+export function feedBucketKey(lat: number, lng: number): string {
+  return `${lat.toFixed(3)}|${lng.toFixed(3)}`;
+}
+
+/**
  * Heritage items carry synthetic pageIds far above real Wikipedia
  * pageids (listed buildings from 2e9, plaques from 3e9 — the bases in
  * server/heritage.ts). Only a real Wikipedia pageId can be re-fetched

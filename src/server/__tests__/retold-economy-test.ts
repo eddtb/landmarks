@@ -35,7 +35,7 @@ function loadRetold(options: {
   );
   const storeGet = options.storedGet ?? jest.fn(async () => undefined);
   const storePut = jest.fn();
-  jest.doMock('@/server/anthropic', () => ({ researchStream }));
+  jest.doMock('@/server/ai-router', () => ({ researchStream }));
   jest.doMock('@/server/article', () => ({ getArticle }));
   jest.doMock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map() }));
   jest.doMock('@/server/telling-store', () => ({ storeGet, storePut }));

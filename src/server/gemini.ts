@@ -25,8 +25,9 @@ const budget = makeBudget({
   provider: 'Gemini (free-tier calls)',
   ledgerName: 'gemini-call-ledger',
   envVar: 'GEMINI_DAILY_CALLS',
+  unit: 'calls',
   // Grounded free quota is 500/day on this model — trip well before
-  defaultDailyUsd: 300,
+  defaultDailyCap: 300,
 });
 
 export const geminiBudget = budget;
@@ -102,12 +103,12 @@ export async function generateWithGemini(options: GenerateOptions): Promise<stri
   }
 
   const body = (await response.json()) as GeminiResponse;
-  await budget.record(1);
+  await budget.record();
   const today = budget.todays();
   console.log(
     `[gemini] ${options.label}: ${body.usageMetadata?.promptTokenCount ?? 0} in / ` +
       `${body.usageMetadata?.candidatesTokenCount ?? 0} out, grounded=${options.grounded} ` +
-      `(today: ${today.dollars} of ${budget.cap()} free calls)`
+      `(today: ${today.calls} of ${budget.cap()} free calls)`
   );
   return extractAnswerText(body.candidates?.[0]?.content?.parts ?? []);
 }
@@ -193,7 +194,7 @@ export async function* streamWithGemini(options: GenerateOptions): AsyncGenerato
     const detail = response.ok ? 'no response body' : await response.text();
     throw new Error(`Gemini API ${response.status}: ${detail.slice(0, 500)}`);
   }
-  await budget.record(1);
+  await budget.record();
 
   const decoder = makeGeminiSseDecoder();
   const reader = response.body.getReader();
@@ -217,7 +218,7 @@ export async function* streamWithGemini(options: GenerateOptions): AsyncGenerato
     console.log(
       `[gemini] ${options.label}: ${usage?.promptTokenCount ?? 0} in / ` +
         `${usage?.candidatesTokenCount ?? 0} out, streamed, grounded=${options.grounded} ` +
-        `(today: ${today.dollars} of ${budget.cap()} free calls)`
+        `(today: ${today.calls} of ${budget.cap()} free calls)`
     );
   }
 }

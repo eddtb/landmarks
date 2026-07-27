@@ -1,5 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
-import { research } from '@/server/anthropic';
+import { research } from '@/server/ai-router';
 import { storeGet, storePut } from '@/server/telling-store';
 
 /**

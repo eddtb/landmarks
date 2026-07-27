@@ -87,25 +87,32 @@ async function fetchRetoldLive(
   const frames = makeSseFrameReader();
   const bytes = new TextDecoder();
   let arrived = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    for (const frame of frames.feed(bytes.decode(value, { stream: true }))) {
-      if (frame.event === 'part') {
-        const { index, part } = JSON.parse(frame.data) as { index: number; part: RetoldPart };
-        arrived = Math.max(arrived, index + 1);
-        onPart?.(part, index);
-      } else if (frame.event === 'done') {
-        const finished = normalise((JSON.parse(frame.data) as { retold: Retold }).retold);
-        cache.set(key, finished);
-        return finished;
-      } else if (frame.event === 'failed') {
-        // In-band failure: what arrived stays rendered; nothing cached
-        throw new RetoldInterruptedError(arrived);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      for (const frame of frames.feed(bytes.decode(value, { stream: true }))) {
+        if (frame.event === 'part') {
+          const { index, part } = JSON.parse(frame.data) as { index: number; part: RetoldPart };
+          arrived = Math.max(arrived, index + 1);
+          onPart?.(part, index);
+        } else if (frame.event === 'done') {
+          const finished = normalise((JSON.parse(frame.data) as { retold: Retold }).retold);
+          cache.set(key, finished);
+          return finished;
+        } else if (frame.event === 'failed') {
+          // In-band failure: what arrived stays rendered; nothing cached
+          throw new RetoldInterruptedError(arrived);
+        }
       }
     }
+  } finally {
+    // Every early exit lands here — the done verdict, an in-band
+    // failure, a parse throw — release the socket rather than drain
+    // it (the house pattern from gemini.ts's stream reader)
+    void reader.cancel().catch(() => {});
   }
   // The connection closed without a verdict — an interruption too
   throw new RetoldInterruptedError(arrived);
