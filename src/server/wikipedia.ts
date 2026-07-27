@@ -1,3 +1,4 @@
+import { UserAgent } from '@/server/user-agent';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
@@ -7,9 +8,6 @@ import { Coordinates, distanceMeters } from '@/utils/geo';
  * match — the nearest article is often about something else that happened
  * at the same spot.
  */
-
-// Wikipedia asks API clients to identify themselves
-const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
 
 export type StoryResult = {
   story: string;

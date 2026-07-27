@@ -6,9 +6,8 @@
  * Coverage gaps fall through to Geograph's everywhere-grid.
  */
 
+import { UserAgent } from '@/server/user-agent';
 import { Coordinates } from '@/utils/geo';
-
-const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
 
 export type StoryPhoto = { imageUrl: string; credit: string };
 

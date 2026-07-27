@@ -2,7 +2,7 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 import { persistedMap } from '@/data/persisted-cache';
-import { HistoryFeed, HistoryItem } from '@/types/history';
+import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 const HourMs = 60 * 60 * 1000;
@@ -42,15 +42,14 @@ const itemCache = persistedMap<HistoryItem>('history-item', 7 * 24 * HourMs, {
   maxEntries: ItemCap,
 });
 
-// 3 dp ≈ 111m of latitude — the server's own bucket (src/app/api/
-// history+api.ts), mirrored so walking mints a new client bucket
-// exactly when the server would mint a new answer. (Was 4 dp ≈ 11m: finer than
-// the ~10m GPS tick, so every tick minted a bucket — ~90/km, each
-// persisting a full ~124KB feed.) Old 4 dp entries can't collide with
-// these keys — toFixed(3) and toFixed(4) render disjoint strings — so
-// they're simply never hit again and age out via the 2×TTL prune.
+// The shared 3 dp feed bucket (src/types/history.ts). Historical note:
+// was 4 dp ≈ 11m, finer than the ~10m GPS tick, so every tick minted a
+// bucket — ~90/km, each persisting a full ~124KB feed. Old 4 dp
+// entries can't collide with 3 dp keys — toFixed(3) and toFixed(4)
+// render disjoint strings — so they're simply never hit again and age
+// out via the 2×TTL prune.
 function cacheKey(center: Coordinates): string {
-  return `${center.latitude.toFixed(3)}|${center.longitude.toFixed(3)}`;
+  return feedBucketKey(center.latitude, center.longitude);
 }
 
 export type HistoryFetchResult = HistoryFeed & {

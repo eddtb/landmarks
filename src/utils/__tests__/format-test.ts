@@ -58,6 +58,18 @@ describe('storyHook', () => {
     expect(storyHook('A fragment without a full stop')).toBe('A fragment without a full stop');
   });
 
+  test('does not truncate at abbreviations', () => {
+    expect(
+      storyHook("St. Paul's Cathedral is an Anglican cathedral in London. It sits on Ludgate Hill.")
+    ).toBe("St. Paul's Cathedral is an Anglican cathedral in London.");
+    expect(
+      storyHook('The house at No. 10 was rebuilt c. 1735 by Mr. Kent for Mrs. Walpole. It stands.')
+    ).toBe('The house at No. 10 was rebuilt c. 1735 by Mr. Kent for Mrs. Walpole.');
+    expect(storyHook('Dr. Johnson lived here. His dictionary was written upstairs.')).toBe(
+      'Dr. Johnson lived here.'
+    );
+  });
+
   test('strips the pronunciation parenthetical from the hook', () => {
     expect(storyHook('Cutty Sark (/ˌkʌti ˈsɑːrk/) is a British clipper ship. Built in 1869.')).toBe(
       'Cutty Sark is a British clipper ship.'

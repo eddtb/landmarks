@@ -1,4 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { UserAgent } from '@/server/user-agent';
 
 /**
  * Structured existence facts. The grammar experiments (#135, #137)
@@ -15,7 +16,6 @@ import { diskBackedMap } from '@/server/ai-cache';
  */
 
 const Endpoint = 'https://www.wikidata.org/w/api.php';
-const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
 
 type Snak = { mainsnak: { datavalue?: { value?: { id?: string; time?: string } } } };
 export type EntityClaims = Record<string, Snak[]>;

@@ -21,9 +21,10 @@ export async function GET(request: Request) {
   const gemini = await geminiBudget.todaysDurable();
   return Response.json({
     gemini: {
-      today: { calls: gemini.calls, callCount: gemini.calls },
+      // A calls-unit budget: dollars are always zero, so they don't ride
+      today: { calls: gemini.calls },
       dailyFreeCallCap: geminiBudget.cap(),
-      lastWeek: await geminiBudget.recent(),
+      lastWeek: (await geminiBudget.recent()).map(({ day, calls }) => ({ day, calls })),
     },
     anthropic: {
       today: { dollars: Number(anthropic.dollars.toFixed(4)), calls: anthropic.calls },

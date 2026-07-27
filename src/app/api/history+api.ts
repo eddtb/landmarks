@@ -11,7 +11,7 @@ import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
 import { ExistenceFacts, fetchExistenceFacts } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
-import { HistoryFeed, HistoryItem } from '@/types/history';
+import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
 import { wikiTitleFromUrl } from '@/utils/format';
 import { distanceMeters } from '@/utils/geo';
 
@@ -48,10 +48,6 @@ const ListTtlMs = 60 * 60 * 1000;
 const listCache = diskBackedMap<{ items: HistoryItem[]; sparse?: boolean; at: number }>(
   'history-lists-v7'
 );
-
-function bucketKey(lat: number, lng: number): string {
-  return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
-}
 
 // Serve-once state for a cold compose whose photo leg is still in
 // flight: the text-complete list lives HERE, never in listCache — the
@@ -168,7 +164,7 @@ export async function GET(request: Request) {
     return Response.json(feed);
   };
 
-  const key = bucketKey(lat, lng);
+  const key = feedBucketKey(lat, lng);
   if (!fresh) {
     const cached = listCache.get(key);
     if (cached && Date.now() - cached.at < ListTtlMs) {

@@ -1,7 +1,7 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { getTelling, tellingPrompt } from '@/server/telling';
 
-jest.mock('@/server/anthropic', () => ({
+jest.mock('@/server/ai-router', () => ({
   research: jest.fn(),
 }));
 // The durable store: a miss by default (exactly a store that's off)
@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { research } = require('@/server/anthropic') as { research: jest.Mock };
+const { research } = require('@/server/ai-router') as { research: jest.Mock };
 const { storeGet, storePut } =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/server/telling-store') as { storeGet: jest.Mock; storePut: jest.Mock };

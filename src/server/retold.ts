@@ -1,6 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { storeGet, storePut } from '@/server/telling-store';
-import { researchStream } from '@/server/anthropic';
+import { researchStream } from '@/server/ai-router';
 import { getArticle } from '@/server/article';
 import { extractAnswerText } from '@/server/gemini';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';

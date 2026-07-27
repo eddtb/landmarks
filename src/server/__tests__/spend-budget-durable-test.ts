@@ -16,12 +16,13 @@ const { storeGet, storeAdd } =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require('@/server/telling-store') as { storeGet: jest.Mock; storeAdd: jest.Mock };
 
-function freshBudget(name: string) {
+function freshBudget(name: string, unit: 'calls' | 'usd' = 'usd') {
   const budget = makeBudget({
     provider: 'Test provider',
     ledgerName: name,
     envVar: 'TEST_DAILY_CAP',
-    defaultDailyUsd: 300,
+    unit,
+    defaultDailyCap: 300,
   });
   // The disk ledger outlives the run BY DESIGN — start from zero
   budget.reset();
@@ -67,5 +68,28 @@ describe('the durable day-ledger', () => {
     // them) plus one from elsewhere
     storeGet.mockResolvedValue({ value: { dollars: 3, calls: 3 }, at: Date.now() });
     expect(await budget.todaysDurable()).toEqual({ dollars: 3, calls: 3 });
+  });
+});
+
+describe('a calls-unit budget', () => {
+  beforeEach(() => {
+    storeGet.mockReset();
+    storeGet.mockResolvedValue(undefined);
+    storeAdd.mockReset();
+  });
+
+  test('counts calls, not a call count smuggled into dollars', async () => {
+    const budget = freshBudget('durable-calls', 'calls');
+    await budget.record();
+    await budget.record();
+    expect(budget.todays()).toEqual({ dollars: 0, calls: 2 });
+    expect(storeAdd).toHaveBeenCalledWith('ledger', expect.any(String), 0, expect.any(Number));
+  });
+
+  test('refuses on the CALL total and says so in calls', async () => {
+    const budget = freshBudget('durable-calls-cap', 'calls');
+    // Dollars stayed zero all day — only the call count can trip it
+    storeGet.mockResolvedValue({ value: { dollars: 0, calls: 300 }, at: Date.now() });
+    await expect(budget.assert()).rejects.toThrow('300 of 300 calls');
   });
 });
