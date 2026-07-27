@@ -27,6 +27,8 @@ appId: com.eddtb.landmarks
       visible: 'Development servers'
     commands:
       - openLink: exp+landmarks://expo-development-client/?url=${METRO_URL}
+      # iOS may ask permission to follow that link — see the subflow
+      - runFlow: confirm-open-link.yaml
       # The dev-menu welcome mat only rides in AFTER the JS bundle
       # loads — a one-shot guard here races it and loses (verified on
       # the sim: guard checked, SKIPPED, mat arrived a beat later).

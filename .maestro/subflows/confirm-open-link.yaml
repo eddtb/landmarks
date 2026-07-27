@@ -1,0 +1,25 @@
+# The deep-link doorman. iOS asks "Open in "Venture"?" before
+# following a custom-scheme URL from outside the app, and the alert
+# swallows every tap beneath it until answered. Nothing in the suite
+# answered it, so from 22 July every nightly failed 7/7 — each flow on
+# a different assertion, all of them waiting behind the same modal
+# (run 30243457678's screenshot: the feed rendered perfectly, the
+# alert sat on top of it).
+#
+# The runner's simulator runtime moved under us — the last green run
+# drove iOS 18.5, which didn't prompt. Nothing in the app changed.
+#
+# Optional by construction: on a runtime that doesn't prompt, or when
+# the alert has already been dismissed, this costs one invisible
+# check. Guard on the title rather than the button — a bare "Open"
+# could match app chrome one day, and Maestro text matches are
+# FULL-STRING regexes, so the wildcards are load-bearing.
+appId: com.eddtb.landmarks
+---
+- runFlow:
+    when:
+      visible: 'Open in .*Venture.*'
+    commands:
+      - tapOn: 'Open'
+      - waitForAnimationToEnd:
+          timeout: 2000

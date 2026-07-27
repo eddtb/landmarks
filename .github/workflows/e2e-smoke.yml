@@ -40,10 +40,15 @@ jobs:
           sudo xcode-select -s "$NEWEST"
           xcodebuild -version
 
+      # Pinned: the installer serves whatever is newest, so the harness
+      # could change under a nightly with no commit to point at — the
+      # opposite of the reproducibility this job exists for. Bump
+      # deliberately, like any other dependency.
       - name: Install Maestro CLI
         run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          curl -fsSL "https://get.maestro.mobile.dev" | MAESTRO_VERSION=2.7.0 bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
 
       # Metro comes up FIRST: run 4 built clean in 25 minutes, then
       # died at the final step — expo run:ios auto-opens the app
