@@ -12,7 +12,7 @@ import { setOutage } from '@/server/fixtures';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 
-jest.mock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map() }));
+jest.mock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map(), backgroundWorkSurvives: true }));
 jest.mock('@/server/geograph', () => ({
   dressWithPhotos: jest.fn(async (items: HistoryItem[]) => items),
 }));

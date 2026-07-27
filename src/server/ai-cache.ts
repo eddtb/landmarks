@@ -28,6 +28,16 @@ try {
   fs = null;
 }
 
+/**
+ * The runtime's one honest tell: a filesystem means a long-lived Node
+ * process whose event loop outlives any response — floated promises
+ * finish. No filesystem means the production edge worker, which
+ * freezes the isolate the moment the response returns and kills
+ * in-flight promises (production-proved, #232). Work that must land
+ * either rides before the response there, or doesn't happen.
+ */
+export const backgroundWorkSurvives = fs !== null;
+
 // Tests point this elsewhere — they must never poison the real dev
 // ledgers (a $5.13 test fixture once tripped the live breaker)
 const CacheDir = process.env.AI_CACHE_DIR ?? '.ai-cache';

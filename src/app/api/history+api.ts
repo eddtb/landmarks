@@ -1,4 +1,4 @@
-import { diskBackedMap } from '@/server/ai-cache';
+import { backgroundWorkSurvives, diskBackedMap } from '@/server/ai-cache';
 import { fixturesEnabled, outageActive, readFixture } from '@/server/fixtures';
 import { dressWithPhotos } from '@/server/geograph';
 import {
@@ -175,8 +175,11 @@ export async function GET(request: Request) {
       // Re-dress from the photo cache only (zero lookups): background
       // lookups that finished since the list was cached land here
       const items = await dressWithPhotos(cached.items, undefined, undefined, 0, 0);
-      // …and quietly warm the still-unverdicted tail for the next request
-      void dressWithPhotos(cached.items).catch(() => {});
+      if (backgroundWorkSurvives) {
+        // …and quietly warm the still-unverdicted tail for the next
+        // request — only where a floated promise actually finishes
+        void dressWithPhotos(cached.items).catch(() => {});
+      }
       return respond(items, cached.sparse);
     }
     // A cold compose for this bucket is mid-dress: serve its snapshot
@@ -282,6 +285,23 @@ export async function GET(request: Request) {
     // is cached when the legs land. A failed photo leg caches NOTHING:
     // couldn't-try is not tried-and-failed.
     const final = Promise.all([dressing, Promise.resolve(facts)]);
+
+    // On the edge worker the serve-early bargain is a lie: the floated
+    // finalize dies with the isolate (#232), the dressed verdict never
+    // caches, and the dressing:true snapshot re-serves forever. There
+    // the response waits for the photo leg it would have floated —
+    // bounded by dressWithPhotos' own deadline, so ≤ ~1.5s, once per
+    // bucket per isolate.
+    if (!backgroundWorkSurvives) {
+      try {
+        const finished = await final;
+        console.log(`[history] cold compose ${key}: ${timings()}, awaited dressing (edge)`);
+        return respond(finalize(finished), sparse);
+      } catch (error) {
+        console.warn('Photo dressing degraded (verdict not cached):', error);
+        return respond(classified, sparse, true);
+      }
+    }
     const settled = await Promise.race([
       final,
       new Promise<null>((resolve) => {

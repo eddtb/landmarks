@@ -22,6 +22,9 @@ jest.mock('@/server/ai-cache', () => {
   const maps = new Map<string, Map<string, unknown>>();
   return {
     __maps: maps,
+    // This suite tests the Node bargain (serve early, float the legs);
+    // the edge worker's awaited path has its own suite
+    backgroundWorkSurvives: true,
     diskBackedMap: (name: string) => {
       const existing = maps.get(name);
       if (existing) {

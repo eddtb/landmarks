@@ -9,7 +9,7 @@ import { shouldWiden, SparseRadiusMeters, SparseStoryThreshold } from '@/server/
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 
-jest.mock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map() }));
+jest.mock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map(), backgroundWorkSurvives: true }));
 jest.mock('@/server/fixtures', () => ({
   fixturesEnabled: () => false,
   outageActive: () => false,

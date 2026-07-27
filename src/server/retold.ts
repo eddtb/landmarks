@@ -25,7 +25,21 @@ const NoRetellTtlMs = 7 * 24 * 60 * 60 * 1000;
 export const MinSourceChars = 3000;
 // v2: v1 entries predate pull-quotes and the timeline
 const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v2');
-const inFlight = new Map<string, Promise<Retold | null>>();
+// What a joiner learns when the shared generation settles: a VERDICT
+// (told, or honestly untellable — 404 material) or an INTERRUPTION
+// (transport died, nothing cached — 502 material, retry welcome).
+// Settling both as null once made joiners tell users "no retelling
+// exists" about stories whose stream merely broke mid-write.
+type SharedOutcome = { verdict: Retold | null } | { interrupted: true };
+const inFlight = new Map<string, Promise<SharedOutcome>>();
+
+async function joinShared(shared: Promise<SharedOutcome>): Promise<Retold | null> {
+  const outcome = await shared;
+  if ('interrupted' in outcome) {
+    throw new Error('Retelling interrupted mid-stream');
+  }
+  return outcome.verdict;
+}
 
 /** Pure and unit-tested: the contract the model must write to. */
 export function retoldPrompt(areaName: string, source: string): string {
@@ -296,21 +310,21 @@ export async function startRetoldStream(areaName: string): Promise<RetoldStreamS
   if (inFlight.has(key)) {
     return { kind: 'join' };
   }
-  let settle!: (retold: Retold | null) => void;
-  const shared = new Promise<Retold | null>((resolve) => {
+  let settle!: (outcome: SharedOutcome) => void;
+  const shared = new Promise<SharedOutcome>((resolve) => {
     settle = resolve;
   });
   inFlight.set(key, shared);
-  const finish = (retold: Retold | null) => {
+  const finish = (outcome: SharedOutcome) => {
     inFlight.delete(key);
-    settle(retold);
+    settle(outcome);
   };
 
   try {
     const source = await retellSource(areaName);
     if (source === null) {
       // No article at all: not cached — the article may yet appear
-      finish(null);
+      finish({ verdict: null });
       return { kind: 'unavailable' };
     }
     if (source.length < MinSourceChars) {
@@ -321,7 +335,7 @@ export async function startRetoldStream(areaName: string): Promise<RetoldStreamS
       // Awaited: a floating write dies with the isolate (Workers
       // freeze on response) — the verdict must land before we answer
       await storePut('retold', key, { retold: null }, at);
-      finish(null);
+      finish({ verdict: null });
       return { kind: 'unavailable' };
     }
     const deltas = researchStream({
@@ -333,7 +347,9 @@ export async function startRetoldStream(areaName: string): Promise<RetoldStreamS
     const first = await deltas.next(); // breaker + connection open happen here
     return { kind: 'stream', events: pumpRetold(key, deltas, first, finish) };
   } catch (error) {
-    finish(null);
+    // The initiator gets the real error; joiners must not hear a
+    // refused breaker or a dead source as "no retelling exists"
+    finish({ interrupted: true });
     throw error;
   }
 }
@@ -342,7 +358,7 @@ async function* pumpRetold(
   key: string,
   deltas: AsyncGenerator<string, void, void>,
   first: IteratorResult<string, void>,
-  finish: (retold: Retold | null) => void
+  finish: (outcome: SharedOutcome) => void
 ): AsyncGenerator<RetoldStreamEvent, void, void> {
   const scanner = makePartScanner();
   let raw = '';
@@ -373,7 +389,7 @@ async function* pumpRetold(
       // The stream broke mid-write. Couldn't-finish is not a verdict:
       // NOTHING is cached, and the next ask may try again.
       console.error('Retold stream interrupted:', error);
-      finish(null);
+      finish({ interrupted: true });
       settled = true;
       yield { kind: 'failed', reason: 'interrupted' };
       return;
@@ -389,7 +405,7 @@ async function* pumpRetold(
     // Awaited before the final frame: the SSE response is still open
     // here, so the isolate stays alive for the write
     await storePut('retold', key, { retold }, at);
-    finish(retold);
+    finish({ verdict: retold });
     settled = true;
     if (retold) {
       yield { kind: 'done', retold };
@@ -399,8 +415,8 @@ async function* pumpRetold(
   } finally {
     if (!settled) {
       // The consumer walked away mid-stream (disconnect): release the
-      // single-flight slot, cache nothing
-      finish(null);
+      // single-flight slot, cache nothing — joiners retry, not 404
+      finish({ interrupted: true });
     }
     void deltas.return(undefined);
   }
@@ -417,7 +433,7 @@ export async function getRetold(areaName: string): Promise<Retold | null> {
   // for that one call rather than spending its own
   const pending = inFlight.get(key);
   if (pending) {
-    return pending;
+    return joinShared(pending);
   }
 
   const started = await startRetoldStream(areaName);
@@ -429,7 +445,8 @@ export async function getRetold(areaName: string): Promise<Retold | null> {
     return peekRetold(areaName)?.retold ?? null;
   }
   if (started.kind === 'join') {
-    return inFlight.get(key) ?? getRetold(areaName);
+    const shared = inFlight.get(key);
+    return shared ? joinShared(shared) : getRetold(areaName);
   }
   // Same transport as the streaming route, drained to one answer
   let final: Retold | null = null;
