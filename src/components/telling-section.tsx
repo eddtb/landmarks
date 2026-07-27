@@ -58,7 +58,8 @@ export function TellingSection({ item }: { item: HistoryItem }) {
     status === 'writing'
       ? 'Writing the telling…'
       : status === 'speaking'
-        ? '◼ Stop'
+        ? // A word, not ◼ (PR #186): violet already means tappable
+          'Stop'
         : status === 'engine-failed'
           ? 'The speech engine failed — tap to retry (is silent mode on?)'
         : status === 'error'
@@ -158,20 +159,23 @@ export function TellingLead({ item }: { item: HistoryItem }) {
   if (!telling) {
     return (
       <ThemedText type="small" themeColor="textSecondary" style={styles.leadPending}>
-        ✦ Writing the telling…
+        Writing the telling…
       </ThemedText>
     );
   }
   return (
     <View style={styles.lead} testID="telling-lead">
       <View style={styles.leadLabel}>
+        {/* Words, not glyphs (PR #186): no ✦ for VoiceOver to call
+            "four-pointed star", and Stop is a word */}
         <ThemedText type="small" themeColor="textSecondary" style={styles.leadLabelText}>
-          ✦ Told by AI from Wikipedia — original below
+          Told by AI from Wikipedia — original below
         </ThemedText>
         {speechAvailable && (
-          <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.two}>
+          // 16pt slop on the 20px label clears the 44pt target
+          <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.three}>
             <ThemedText type="smallBold" themeColor="accent">
-              {speaking ? '◼ Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
+              {speaking ? 'Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
             </ThemedText>
           </Pressable>
         )}

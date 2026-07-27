@@ -16,11 +16,27 @@ export type ThemedTextProps = TextProps & {
   themeColor?: ThemeColor;
 };
 
-export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
+/**
+ * Dynamic type policy (DESIGN.md): reading text scales freely with the
+ * user's setting; chrome — labels, buttons, the dial's number, screen
+ * titles — caps at 1.4× so accessibility sizes never clip a fixed
+ * frame. Overridable per-use via the ordinary maxFontSizeMultiplier prop.
+ */
+const ChromeCap = 1.4;
+const cappedTypes = new Set(['eyebrow', 'smallBold', 'subtitle', 'largeTitle']);
+
+export function ThemedText({
+  style,
+  type = 'default',
+  themeColor,
+  maxFontSizeMultiplier,
+  ...rest
+}: ThemedTextProps) {
   const theme = useTheme();
 
   return (
     <Text
+      maxFontSizeMultiplier={maxFontSizeMultiplier ?? (cappedTypes.has(type) ? ChromeCap : undefined)}
       style={[
         { color: theme[themeColor ?? 'text'] },
         type === 'default' && styles.default,

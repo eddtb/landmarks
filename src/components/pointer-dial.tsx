@@ -199,7 +199,9 @@ export function PointerDial({
           </Animated.View>
         )}
         {compact ? (
-          <ThemedText style={styles.compactPrimary} themeColor="accent">
+          // Raw 10px inside a fixed 56pt dial: capped so accessibility
+          // sizes can't push the number out of the ring
+          <ThemedText style={styles.compactPrimary} themeColor="accent" maxFontSizeMultiplier={1.4}>
             {primary}
           </ThemedText>
         ) : (

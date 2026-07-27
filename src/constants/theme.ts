@@ -16,7 +16,9 @@ export const Colors = {
     background: '#FFFFFF',
     backgroundElement: '#F2F2F4',
     backgroundSelected: '#E6E6EA',
-    textSecondary: '#7B7E85',
+    // 4.6:1 on white (the old #7B7E85 sat just under AA at ~4.06:1);
+    // still comfortably AA on the backgroundElement card surface
+    textSecondary: '#6B6E76',
     /** The one interactive colour — buttons, links, selection, the route. */
     accent: '#6A4BDB',
     /** Violet's quiet surface tint — chips, dial rings, soft highlights. */

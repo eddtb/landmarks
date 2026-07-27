@@ -21,7 +21,7 @@ Six colours. Nothing else is allowed in.
 | Token | Light | Dark | Job |
 |---|---|---|---|
 | `text` (ink) | `#17181A` | `#FFFFFF` | Names, titles, working text |
-| `textSecondary` (grey) | `#7B7E85` | `#B0B4BA` | Everything descriptive |
+| `textSecondary` (grey) | `#6B6E76` | `#B0B4BA` | Everything descriptive |
 | `background` | `#FFFFFF` | `#000000` | The page |
 | `backgroundElement` | `#F2F2F4` | `#212225` | Cards and quiet surfaces |
 | `accent` (violet) | `#6A4BDB` | `#A18BF5` | Everything interactive: buttons, links, selection, walk times, the compass needle |
@@ -55,6 +55,20 @@ scale, never from a second face.
 
 Unused styles get deleted from `ThemedText`, not abandoned — dead tokens
 are how drift starts.
+
+**Dynamic type: reading scales freely, chrome is capped.** `default`
+and `small` — the story paragraphs, the tellings — follow the user's
+text size without limit: long-form history readers are exactly the
+large-type audience. The chrome types (`eyebrow`, `smallBold`,
+`subtitle`, `largeTitle`) and any raw-fontSize text inside a fixed
+frame (the compact dial, the featured cards, the hero) cap at 1.4× so
+accessibility sizes never clip a fixed-height surface.
+
+**Controls are words, not glyphs.** A tappable label is a word VoiceOver
+can say — Stop, Close, Steps — never `◼`, `✕`, or a triangle (the rule
+PR #186 settled). Decorative marks may ride beside a word only if the
+accessible label excludes them; expand/collapse controls carry
+`accessibilityState: {expanded}`, and every tap target clears 44pt.
 
 ## Navigation
 

@@ -154,14 +154,16 @@ export function ImageViewer({
             />
           </Animated.View>
         </GestureDetector>
+        {/* Close is a word (PR #186), white on the chip: the viewer is
+            deliberately single-look black, like its credits */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close"
           onPress={animateOut}
           hitSlop={Spacing.three}
           style={[styles.close, { top: insets.top + Spacing.two }]}>
-          <ThemedText type="headline" style={styles.closeText}>
-            ✕
+          <ThemedText type="smallBold" style={styles.closeText} maxFontSizeMultiplier={1.4}>
+            Close
           </ThemedText>
         </Pressable>
       </GestureHandlerRootView>
@@ -192,11 +194,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 11,
   },
+  // A pill now the label is a word; hitSlop 16 keeps the 36pt chip's
+  // effective target over 44pt
   close: {
     position: 'absolute',
     right: Spacing.four,
-    width: 36,
     height: 36,
+    paddingHorizontal: Spacing.three,
     borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',

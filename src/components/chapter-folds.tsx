@@ -37,7 +37,11 @@ export function ChapterFolds({ chapters }: { chapters: ArticleChapter[] }) {
             style={[styles.fold, { borderTopColor: theme.backgroundElement }]}>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${isOpen ? 'Collapse' : 'Expand'} ${chapter.title}`}
+                // The title is the label; expanded/collapsed comes from
+                // the state, and the decorative chevron below never
+                // reaches VoiceOver
+                accessibilityLabel={chapter.title}
+                accessibilityState={{ expanded: isOpen }}
                 onPress={() => toggle(index)}>
                 <View style={styles.foldHead}>
                   <ThemedText type="headline" style={styles.foldTitle} numberOfLines={1}>
