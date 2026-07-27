@@ -44,7 +44,25 @@ jest.mock('@/data/telling-client', () => ({
   fetchTelling: jest.fn(async () => 'The compter held debtors two centuries before the railway ate it.'),
 }));
 
+// The walk time is live GPS now — a fix ~112m from the Compter keeps
+// the "Go · 1 min walk" assertions honest
+const mockUseLocation = jest.fn(() => ({
+  status: 'ready',
+  coordinates: { latitude: 51.5055, longitude: -0.0906 },
+}));
+jest.mock('@/hooks/use-location', () => ({
+  useLocation: () => mockUseLocation(),
+}));
+
 describe('<HistoryDetailScreen />', () => {
+  beforeEach(() => {
+    mockUseLocation.mockReset();
+    mockUseLocation.mockReturnValue({
+      status: 'ready',
+      coordinates: { latitude: 51.5055, longitude: -0.0906 },
+    });
+  });
+
   beforeAll(() => {
     cacheHistoryItems([
       {
@@ -115,6 +133,55 @@ describe('<HistoryDetailScreen />', () => {
     fireEvent.press(pill);
     expect(await screen.findByText('Save')).toBeOnTheScreen();
     expect(isSaved(42)).toBe(false);
+  });
+
+  test('without a live fix the button says Go alone — no fabricated walk time', async () => {
+    // Denied location: the feed's distanceMeters was measured from the
+    // fallback pin, and quoting it would be the lie the shelf card
+    // already refuses to tell
+    mockUseLocation.mockReturnValue({ status: 'denied', coordinates: null } as never);
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
+    await render(<HistoryDetailScreen />);
+
+    expect(await screen.findByText('Go')).toBeOnTheScreen();
+    expect(screen.queryByText(/Go · /)).not.toBeOnTheScreen();
+  });
+
+  test('a network failure offers Try again — never "could not be found"', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '4242' }); // not in any cache
+    mockExpoFetch.mockRejectedValueOnce(new Error('flaky tunnel'));
+    await render(<HistoryDetailScreen />);
+
+    expect(await screen.findByText('Couldn’t load this story right now.')).toBeOnTheScreen();
+    expect(screen.queryByText('This story could not be found.')).not.toBeOnTheScreen();
+
+    // The retry refetches — this time the story answers
+    mockExpoFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        item: {
+          pageId: 4242,
+          title: 'Marshalsea',
+          coordinates: { latitude: 51.5012, longitude: -0.0921 },
+          distanceMeters: 300,
+          extract: 'A prison on the south bank of the Thames.',
+          url: 'https://en.wikipedia.org/wiki/Marshalsea',
+          source: 'Wikipedia',
+        },
+      }),
+    });
+    fireEvent.press(screen.getByTestId('story-retry'));
+    expect(await screen.findByText('Marshalsea')).toBeOnTheScreen();
+  });
+
+  test('a true 404 still says the story could not be found', async () => {
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '4243' });
+    mockExpoFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
+    await render(<HistoryDetailScreen />);
+
+    expect(await screen.findByText('This story could not be found.')).toBeOnTheScreen();
+    expect(screen.queryByTestId('story-retry')).not.toBeOnTheScreen();
   });
 
   test('the Compass button opens the story compass modal', async () => {

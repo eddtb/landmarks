@@ -29,6 +29,9 @@ type Props = {
   /** No position yet: the dial still stands (the void was the bug),
    * needle hidden, the words say what's happening. */
   locating?: boolean;
+  /** Replaces the coach line — for no-fix states that are not
+   * "waiting" (location denied: nothing here will ever arrive). */
+  coach?: string;
 };
 
 /**
@@ -96,6 +99,7 @@ export function PointerDial({
   compact = false,
   arrived = false,
   locating = false,
+  coach: coachOverride,
 }: Props) {
   const heading = useHeading(true);
   const theme = useTheme();
@@ -114,13 +118,15 @@ export function PointerDial({
   const needleWidth = Math.round(size * 0.055);
   const needleHeight = Math.round(size * 0.15);
 
-  const coach = locating
-    ? 'Hold on — finding you'
-    : arrived
-      ? 'You’re here — look around'
-      : pointable
-        ? 'Turn until the needle sits at the top'
-        : 'Distance updates as you move';
+  const coach =
+    coachOverride ??
+    (locating
+      ? 'Hold on — finding you'
+      : arrived
+        ? 'You’re here — look around'
+        : pointable
+          ? 'Turn until the needle sits at the top'
+          : 'Distance updates as you move');
 
   return (
     <View style={compact ? styles.compactContainer : styles.container}>

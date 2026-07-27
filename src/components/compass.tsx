@@ -1,4 +1,7 @@
+import * as Linking from 'expo-linking';
+
 import { PointerDial } from '@/components/pointer-dial';
+import { ThemedText } from '@/components/themed-text';
 import { useLocation } from '@/hooks/use-location';
 import { bearingDegrees, compassPoint, Coordinates, distanceMeters } from '@/utils/geo';
 import { formatDistance } from '@/utils/format';
@@ -12,12 +15,34 @@ const ArrivedMeters = 15;
 
 /** As-the-crow-flies pointer: needle at the destination, live distance. */
 export function Compass({ target }: Props) {
-  const { coordinates } = useLocation();
+  const { status, coordinates } = useLocation();
 
   if (!coordinates) {
     // The dial stands while GPS wakes — a blank modal read as broken
     // (mock direction A, "the blank void dies"). Needle stays hidden:
-    // with no position there is no bearing to point along.
+    // with no position there is no bearing to point along. Denied is
+    // not "waiting": the spinner-forever was a dead end — say what
+    // would fix it, and offer the door.
+    if (status === 'denied') {
+      return (
+        <>
+          <PointerDial
+            user={target}
+            target={target}
+            primary="Location off"
+            locating
+            coach="Venture can’t see where you are"
+          />
+          <ThemedText
+            type="smallBold"
+            themeColor="accent"
+            accessibilityRole="button"
+            onPress={() => Linking.openSettings()}>
+            Enable location in Settings
+          </ThemedText>
+        </>
+      );
+    }
     return <PointerDial user={target} target={target} primary="Finding you…" locating />;
   }
 
