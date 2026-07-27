@@ -33,6 +33,28 @@ keyless. Note: REPLAY_ONLY also refuses FREE Gemini calls, so a dev
 server on that flag cannot write new tellings — only replay cached ones.
 
 
+# Shipping: two roads to a phone
+
+A change reaches users one of two ways, and the difference is not a
+preference.
+
+**OTA (EAS Update)** — JavaScript, styles, assets. Published
+deliberately: `eas workflow:run .eas/workflows/ota-production.yml`.
+No review, no wait; also no undo but a rollback publish, so an OTA
+carries the same test/lint/typecheck bar as anything else.
+
+**A build** — everything that touches the native runtime: a new native
+module, an SDK bump, a permission string, an app.json plugin change.
+The `fingerprint` runtimeVersion policy decides which of the two a
+change is, by computing the native fingerprint rather than trusting
+anyone to remember: change the runtime and old binaries stop being
+offered the update instead of crashing on it. When a phone stops
+receiving updates, the answer is a new build — never a looser policy.
+
+Server-side API routes are a third road entirely: they ship with
+`eas deploy --prod` and reach every client at once, binary or not.
+
+
 # AI call-site audit (keep this table true)
 
 Every AI call passes a budget breaker — these are ALL of them. Any new
