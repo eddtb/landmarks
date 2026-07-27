@@ -64,12 +64,23 @@ describe('<Compass />', () => {
   });
 
   test('without a position the dial still stands — the void was the bug', async () => {
-    mockUseLocation.mockReturnValue({ coordinates: null });
+    mockUseLocation.mockReturnValue({ status: 'locating', coordinates: null });
     await render(<Compass target={Target} />);
 
     expect(screen.getByText('Finding you…')).toBeOnTheScreen();
     expect(screen.getByText('Hold on — finding you')).toBeOnTheScreen();
     expect(screen.queryByTestId('compass-needle')).not.toBeOnTheScreen();
+  });
+
+  test('denied is not waiting: the dial says so and offers the Settings door', async () => {
+    mockUseLocation.mockReturnValue({ status: 'denied', coordinates: null });
+    await render(<Compass target={Target} />);
+
+    // No "finding you" lie — nothing here will ever arrive
+    expect(screen.getByText('Location off')).toBeOnTheScreen();
+    expect(screen.getByText('Venture can’t see where you are')).toBeOnTheScreen();
+    expect(screen.getByText('Enable location in Settings')).toBeOnTheScreen();
+    expect(screen.queryByText(/finding you/i)).not.toBeOnTheScreen();
   });
 
   test('within arm’s reach the compass stops pointing and says so', async () => {
