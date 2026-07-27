@@ -1,4 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { mapWithLimit } from '@/server/concurrency';
 import { findStory, StoryResult } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
@@ -270,9 +271,15 @@ export function mergeHistorySources(
 const StoryTtlMs = 7 * 24 * 60 * 60 * 1000;
 const storyCache = diskBackedMap<{ story: StoryResult | null; at: number }>('nhle-stories');
 
+// Each uncached enrichment is up to two Wikipedia calls, and a dense
+// listed-building area brings dozens — an unbounded Promise.all here
+// opened that many sockets at once and got the worker's egress
+// rate-limited, which surfaces as the NEXT reader's feed 502ing.
+// Four at a time still finishes a cold area inside the compose budget.
+const EnrichConcurrency = 4;
+
 export async function enrichStandaloneListed(items: HistoryItem[]): Promise<HistoryItem[]> {
-  const resolved = await Promise.all(
-    items.map(async (item) => {
+  const resolved = await mapWithLimit(items, EnrichConcurrency, async (item) => {
       if (!item.source.startsWith('Historic England')) {
         return item;
       }
@@ -301,7 +308,7 @@ export async function enrichStandaloneListed(items: HistoryItem[]): Promise<Hist
         // which side of the join found the story first
         source: `Wikipedia · ${grade} listed`,
       };
-    })
+    }
   );
   // A big site holds several register records (measured: the National
   // Maritime Museum), and each can resolve to the SAME article — one
