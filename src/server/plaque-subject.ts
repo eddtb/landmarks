@@ -1,4 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { mapWithLimit } from '@/server/concurrency';
 import { findStory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 
@@ -52,15 +53,19 @@ export async function resolvePlaqueSubjects(
 ): Promise<HistoryItem[]> {
   const takenTitles = new Set(backbone.map((item) => normalize(item.title)));
 
-  // Sequential on purpose: 20 parallel lookups got the summary
-  // endpoint rate-limited, and politeness is the price of keyless
-  const resolved: HistoryItem[] = [];
-  for (const item of plaques) {
+  // Was fully sequential, and the reason still stands: 20 parallel
+  // lookups got the summary endpoint rate-limited, and politeness is
+  // the price of keyless. But one-at-a-time made this the single
+  // costliest leg of a cold feed — measured on the deployed worker at
+  // 5.4-6.4s of a 17s compose — and a cold feed is what nearly every
+  // reader of a small app gets, because nobody has warmed their area
+  // for them. Three at a time is the compromise: far from the twenty
+  // that broke it, and it turns six seconds into roughly two.
+  const resolved = await mapWithLimit(plaques, 3, async (item) => {
     const key = String(item.pageId);
     const cached = cache.get(key);
     if (cached && Date.now() - cached.at < TtlMs) {
-      resolved.push(applyResolution(item, cached.resolution, takenTitles));
-      continue;
+      return applyResolution(item, cached.resolution, takenTitles);
     }
     let resolution: Resolution = null;
     try {
@@ -71,7 +76,7 @@ export async function resolvePlaqueSubjects(
     } catch {
       // Upstream wobble: degrade to the inscription, don't cache the miss
     }
-    resolved.push(applyResolution(item, resolution, takenTitles));
-  }
+    return applyResolution(item, resolution, takenTitles);
+  });
   return resolved;
 }
