@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import Animated, {
+  runOnJS,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -277,6 +278,7 @@ export function AreaGazetteer({
   empty,
   sourceUrl,
   tellingItem,
+  onReadThreshold,
 }: {
   areaName: string | null;
   /** False while the area-name cascade is still resolving: a null
@@ -305,18 +307,33 @@ export function AreaGazetteer({
    * subject), the fallback article gets a telling lead: the AI-told
    * opening above the original, with Listen. Areas pass none. */
   tellingItem?: HistoryItem;
+  /** Fired ONCE per story when the reading bar passes ~60% — the
+   * journal's definition of "read" (an open is not a read). Place
+   * screens pass the journal mark; areas pass none. */
+  onReadThreshold?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   // A reanimated shared value: scroll ticks land on the UI thread and
   // the bar's width answers there too — no JS-bridge traffic at all
   const readProgress = useSharedValue(0);
+  // "Read" is the bar passing the threshold, once — the crossing is
+  // detected here on the UI thread and pays a single JS hop, ever
+  const ReadThreshold = 0.6;
+  const readMarked = useSharedValue(false);
   // The reading bar: recompute on every scroll tick, no re-render —
   // the whole exchange stays on the UI thread
   const onScroll = useAnimatedScrollHandler((event) => {
-    readProgress.set(
-      readingProgress(event.contentOffset.y, event.contentSize.height, event.layoutMeasurement.height)
+    const progress = readingProgress(
+      event.contentOffset.y,
+      event.contentSize.height,
+      event.layoutMeasurement.height
     );
+    readProgress.set(progress);
+    if (onReadThreshold && progress >= ReadThreshold && !readMarked.get()) {
+      readMarked.set(true);
+      runOnJS(onReadThreshold)();
+    }
   });
   const fillStyle = useAnimatedStyle(() => ({
     width: `${readProgress.get() * 100}%`,
@@ -363,7 +380,8 @@ export function AreaGazetteer({
   // its fetches haven't even resolved by the time this runs.
   useEffect(() => {
     readProgress.set(0);
-  }, [areaName, readProgress]);
+    readMarked.set(false);
+  }, [areaName, readProgress, readMarked]);
 
   // Two INDEPENDENT fetches: the hero paints the moment the article
   // lands; the retelling streams in when ready (Edd: "loading too

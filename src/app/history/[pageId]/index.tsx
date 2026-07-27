@@ -12,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { fetchStory, getCachedHistoryItem, getStoriesAround } from '@/data/history-client';
+import { markRead, markVisited } from '@/data/journal';
 import { toggleSaved, useSaved, useSavedItem } from '@/data/saved';
 import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
@@ -107,6 +108,23 @@ function ActionsLead({ item }: { item: HistoryItem }) {
       </ThemedText>
     </View>
   );
+}
+
+/**
+ * Headless: writes the journal's "visited" fact when the reader is
+ * physically at the story — the same 45m the standing-on banner uses.
+ * Its own component so GPS ticks re-render nothing but this null.
+ */
+function JournalVisitMarker({ item }: { item: HistoryItem }) {
+  const { coordinates } = useLocation();
+  const standing =
+    coordinates !== null && distanceMeters(coordinates, item.coordinates) < 45;
+  useEffect(() => {
+    if (standing) {
+      markVisited(item.pageId);
+    }
+  }, [standing, item.pageId]);
+  return null;
 }
 
 /** No Wikipedia article of its own: the extract-and-folds story stands. */
@@ -277,8 +295,10 @@ export default function HistoryDetailScreen() {
         // from the inscription would speak past it. No extract, no
         // telling — the model must never write from nothing.
         tellingItem={!item.subject && item.extract?.trim() ? item : undefined}
+        onReadThreshold={() => markRead(item.pageId)}
         lead={
           <>
+            <JournalVisitMarker item={item} />
             <ActionsLead item={item} />
             {/* A resolved plaque keeps its inscription in view — the
                 primary source you are physically standing at */}

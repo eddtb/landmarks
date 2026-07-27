@@ -105,3 +105,28 @@ export function hookEchoesTitle(title: string, hook: string): boolean {
   }
   return a.startsWith(b) || b.startsWith(a);
 }
+
+/**
+ * When the journal did something, in card words: "today", "yesterday",
+ * a weekday inside the week ("Tuesday"), then dates ("12 July"). The
+ * card meta line speaks in days, not timestamps — "Visited Tuesday"
+ * is how a person says it.
+ */
+export function formatDaySince(at: number, now = Date.now()): string {
+  const day = (ms: number) => {
+    const date = new Date(ms);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  };
+  const daysAgo = Math.round((day(now) - day(at)) / (24 * 60 * 60 * 1000));
+  if (daysAgo <= 0) {
+    return 'today';
+  }
+  if (daysAgo === 1) {
+    return 'yesterday';
+  }
+  const date = new Date(at);
+  if (daysAgo < 7) {
+    return date.toLocaleDateString('en-GB', { weekday: 'long' });
+  }
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+}
