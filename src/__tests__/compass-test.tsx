@@ -10,7 +10,12 @@ jest.mock('@/hooks/use-location', () => ({
   useLocation: () => mockUseLocation(),
 }));
 jest.mock('@/hooks/use-heading', () => ({
-  useHeading: () => mockUseHeading(),
+  // The dial reads degrees off a SharedValue and branches on
+  // availability — the mock keeps the old number|null contract
+  useHeadingValue: () => {
+    const degrees = mockUseHeading() as number | null;
+    return { heading: { value: degrees ?? 0 }, available: degrees !== null };
+  },
 }));
 
 // ~96m north of the user position below

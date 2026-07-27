@@ -164,6 +164,20 @@ const lightCache = diskBackedMap<{ article: Article; at: number }>('articles-lig
 // /api/retold cold-opens share one upstream fetch per title
 const inFlight = new Map<string, Promise<Article | null>>();
 const lightInFlight = new Map<string, Promise<Article | null>>();
+// The chapters leg itself is single-flight too: the client fires the
+// light and full asks concurrently on a cold open, and both funnel
+// into ONE Wikipedia extract call instead of two
+const chaptersInFlight = new Map<string, Promise<Omit<Article, 'images'> | null>>();
+
+function getChaptersOnce(title: string, key: string): Promise<Omit<Article, 'images'> | null> {
+  const pending = chaptersInFlight.get(key);
+  if (pending) {
+    return pending;
+  }
+  const work = fetchChapters(title).finally(() => chaptersInFlight.delete(key));
+  chaptersInFlight.set(key, work);
+  return work;
+}
 
 /** The extract leg alone: ~0.2s of a 1.3-1.7s cold open. */
 async function fetchChapters(title: string): Promise<Omit<Article, 'images'> | null> {
@@ -215,7 +229,7 @@ export async function getArticleLight(title: string): Promise<Article | null> {
 }
 
 async function fetchLightUncached(title: string, key: string): Promise<Article | null> {
-  const base = await fetchChapters(title);
+  const base = await getChaptersOnce(title, key);
   if (!base) {
     return null;
   }
@@ -242,14 +256,17 @@ export async function getArticle(title: string): Promise<Article | null> {
 async function fetchFullUncached(title: string, key: string): Promise<Article | null> {
   // The light path usually just paid for the extract leg — reuse it
   const light = lightCache.get(key);
-  const base =
+  const baseLeg =
     light && Date.now() - light.at < LightTtlMs
-      ? { chapters: light.article.chapters, minutes: light.article.minutes }
-      : await fetchChapters(title);
+      ? Promise.resolve({ chapters: light.article.chapters, minutes: light.article.minutes })
+      : getChaptersOnce(title, key);
+  // The image legs never depended on the chapters — run them abreast
+  // (the old serialization was ~0.3-0.5s of every cold hero paint)
+  const imagesLeg = fetchArticleImages(title).catch(() => []);
+  const [base, images] = await Promise.all([baseLeg, imagesLeg]);
   if (!base) {
     return null;
   }
-  const images = await fetchArticleImages(title).catch(() => []);
   const article = { ...base, images };
   cache.set(key, { article, at: Date.now() });
   return article;

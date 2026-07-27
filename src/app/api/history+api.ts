@@ -249,6 +249,14 @@ export async function GET(request: Request) {
     }
 
     const enrichStart = Date.now();
+    // The Wikidata facts for the wiki-backbone items never depended on
+    // the heritage-enrichment leg — the two ran in sequence anyway,
+    // 1-2.5s of every cold compose. The facts leg now flies while
+    // enrichment runs; only the handful of items enrichment ADDS
+    // (standalone listed buildings that earned a story) top up after.
+    const backbone = merged.slice(0, 150);
+    const backboneFacts = existenceFactsByPageId(backbone);
+    const queried = new Set(backbone.map((item) => item.pageId));
     const told = await enrichStandaloneListed(merged);
     // The deep feed: everything within the walk, not a top-40 — the list
     // virtualises client-side, and photo lookups stay capped per request
@@ -262,7 +270,16 @@ export async function GET(request: Request) {
     // but a successful area/event verdict is atomic with the response.
     // Photos remain cosmetic and retain the fast-response grace below.
     const decorateStart = Date.now();
-    const facts = await existenceFactsByPageId(capped);
+    const facts = await backboneFacts;
+    // A no-facts answer is a real verdict for most items — only faces
+    // the first ask never saw (enrichment's additions) go back to
+    // Wikidata, not everything without an entry
+    const newcomers = capped.filter((item) => !queried.has(item.pageId));
+    if (newcomers.length > 0) {
+      for (const [pageId, fact] of await existenceFactsByPageId(newcomers)) {
+        facts.set(pageId, fact);
+      }
+    }
     const classified = applyFacts(capped, facts);
     const dressing = dressWithPhotos(classified);
 
