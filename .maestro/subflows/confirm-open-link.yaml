@@ -16,6 +16,19 @@
 # FULL-STRING regexes, so the wildcards are load-bearing.
 appId: com.eddtb.landmarks
 ---
+# Wait for it BEFORE deciding. A bare `when: visible` guard checks the
+# instant the link is fired and the alert arrives a beat later, so the
+# check skips and the flow walks into the modal it just cleared itself
+# to avoid — measured: with the one-shot guard, 5/7 flows recovered
+# but the two that actually follow links (one-door's relink after
+# clearState, deeplink's story links) still failed. This is the same
+# race, and the same remedy, as the dev-menu welcome mat in boot.yaml:
+# a bounded optional wait costs nothing when there is nothing to wait
+# for, and is patient when there is.
+- extendedWaitUntil:
+    optional: true
+    visible: 'Open in .*Venture.*'
+    timeout: 8000
 - runFlow:
     when:
       visible: 'Open in .*Venture.*'
