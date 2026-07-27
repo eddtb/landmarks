@@ -167,6 +167,23 @@ describe('the Exploring header (StoriesScreen)', () => {
     expect(dot).toHaveStyle({ backgroundColor: '#6A4BDB' });
   });
 
+  test('the search door is a worded violet link, not just the secret title tap', async () => {
+    gpsLive();
+    const screen = await render(<StoriesScreen />);
+
+    // Visible before any tap — ink text signalled nothing (the rule of
+    // use: interactive is violet, in words)
+    const toggle = screen.getByTestId('search-toggle');
+    expect(screen.getByText('Search a place')).toBeOnTheScreen();
+
+    await fireEvent.press(toggle);
+    expect(screen.getByPlaceholderText('Search near a place…')).toBeOnTheScreen();
+    expect(screen.getByText('Close search')).toBeOnTheScreen();
+
+    await fireEvent.press(toggle);
+    expect(screen.queryByPlaceholderText('Search near a place…')).toBeNull();
+  });
+
   test('tapping the title opens search; pinning flips the header to Exploring', async () => {
     gpsLive();
     const screen = await render(<StoriesScreen />);

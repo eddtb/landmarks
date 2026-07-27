@@ -13,15 +13,11 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { fetchStory, getCachedHistoryItem, getStoriesAround } from '@/data/history-client';
 import { toggleSaved, useSaved, useSavedItem } from '@/data/saved';
+import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem, isWikiPageId } from '@/types/history';
-import { formatWalkTime, storyParagraphs } from '@/utils/format';
-import { Coordinates } from '@/utils/geo';
-
-/** Same demo-mode walking estimate as everywhere else: ~1.33 m/s. */
-function estimatedWalkSeconds(meters: number): number {
-  return Math.round(meters / 1.33);
-}
+import { formatWalkTimeForMeters, storyParagraphs } from '@/utils/format';
+import { Coordinates, distanceMeters } from '@/utils/geo';
 
 function mapsWalkingUrl(coordinates: Coordinates): string {
   const at = `${coordinates.latitude},${coordinates.longitude}`;
@@ -36,7 +32,16 @@ function mapsWalkingUrl(coordinates: Coordinates): string {
 /** The journey controls ride under the hero: violet Go, Compass, Save. */
 function ActionsLead({ item }: { item: HistoryItem }) {
   const theme = useTheme();
-  const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
+  // The walk time is live GPS or nothing: item.distanceMeters is the
+  // moment the feed was fetched — a story saved in another town, or a
+  // denied-location session measured from the fallback pin, would
+  // quote a fabricated number on the primary button. The shelf card
+  // already drops it for exactly this reason; the label says "Go"
+  // alone when there is no honest fix.
+  const { coordinates } = useLocation();
+  const walkTime = coordinates
+    ? formatWalkTimeForMeters(distanceMeters(coordinates, item.coordinates))
+    : null;
   const saved = useSaved(item.pageId);
 
   return (
@@ -55,7 +60,7 @@ function ActionsLead({ item }: { item: HistoryItem }) {
           pressed && { opacity: 0.85 },
         ]}>
         <ThemedText type="smallBold" style={styles.goText}>
-          Go · {formatWalkTime(walkSeconds)}
+          {walkTime ? `Go · ${walkTime}` : 'Go'}
         </ThemedText>
       </Pressable>
       <Pressable
@@ -145,6 +150,11 @@ export default function HistoryDetailScreen() {
   // screen is allowed to say "not found".
   const [fetched, setFetched] = useState<HistoryItem | null>(null);
   const [missingPageId, setMissingPageId] = useState<number | null>(null);
+  // Failure and absence are different verdicts: fetchStory resolves
+  // null for a genuine 404 and THROWS on network trouble — a shared
+  // link opened on flaky signal must offer a retry, not tell the
+  // recipient the story doesn't exist.
+  const [loadFailed, setLoadFailed] = useState(false);
   // The saved shelf is a peer source, not a cache: the item cache
   // evicts and expires, but a story the user chose to keep must open
   // from its snapshot forever (for synthetic heritage ids it is the
@@ -157,7 +167,7 @@ export default function HistoryDetailScreen() {
     (fetched?.pageId === numericPageId ? fetched : undefined);
 
   useEffect(() => {
-    if (item || missingPageId === numericPageId) {
+    if (item || missingPageId === numericPageId || loadFailed) {
       return;
     }
     let cancelled = false;
@@ -168,14 +178,29 @@ export default function HistoryDetailScreen() {
         else setMissingPageId(numericPageId);
       })
       .catch(() => {
-        // Upstream trouble reads the same as a missing story here —
-        // there is nothing else this screen could honestly show
-        if (!cancelled) setMissingPageId(numericPageId);
+        if (!cancelled) setLoadFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [item, missingPageId, numericPageId]);
+  }, [item, missingPageId, numericPageId, loadFailed]);
+
+  if (!item && loadFailed) {
+    return (
+      <ThemedView style={styles.notFound}>
+        <Stack.Screen options={{ title: '' }} />
+        <ThemedText themeColor="textSecondary">Couldn’t load this story right now.</ThemedText>
+        <Pressable
+          accessibilityRole="button"
+          testID="story-retry"
+          onPress={() => setLoadFailed(false)}>
+          <ThemedText type="smallBold" themeColor="accent">
+            Try again
+          </ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
 
   if (!item && missingPageId !== numericPageId) {
     return (
@@ -274,6 +299,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.three,
   },
   lead: {
     flexDirection: 'row',

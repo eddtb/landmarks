@@ -1,4 +1,5 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import * as Linking from 'expo-linking';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
@@ -60,7 +61,7 @@ function ChromeSurface({
 export default function GoScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
-  const { coordinates } = useLocation();
+  const { status, coordinates } = useLocation();
   const [stepsOpen, setStepsOpen] = useState(false);
   const [routeState, setRouteState] = useState<
     { status: 'loading' } | { status: 'none' } | { status: 'ready'; route: WalkingRoute }
@@ -105,21 +106,17 @@ export default function GoScreen() {
     };
   }, [latitude, longitude, target]);
 
-  if (!item || !target || !coordinates) {
+  if (!item || !target) {
     return (
       <ThemedView style={styles.centered}>
         <Stack.Screen options={{ headerShown: false }} />
-        {item ? (
-          <ActivityIndicator />
-        ) : (
-          <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
-        )}
+        <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
       </ThemedView>
     );
   }
 
-  const route = routeState.status === 'ready' ? routeState.route : null;
-  const guidance = route ? guidanceFor(route, coordinates) : null;
+  const route = coordinates && routeState.status === 'ready' ? routeState.route : null;
+  const guidance = route && coordinates ? guidanceFor(route, coordinates) : null;
 
   return (
     <ThemedView style={styles.container}>
@@ -129,7 +126,31 @@ export default function GoScreen() {
         <RouteMap route={route} destination={target} fullscreen />
       ) : (
         <View style={styles.centered}>
-          {routeState.status === 'loading' ? (
+          {!coordinates ? (
+            // No fix, no journey — but never a spinner that can't end:
+            // denied says what would fix it and offers the door, and
+            // the Close chrome below stays reachable throughout
+            status === 'denied' ? (
+              <>
+                <ThemedText type="headline">Venture can’t see where you are</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.deniedCopy}>
+                  Walking there needs your position. The story reads fine without it.
+                </ThemedText>
+                <Pressable accessibilityRole="button" onPress={() => Linking.openSettings()}>
+                  <ThemedText type="smallBold" themeColor="accent">
+                    Enable location in Settings
+                  </ThemedText>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator />
+                <ThemedText type="small" themeColor="textSecondary">
+                  Finding you…
+                </ThemedText>
+              </>
+            )
+          ) : routeState.status === 'loading' ? (
             <ActivityIndicator />
           ) : (
             <>
@@ -166,7 +187,7 @@ export default function GoScreen() {
         </ChromeSurface>
       </SafeAreaView>
 
-      {guidance && (
+      {guidance && coordinates && (
         <SafeAreaView style={styles.sheetArea} edges={['bottom']} pointerEvents="box-none">
           <ChromeSurface style={styles.sheet} interactive>
             <Pressable
@@ -223,6 +244,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.three,
+  },
+  deniedCopy: {
+    textAlign: 'center',
+    paddingHorizontal: Spacing.six,
   },
   overlay: {
     position: 'absolute',

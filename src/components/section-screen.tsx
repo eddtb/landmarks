@@ -221,6 +221,19 @@ function SectionHeader({
           <ThemedText type="largeTitle">{title}</ThemedText>
         </Pressable>
       </View>
+      {/* The tappable title alone was invisible — ink text signals
+          nothing, and this is the only door to exploring anywhere.
+          The rule of use: interactive means violet, in words. */}
+      {!locationDenied && !exploring && (
+        <Pressable
+          accessibilityRole="button"
+          testID="search-toggle"
+          onPress={() => setSearchOpen((open) => !open)}>
+          <ThemedText type="linkPrimary">
+            {searchOpen ? 'Close search' : 'Search a place'}
+          </ThemedText>
+        </Pressable>
+      )}
       {exploring && (
         <Pressable accessibilityRole="button" onPress={onBackToNearMe}>
           <ThemedText type="linkPrimary">Back to near me</ThemedText>

@@ -97,23 +97,30 @@ export function useLocation(): {
     let subscription: Location.LocationSubscription | undefined;
 
     (async () => {
-      // Last known fix is instant when available; the watch takes over from there.
-      const lastKnown = await Location.getLastKnownPositionAsync();
-      if (!cancelled && lastKnown) {
-        setCoordinates(lastKnown.coords);
-      }
-      // Live position: emits an initial fix, then again every ~10m walked,
-      // so distances tick down and the list re-sorts as you move.
-      subscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, distanceInterval: 10 },
-        (update) => {
-          if (!cancelled) {
-            setCoordinates(update.coords);
-          }
+      // Caught like use-heading's sibling watch: services flipped off
+      // after the grant must not become an unhandled rejection that
+      // strands the hook — the screens' no-fix states take over.
+      try {
+        // Last known fix is instant when available; the watch takes over from there.
+        const lastKnown = await Location.getLastKnownPositionAsync();
+        if (!cancelled && lastKnown) {
+          setCoordinates(lastKnown.coords);
         }
-      );
-      if (cancelled) {
-        subscription.remove();
+        // Live position: emits an initial fix, then again every ~10m walked,
+        // so distances tick down and the list re-sorts as you move.
+        subscription = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, distanceInterval: 10 },
+          (update) => {
+            if (!cancelled) {
+              setCoordinates(update.coords);
+            }
+          }
+        );
+        if (cancelled) {
+          subscription.remove();
+        }
+      } catch (error) {
+        console.warn('Location unavailable:', error);
       }
     })();
 
