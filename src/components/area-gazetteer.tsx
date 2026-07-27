@@ -185,10 +185,12 @@ function Hero({
       )}
       <View style={[StyleSheet.absoluteFill, styles.heroShade]} />
       {lead && (
-        <ThemedText type="small" style={styles.heroCredit} numberOfLines={1}>
+        <ThemedText type="small" style={styles.heroCredit} numberOfLines={1} maxFontSizeMultiplier={1.4}>
           {lead.credit}
         </ThemedText>
       )}
+      {/* A fixed 220pt frame: the `small` lines cap like the chrome
+          types already do, so accessibility sizes can't overflow it */}
       <View style={styles.heroText}>
         <ThemedText type="eyebrow" style={styles.heroLight}>
           The story of
@@ -196,7 +198,7 @@ function Hero({
         <ThemedText type="largeTitle" style={styles.heroLight}>
           {areaName}
         </ThemedText>
-        <ThemedText type="small" style={styles.heroDim}>
+        <ThemedText type="small" style={styles.heroDim} maxFontSizeMultiplier={1.4}>
           {retold
             ? `${retold.parts.length} parts · about ${retold.minutes} min · retold from Wikipedia`
             : `${article.minutes} min read · ${article.chapters.length} chapters`}
@@ -510,13 +512,17 @@ export function AreaGazetteer({
         return (
           <View>
           <View style={styles.aiLabel}>
+            {/* Words, not glyphs (PR #186): no ✦ for VoiceOver to call
+                "four-pointed star", and Stop is a word — it's violet,
+                and violet already means tappable */}
             <ThemedText type="small" themeColor="textSecondary" style={styles.aiLabelText}>
-              ✦ Retold by AI from Wikipedia — source below
+              Retold by AI from Wikipedia — source below
             </ThemedText>
             {speechAvailable && retold && (
-              <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.two}>
+              // 16pt slop on the 20px label clears the 44pt target
+              <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.three}>
                 <ThemedText type="smallBold" themeColor="accent">
-                  {speaking ? '◼ Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
+                  {speaking ? 'Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
                 </ThemedText>
               </Pressable>
             )}
@@ -543,7 +549,7 @@ export function AreaGazetteer({
       case 'retelling-pending':
         return (
           <ThemedText type="small" themeColor="textSecondary" style={styles.pending}>
-            ✦ Retelling this place…
+            Retelling this place…
           </ThemedText>
         );
       case 'retelling-halted':

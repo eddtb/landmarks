@@ -165,13 +165,16 @@ export default function GoScreen() {
 
       <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
         <ChromeSurface style={styles.topCard} interactive>
+          {/* Close is a word, and violet — the compass modal's exact
+              treatment (the grey ✕ broke both halves of the rule);
+              16pt slop on the 20px label clears the 44pt target */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close"
             onPress={() => router.back()}
-            hitSlop={Spacing.two}>
-            <ThemedText type="headline" themeColor="textSecondary">
-              ✕
+            hitSlop={Spacing.three}>
+            <ThemedText type="smallBold" themeColor="accent">
+              Close
             </ThemedText>
           </Pressable>
           <View style={styles.topText}>
@@ -192,6 +195,15 @@ export default function GoScreen() {
           <ChromeSurface style={styles.sheet} interactive>
             <Pressable
               accessibilityRole="button"
+              // The label carries what the sheet shows — the live step
+              // — so the explicit label loses VoiceOver nothing; the
+              // expanded state says which way the toggle will go
+              accessibilityLabel={
+                guidance.arrived
+                  ? 'You have arrived. Steps'
+                  : `${guidance.step.instruction}, ${formatDistance(guidance.metersToManeuver)} to next turn. Steps`
+              }
+              accessibilityState={{ expanded: stepsOpen }}
               onPress={() => setStepsOpen((open) => !open)}
               style={styles.sheetPress}>
               <View style={styles.sheetHeader}>
@@ -212,8 +224,10 @@ export default function GoScreen() {
                     </ThemedText>
                   )}
                 </View>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {stepsOpen ? '▼' : '▲'}
+                {/* A word, not a triangle (PR #186) — and violet:
+                    it names the tap the whole sheet header answers */}
+                <ThemedText type="smallBold" themeColor="accent">
+                  Steps
                 </ThemedText>
               </View>
               {stepsOpen &&

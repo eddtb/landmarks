@@ -98,7 +98,8 @@ describe('<HistoryDetailScreen />', () => {
     expect(
       screen.getByText('The compter held debtors two centuries before the railway ate it.')
     ).toBeOnTheScreen();
-    expect(screen.getByText('✦ Told by AI from Wikipedia — original below')).toBeOnTheScreen();
+    // Words, not glyphs: no ✦ for VoiceOver to call "four-pointed star"
+    expect(screen.getByText('Told by AI from Wikipedia — original below')).toBeOnTheScreen();
 
     // …and the original article still stands as the story IN FULL
     // beneath it: intro first, then the folds (first chapter open, the
@@ -106,6 +107,11 @@ describe('<HistoryDetailScreen />', () => {
     expect(await screen.findByText('The intro, the surprising true thing.')).toBeOnTheScreen();
     expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
     expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen();
+    // The folds tell VoiceOver which way they stand: chapter one opens
+    // by default, the rest sit collapsed under their titles (their
+    // first line is only the sighted peek)
+    expect(screen.getByLabelText('Construction')).toBeExpanded();
+    expect(screen.getByLabelText('Demolition')).toBeCollapsed();
     // …and a link out to the source, which holds more than we parse
     expect(screen.getByText('Read more on Wikipedia ›')).toBeOnTheScreen();
     expect(screen.getByText('Wikipedia · source')).toBeOnTheScreen();

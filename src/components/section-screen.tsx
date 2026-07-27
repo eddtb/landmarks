@@ -426,10 +426,17 @@ export function FeaturedRail({
               contentFit="cover"
               cachePolicy="memory-disk"
             />
+            {/* Fixed 148pt cards: both lines capped so accessibility
+                sizes can't burst the rail (smallBold caps by default;
+                the meta line is `small`, unlimited elsewhere) */}
             <ThemedText type="smallBold" style={styles.featuredTitle} numberOfLines={2}>
               {item.title}
             </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.featuredMeta}>
+            <ThemedText
+              type="small"
+              themeColor="textSecondary"
+              style={styles.featuredMeta}
+              maxFontSizeMultiplier={1.4}>
               {formatWalkTimeForMeters(item.distanceMeters)}
             </ThemedText>
           </Pressable>
