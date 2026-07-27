@@ -4,9 +4,10 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useJournalEntry } from '@/data/journal';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
-import { formatWalkTime, hookEchoesTitle, storyHook } from '@/utils/format';
+import { formatDaySince, formatWalkTime, hookEchoesTitle, storyHook } from '@/utils/format';
 
 type Props = {
   item: HistoryItem;
@@ -20,6 +21,17 @@ type Props = {
 
 export function HistoryCard({ item, archive, saved }: Props) {
   const theme = useTheme();
+  // The quiet ledger (journal mock A): a story the reader has read or
+  // stood at stops shouting — the card dims, the hook goes, and the
+  // meta line says so in a grey word. State is words and dimming,
+  // never colour (the constitution's rule).
+  const entry = useJournalEntry(item.pageId);
+  const journaled = Boolean(entry?.readAt || entry?.visitedAt);
+  const journalWord = entry?.visitedAt
+    ? `Visited ${formatDaySince(entry.visitedAt)}`
+    : entry?.readAt
+      ? 'Read'
+      : null;
 
   return (
     // router.push, not Link asChild — asChild drops function-styles
@@ -36,6 +48,7 @@ export function HistoryCard({ item, archive, saved }: Props) {
         // Archive cards wear a lavender spine and an honest tag —
         // deliberate, not broken; a palace's painting may still show
         archive && [styles.archive, { borderLeftColor: theme.accentSoft }],
+        journaled && styles.journaled,
       ]}>
         {item.thumbnailUrl && (
           <Image
@@ -62,6 +75,9 @@ export function HistoryCard({ item, archive, saved }: Props) {
               it merely re-says the title (plaque inscriptions): a card
               repeating itself reads as broken */}
           {(() => {
+            if (journaled) {
+              return null; // the hook is the reason to tap; a read story needs none
+            }
             const hook = storyHook(item.extract);
             return hook && !hookEchoesTitle(item.title, hook) ? (
               <ThemedText type="small" numberOfLines={3}>
@@ -71,9 +87,10 @@ export function HistoryCard({ item, archive, saved }: Props) {
           })()}
           <ThemedText type="small" themeColor="textSecondary">
             {/* Same walking estimate as demo mode: ~1.33 m/s */}
-            {saved
+            {(saved
               ? item.source
-              : `${formatWalkTime(Math.round(item.distanceMeters / 1.33))} · ${item.source}`}
+              : `${formatWalkTime(Math.round(item.distanceMeters / 1.33))} · ${item.source}`) +
+              (journalWord ? ` · ${journalWord}` : '')}
           </ThemedText>
         </View>
       </Pressable>
@@ -87,6 +104,9 @@ const styles = StyleSheet.create({
   },
   archive: {
     borderLeftWidth: 3,
+  },
+  journaled: {
+    opacity: 0.62,
   },
   photo: {
     width: '100%',

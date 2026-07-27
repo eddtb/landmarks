@@ -118,3 +118,26 @@ describe('hookEchoesTitle (a card must not say the same thing twice)', () => {
     ).toBe(false);
   });
 });
+
+describe('formatDaySince (the journal speaks in days)', () => {
+  // A Monday noon — weekday math needs a fixed anchor
+  const monday = new Date('2026-07-27T12:00:00').getTime();
+  const days = (n: number) => monday - n * 24 * 60 * 60 * 1000;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { formatDaySince } = require('@/utils/format') as typeof import('@/utils/format');
+
+  test('today and yesterday are words, not dates', () => {
+    expect(formatDaySince(monday - 60_000, monday)).toBe('today');
+    expect(formatDaySince(days(1), monday)).toBe('yesterday');
+  });
+
+  test('inside the week it is a weekday; beyond, a date', () => {
+    expect(formatDaySince(days(5), monday)).toBe('Wednesday');
+    expect(formatDaySince(days(10), monday)).toBe('17 July');
+  });
+
+  test('late last night is still yesterday, not "13 hours ago" math', () => {
+    const lateLastNight = new Date('2026-07-26T23:30:00').getTime();
+    expect(formatDaySince(lateLastNight, monday)).toBe('yesterday');
+  });
+});
