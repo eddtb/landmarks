@@ -109,9 +109,39 @@ describe('getTelling', () => {
     expect(research).toHaveBeenCalledTimes(1);
     expect(storePut).toHaveBeenCalledWith(
       'telling',
-      '9004',
+      expect.stringMatching(/^9004:[0-9a-f]{24}$/),
       expect.objectContaining({ text: 'In 1855 they tore it down.' }),
       expect.any(Number)
     );
+  });
+
+  test('a fabricated extract only ever poisons its own slot', async () => {
+    // The public route lets anyone POST any text under any pageId; the
+    // extract-bound key keeps the real story's telling out of reach
+    await getTelling({ ...subject, pageId: 9005 });
+    research.mockResolvedValueOnce('A palace of lies.');
+    const poisoned = await getTelling({
+      ...subject,
+      pageId: 9005,
+      extract: 'Fabricated: a palace of solid gold stood here.',
+    });
+    const real = await getTelling({ ...subject, pageId: 9005 });
+
+    expect(poisoned).toBe('A palace of lies.');
+    expect(real).toBe('In 1855 they tore it down.'); // untouched, from cache
+    expect(research).toHaveBeenCalledTimes(2); // real telling written once
+  });
+
+  test('concurrent opens join one in-flight generation', async () => {
+    let release!: (text: string) => void;
+    research.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+
+    const first = getTelling({ ...subject, pageId: 9006 });
+    const second = getTelling({ ...subject, pageId: 9006 });
+    release('Told once.');
+
+    expect(await first).toBe('Told once.');
+    expect(await second).toBe('Told once.');
+    expect(research).toHaveBeenCalledTimes(1); // one free-tier unit, not two
   });
 });

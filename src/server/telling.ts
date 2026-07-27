@@ -14,6 +14,24 @@ const TtlMs = 30 * 24 * 60 * 60 * 1000;
 
 type CachedTelling = { text: string; at: number };
 const cache = diskBackedMap<CachedTelling>('tellings');
+// One generation per key at a time: concurrent opens of the same story
+// join the in-flight call instead of each spending a free-tier unit.
+const inFlight = new Map<string, Promise<string>>();
+
+/**
+ * The extract rides in from the client (the server holds no per-story
+ * state), so the cache key must bind the telling to the text it was
+ * written from: a fabricated extract POSTed to the public route may
+ * only ever poison its own slot, never the one real clients — who all
+ * send the same cleaned source text — read for the next 30 days.
+ * SHA-256 so a matching key can't be crafted for someone else's text.
+ */
+export async function extractKeyPart(extract: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(extract));
+  return Array.from(new Uint8Array(digest).slice(0, 12))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 export type TellingSubject = {
   pageId: number;
@@ -45,12 +63,26 @@ export async function getTelling(
   // Areas have no pageId — they cache under "area:greenwich"
   cacheKey = String(subject.pageId)
 ): Promise<string> {
-  const key = cacheKey;
+  const key = `${cacheKey}:${await extractKeyPart(subject.extract)}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < TtlMs) {
     return cached.text;
   }
 
+  const joined = inFlight.get(key);
+  if (joined) {
+    return joined;
+  }
+  const run = tellUncached(subject, key);
+  inFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function tellUncached(subject: TellingSubject, key: string): Promise<string> {
   // The durable store outlives the worker: on production edge
   // runtimes the map above dies with every isolate, and each story
   // was being rewritten per recycle. A store hit re-seeds the map at
