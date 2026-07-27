@@ -365,23 +365,28 @@ export function AreaGazetteer({
     }
     let active = true;
     (async () => {
-      // Light first: hero text and reading time paint off the cheap
-      // extract leg (~0.2s cold) instead of waiting ~1.2s more for
-      // the gallery's image legs. The hero simply renders imageless
-      // until the full article replaces it below.
+      // Both asks fly at once (the server folds their shared chapters
+      // leg into one call): the light answer paints the hero off the
+      // cheap extract leg, the full one replaces it when the gallery
+      // legs land — and a late light result may never overwrite it.
+      let fullLanded = false;
+      const fullAsk = fetchArticle(areaName)
+        .catch(() => null)
+        .then((loaded) => {
+          if (active && loaded) {
+            fullLanded = true;
+            setArticle(loaded);
+            setArticleStatus('ready');
+          }
+          return loaded;
+        });
       const light = await fetchArticleLight(areaName).catch(() => null);
-      if (active && light) {
+      if (active && light && !fullLanded) {
         setArticle(light);
         setArticleStatus('ready');
       }
-      const loaded = await fetchArticle(areaName).catch(() => null);
-      if (!active) {
-        return;
-      }
-      if (loaded) {
-        setArticle(loaded);
-        setArticleStatus('ready');
-      } else if (!light) {
+      const loaded = await fullAsk;
+      if (active && !loaded && !light) {
         // Only a double miss is "none" — a painted light article
         // never flashes away because the image leg failed
         setArticleStatus('none');

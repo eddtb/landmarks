@@ -1,10 +1,15 @@
-import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  SharedValue,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { useHeading } from '@/hooks/use-heading';
+import { useHeadingValue } from '@/hooks/use-heading';
 import { useTheme } from '@/hooks/use-theme';
 import { bearingDegrees, Coordinates } from '@/utils/geo';
 
@@ -34,21 +39,30 @@ type Props = {
 /**
  * A rotation that always takes the shortest arc, so 359° -> 1°
  * doesn't spin the long way round. Both moving layers (needle,
- * cardinal card) turn through this.
+ * cardinal card) turn through this. Entirely on the UI thread: the
+ * heading SharedValue ticks at sensor rate while the user physically
+ * turns, and reacting to it here costs zero React renders — the old
+ * state-driven version re-rendered the whole dial per 2° step.
  */
-function useShortestArc(target: number | null) {
+function useShortestArc(
+  heading: SharedValue<number>,
+  angleFrom: (degrees: number) => number | null
+) {
   const rotation = useSharedValue(0);
-  useEffect(() => {
-    if (target === null) {
-      return;
+  useAnimatedReaction(
+    () => angleFrom(heading.value),
+    (next, previous) => {
+      if (next === null || next === previous) {
+        return;
+      }
+      const target = ((next % 360) + 360) % 360;
+      const current = ((rotation.value % 360) + 360) % 360;
+      let delta = target - current;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      rotation.value = withTiming(rotation.value + delta, { duration: 300 });
     }
-    const next = ((target % 360) + 360) % 360;
-    const current = ((rotation.value % 360) + 360) % 360;
-    let delta = next - current;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    rotation.value = withTiming(rotation.value + delta, { duration: 300 });
-  }, [target, rotation]);
+  );
   return useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
@@ -97,19 +111,26 @@ export function PointerDial({
   arrived = false,
   locating = false,
 }: Props) {
-  const heading = useHeading(true);
+  const { heading, available } = useHeadingValue(true);
   const theme = useTheme();
 
-  const pointable = heading !== null && !locating;
+  const pointable = available && !locating;
   const targetBearing = bearingDegrees(user, target);
 
   // Arrived: the needle comes home to the top instead of chasing a
   // bearing computed between two nearly identical points
-  const needleStyle = useShortestArc(
-    !pointable ? null : arrived ? 0 : (targetBearing - (heading ?? 0) + 360) % 360
-  );
+  const needleStyle = useShortestArc(heading, (degrees) => {
+    'worklet';
+    if (!pointable) {
+      return null;
+    }
+    return arrived ? 0 : (targetBearing - degrees + 360) % 360;
+  });
   // The cardinal card counter-rotates: N stays pinned to the world
-  const cardStyle = useShortestArc(!pointable ? null : (360 - (heading ?? 0)) % 360);
+  const cardStyle = useShortestArc(heading, (degrees) => {
+    'worklet';
+    return pointable ? (360 - degrees) % 360 : null;
+  });
 
   const needleWidth = Math.round(size * 0.055);
   const needleHeight = Math.round(size * 0.15);
