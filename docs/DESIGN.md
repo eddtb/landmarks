@@ -44,13 +44,13 @@ scale, never from a second face.
 
 | Type | Spec | Job |
 |---|---|---|
-| `largeTitle` | 28/34 · 800 · -0.5 tracking | Story names on their own screen; the walk's title |
+| `largeTitle` | 28/34 · 800 · -0.5 tracking | Story names on their own screen |
 | `subtitle` | 32/44 · 600 | The compass dial's big number |
 | `headline` | 16/22 · 700 | Card names |
 | `default` | 16/24 · 500 | Longer body text: the story paragraphs |
 | `small` | 14/20 · 500 | Meta lines, hooks, tellings |
 | `smallBold` | 14/20 · 700 | Buttons, emphasis within small |
-| `eyebrow` | 11/14 · 800 · +1.4 tracking · uppercase | Section labels: NEARBY · STORY · AFTER THIS? · WALKS |
+| `eyebrow` | 11/14 · 800 · +1.4 tracking · uppercase | Section labels: NEARBY · STORY · FEATURED · SAVED |
 | `linkPrimary` | 14 · accent colour | Inline links |
 
 Unused styles get deleted from `ThemedText`, not abandoned — dead tokens
@@ -58,17 +58,19 @@ are how drift starts.
 
 ## Navigation
 
-Two tabs, two questions: **Nearby** (what can I go see?) and
-**History** (what happened here?). Nearby holds the subject-photo
-stories — findable, recognisable on arrival — under the approved
-header identity: NEARBY over the area name with the violet locator
-dot, and a count line, `62 stories within a walk`, fixed with the
-header. History is the archive: every story of the ground, photo
-optional, on text-first cards with a lavender spine and an honest tag
-(NO LONGER STANDING · HIDDEN HISTORY) derived from the record; its
-count line reads `41 stories of this ground · 6 no longer standing`.
-Story screens push over the tab bar; dip-in tools (compass, Go)
-present modally.
+Three tabs, three questions: **Nearby** (what can I go see?),
+**Saved** (what did I keep?) and **History** (what happened here?).
+Nearby holds the subject-photo stories — findable, recognisable on
+arrival — under the approved header identity: NEARBY over the area
+name with the violet locator dot, and a count line, `62 stories
+within a walk`, fixed with the header. Saved is the shelf the user
+fills: Save on any story keeps it, newest first, with one Keep
+offline switch that downloads the shelf; empty is a state, not a
+failure. History is the archive as Gazetteer: the area's own
+illustrated story, retold, with the relics of its ground beneath —
+photo optional, on cards with a lavender spine and an honest tag
+(NO LONGER STANDING · PLAQUE) derived from the record. Story screens
+push over the tab bar; dip-in tools (compass, Go) present modally.
 
 Lists scroll under the translucent tab bar but pad their bottom by the
 safe-area inset: the last card must always be able to rest fully above
@@ -88,18 +90,20 @@ answers that screen's question.
 1. **What happened here?** → the story card: photo when the record has
    one, name, the hook (the extract's first sentence — "a nuclear
    reactor ran here until 1996" is the reason to tap), one grey meta
-   line: `2 min walk · Wikipedia · 🔊`. The 🔊 marks a story with enough
-   source text to earn a spoken telling.
-2. **Tell me properly.** → the story screen: large title, violet
-   **Compass** (with the walk time) + lavender **＋ Walk**; the ⋯
-   overflow (Share, Open in Maps) lives in the header. Then STORY in
-   the eyebrow grammar: the **Listen** button (`🔊 Listen · about a
-   minute`), the telling once written, the source extract, and the
-   attribution link. Photo credits (Geograph, CC BY-SA) sit directly
+   line: `2 min walk · Wikipedia`. Signals are words in the line, never
+   glyphs (the speaker emoji was tried and vetoed, #186).
+2. **Tell me properly.** → the story screen: hero, large title, the
+   journey controls — violet **Go** (with the walk time), quiet
+   **Compass** and **Save**; the ⋯ overflow (Share, Open in Maps)
+   lives in the header. Then STORY in the eyebrow grammar: the
+   telling, streamed part by part with its **Listen** action, above
+   the full article in chapter folds and the Read more on Wikipedia
+   link out. Photo credits (Geograph, CC BY-SA) sit directly
    under the photo.
 3. **Walk me there.** → the standalone compass: a glance-and-dismiss
-   **modal** — bearing, distance, the violet needle. Vanished palaces
-   have coordinates too; the compass is destination-agnostic.
+   **modal** — an instrument dial with ticks and cardinals, bearing,
+   distance, the violet needle. Vanished palaces have coordinates too;
+   the compass is destination-agnostic.
 
 **The telling is the product.** Spoken narration, about a minute,
 written once per story by the free-tier model and cached for 30 days.
@@ -108,8 +112,8 @@ thing a listener would repeat to a friend — then earn the context;
 never assume the listener is at the site (no "ahead of you" — they may
 be at home planning tomorrow's walk); short sentences that read aloud
 well; facts only from the source text, a shorter telling over an
-invented one. **▶ Play the walk** strings the tellings across the
-walk's stops in order — stops without source text are named, not told.
+invented one. No source text, no telling — the model must never write
+from nothing.
 
 **One place, one card.** A listed building or plaque that matches a
 Wikipedia story (proximity + shared name) enriches that story's badge —
