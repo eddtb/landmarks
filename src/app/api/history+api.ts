@@ -9,7 +9,7 @@ import {
 } from '@/server/heritage';
 import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
-import { storeGet, storePut } from '@/server/telling-store';
+import { lastStoreError, storeGet, storePut } from '@/server/telling-store';
 import { ExistenceFacts, fetchExistenceFacts } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
@@ -178,8 +178,21 @@ export async function GET(request: Request) {
       ...(sparse ? { sparse: true, horizon: SparseRadiusMeters } : {}),
       ...(dressing ? { dressing: true } : {}),
     };
-    return Response.json(feed);
+    // The edge runtime gives us no log to read, so the cache reports
+    // its own health on the way out: whether this answer came from the
+    // durable store, and why the last write failed if it did. Cheap,
+    // and the only thing standing between a silent cache miss and a
+    // day of guessing.
+    const failure = lastStoreError();
+    return Response.json(feed, {
+      headers: {
+        'x-feed-cache': cacheOutcome,
+        ...(failure ? { 'x-feed-store-error': failure } : {}),
+      },
+    });
   };
+  // Set as the request walks its path; reported in the header above.
+  let cacheOutcome = 'compose';
 
   const key = feedBucketKey(lat, lng);
   if (!fresh) {
@@ -187,6 +200,7 @@ export async function GET(request: Request) {
     if (cached && Date.now() - cached.at < ListTtlMs) {
       // Re-dress from the photo cache only (zero lookups): background
       // lookups that finished since the list was cached land here
+      cacheOutcome = 'process-hit';
       const items = await dressWithPhotos(cached.items, undefined, undefined, 0, 0);
       if (backgroundWorkSurvives) {
         // …and quietly warm the still-unverdicted tail for the next
@@ -207,6 +221,7 @@ export async function GET(request: Request) {
     // from the compose, not from this worker's luck.
     const stored = await storeGet<CachedList>(FeedKind, key);
     if (stored && Date.now() - stored.at < ListTtlMs) {
+      cacheOutcome = 'store-hit';
       listCache.set(key, { ...stored.value, at: stored.at });
       const items = await dressWithPhotos(stored.value.items, undefined, undefined, 0, 0);
       return respond(items, stored.value.sparse);
@@ -408,6 +423,7 @@ export async function GET(request: Request) {
     // screen. Only a bucket we have never composed can honestly 502.
     const salvaged = await storeGet<CachedList>(FeedKind, key);
     if (salvaged) {
+      cacheOutcome = 'store-salvage';
       console.log(`[history] compose refused for ${key} — serving the stored feed instead`);
       return respond(salvaged.value.items, salvaged.value.sparse);
     }

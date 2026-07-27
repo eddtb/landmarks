@@ -97,6 +97,18 @@ export async function storeGet<V>(
 }
 
 /** Never throws; await it so the platform can't kill it mid-flight. */
+/**
+ * Why the last write failed, for the one caller that can surface it.
+ * The store answers "not stored" for every failure by design, which
+ * is right for behaviour and blind for diagnosis — the feed cache
+ * wrote nothing for hours on the edge with no way to ask why, because
+ * this runtime has no log we can read.
+ */
+let lastPutError: string | null = null;
+export function lastStoreError(): string | null {
+  return lastPutError;
+}
+
 export async function storePut(
   kind: string,
   key: string,
@@ -105,6 +117,7 @@ export async function storePut(
 ): Promise<void> {
   const c = resolveClient();
   if (!c) {
+    lastPutError = 'store off (no TURSO_DATABASE_URL)';
     return;
   }
   try {
@@ -115,7 +128,9 @@ export async function storePut(
         'ON CONFLICT(kind, key) DO UPDATE SET value = excluded.value, written_at = excluded.written_at',
       args: [kind, key, JSON.stringify(value), at],
     });
+    lastPutError = null;
   } catch (error) {
+    lastPutError = String(error).slice(0, 180);
     warnOnce(error);
   }
 }
