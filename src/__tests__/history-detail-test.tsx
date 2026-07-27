@@ -145,6 +145,10 @@ describe('<HistoryDetailScreen />', () => {
 
     expect(await screen.findByText('Go')).toBeOnTheScreen();
     expect(screen.queryByText(/Go · /)).not.toBeOnTheScreen();
+
+    // The short Go label hands the grey meta more width — it must stay
+    // a one-line annotation (tail ellipsis), never wrap mid-word (#243)
+    expect(screen.getByText('Wikipedia').props.numberOfLines).toBe(1);
   });
 
   test('a network failure offers Try again — never "could not be found"', async () => {

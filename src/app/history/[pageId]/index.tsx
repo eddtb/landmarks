@@ -95,7 +95,14 @@ function ActionsLead({ item }: { item: HistoryItem }) {
           {saved ? 'Saved' : 'Save'}
         </ThemedText>
       </Pressable>
-      <ThemedText type="small" themeColor="textSecondary" style={styles.leadMeta}>
+      {/* One-line grey annotation: with the short denied-state "Go" label
+          the meta gets more width and would wrap mid-word — truncate
+          with a tail ellipsis instead (DESIGN.md: meta is a meta LINE) */}
+      <ThemedText
+        type="small"
+        themeColor="textSecondary"
+        numberOfLines={1}
+        style={styles.leadMeta}>
         {item.source}
       </ThemedText>
     </View>
