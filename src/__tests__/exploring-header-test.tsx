@@ -7,7 +7,7 @@
  */
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { ReactNode } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Linking, Pressable, Text } from 'react-native';
 
 import {
   GateProps,
@@ -167,23 +167,6 @@ describe('the Exploring header (StoriesScreen)', () => {
     expect(dot).toHaveStyle({ backgroundColor: '#6A4BDB' });
   });
 
-  test('the search door is a worded violet link, not just the secret title tap', async () => {
-    gpsLive();
-    const screen = await render(<StoriesScreen />);
-
-    // Visible before any tap — ink text signalled nothing (the rule of
-    // use: interactive is violet, in words)
-    const toggle = screen.getByTestId('search-toggle');
-    expect(screen.getByText('Search a place')).toBeOnTheScreen();
-
-    await fireEvent.press(toggle);
-    expect(screen.getByPlaceholderText('Search near a place…')).toBeOnTheScreen();
-    expect(screen.getByText('Close search')).toBeOnTheScreen();
-
-    await fireEvent.press(toggle);
-    expect(screen.queryByPlaceholderText('Search near a place…')).toBeNull();
-  });
-
   test('tapping the title opens search; pinning flips the header to Exploring', async () => {
     gpsLive();
     const screen = await render(<StoriesScreen />);
@@ -214,6 +197,29 @@ describe('the Exploring header (StoriesScreen)', () => {
     expect(screen.getByText('Greenwich')).toBeOnTheScreen();
     expect(screen.queryByText('Back to near me')).toBeNull();
     expect(screen.getByTestId('locator-dot')).toHaveStyle({ backgroundColor: '#6A4BDB' });
+  });
+
+  test('Privacy and Support live behind the header ⋯, never in the feed', async () => {
+    gpsLive();
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const screen = await render(<StoriesScreen />);
+
+    // Off the feed entirely — no link row between the count and the cards
+    expect(screen.queryByText('Privacy')).toBeNull();
+    expect(screen.queryByText('Support')).toBeNull();
+
+    // Still one tap from the Nearby header: Apple 5.1.1(i) requires the
+    // privacy policy be reachable inside the app, not only on the store
+    const menu = screen.getByTestId('overflow-menu');
+    expect(menu.props.actions).toEqual([
+      { id: 'privacy', title: 'Privacy Policy' },
+      { id: 'support', title: 'Support' },
+    ]);
+
+    await fireEvent(menu, 'pressAction', { nativeEvent: { event: 'privacy' } });
+    expect(openURL).toHaveBeenCalledWith('https://eddtb-landmarks.expo.app/privacy');
+    await fireEvent(menu, 'pressAction', { nativeEvent: { event: 'support' } });
+    expect(openURL).toHaveBeenCalledWith('https://eddtb-landmarks.expo.app/support');
   });
 
   test('denied state keeps today’s banner and search, untouched', async () => {
