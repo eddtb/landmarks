@@ -29,14 +29,22 @@ try {
 }
 
 /**
- * The runtime's one honest tell: a filesystem means a long-lived Node
- * process whose event loop outlives any response — floated promises
- * finish. No filesystem means the production edge worker, which
- * freezes the isolate the moment the response returns and kills
- * in-flight promises (production-proved, #232). Work that must land
- * either rides before the response there, or doesn't happen.
+ * Does a floated promise survive the response? On a long-lived Node
+ * process, yes. On the production edge worker the isolate freezes the
+ * moment the response returns and kills in-flight work (#232).
+ *
+ * `fs` looked like the honest tell and it is NOT: the server bundle
+ * resolves a filesystem shim on the edge too, so this read `true`
+ * everywhere and every edge-only branch behind it was dead code in
+ * production — measured, not guessed, by a cold compose still
+ * answering `dressing: true` from the deployed worker. Ask the
+ * runtime who it is instead: Cloudflare Workers identifies itself,
+ * and a missing filesystem still counts as the second signal.
  */
-export const backgroundWorkSurvives = fs !== null;
+const onEdgeWorker =
+  (typeof navigator !== 'undefined' && navigator.userAgent === 'Cloudflare-Workers') || fs === null;
+
+export const backgroundWorkSurvives = !onEdgeWorker;
 
 // Tests point this elsewhere — they must never poison the real dev
 // ledgers (a $5.13 test fixture once tripped the live breaker)

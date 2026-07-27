@@ -46,6 +46,10 @@ jest.mock('@/server/wikidata', () => ({
   fetchExistenceFacts: jest.fn(async () => new Map()),
 }));
 jest.mock('@/server/wikipedia', () => ({ findNearbyHistory: jest.fn() }));
+jest.mock('@/server/telling-store', () => ({
+  storeGet: jest.fn(async () => undefined),
+  storePut: jest.fn(async () => undefined),
+}));
 jest.mock('@/server/heritage', () => {
   const actual = jest.requireActual('@/server/heritage');
   return {
@@ -201,5 +205,32 @@ describe('GET /api/history cold-compose early serve', () => {
     expect(body.items.every((item) => item.thumbnailUrl)).toBe(true);
     expect(body.items[1].pastTag).toBe('Until 1675');
     expect(listMap().size).toBe(1);
+  });
+});
+
+describe('the durable write does not depend on guessing the runtime', () => {
+  /**
+   * This suite runs with backgroundWorkSurvives TRUE — the Node
+   * serve-early path. The durable feed write lived only on the edge
+   * branch for hours and therefore never ran in production at all,
+   * because the runtime check silently read the wrong way (`fs`
+   * resolves on the edge too). The store write is now part of BOTH
+   * paths, and this pins the one that was missing it.
+   */
+  test('the grace-path compose still writes the feed to the durable store', async () => {
+    // Warm dressing settles inside the grace, taking the fast path
+    mockDress.mockImplementation(async (items: HistoryItem[]) => items);
+    mockTags.mockResolvedValue(new Map());
+
+    await GET(freshRequest());
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { storePut } = require('@/server/telling-store') as { storePut: jest.Mock };
+    expect(storePut).toHaveBeenCalledWith(
+      'feed',
+      expect.any(String),
+      expect.objectContaining({ items: expect.any(Array) }),
+      expect.any(Number)
+    );
   });
 });
