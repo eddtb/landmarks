@@ -221,6 +221,34 @@ describe('startRetoldStream (the cold path, streamed)', () => {
     expect(researchStream).toHaveBeenCalledTimes(1);
   });
 
+  test("a JOINER hears an interruption as an ERROR, never as 'no retelling exists'", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { retold, backing } = loadRetold({
+      streamImpl: async function* () {
+        yield validRetoldText.slice(0, 40);
+        await gate;
+        throw new Error('socket reset'); // the wire dies AFTER the join
+      },
+    });
+    const first = await retold.startRetoldStream('Greenwich');
+    if (first.kind !== 'stream') {
+      throw new Error(`expected stream, got ${first.kind}`);
+    }
+    const shared = retold.getRetold('Greenwich');
+    release();
+    await collect(first.events);
+
+    // The joined ask must surface as a 502-shaped error (retryable),
+    // not resolve null — null is the route's permanent 404 verdict,
+    // and the client would silently bury the story under it
+    await expect(shared).rejects.toThrow(/interrupted/);
+    expect(backing.size).toBe(0);
+    expect(retold.retellingInFlight('Greenwich')).toBe(false);
+  });
+
   test('an ABANDONED stream (client disconnect) frees the slot and caches nothing', async () => {
     const { retold, backing } = loadRetold({
       streamImpl: async function* () {
