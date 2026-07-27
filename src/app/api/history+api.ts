@@ -364,7 +364,14 @@ export async function GET(request: Request) {
     ]).catch(() => null);
     if (settled) {
       console.log(`[history] cold compose ${key}: ${timings()}, decoration made the grace`);
-      return respond(finalize(settled).items, sparse);
+      const { items, stored } = finalize(settled);
+      // Awaited on EVERY runtime, not just the one we think we're on.
+      // The whole durable cache existed for hours without writing a
+      // single row because it sat behind a runtime check that silently
+      // read the wrong way; a write worth making is worth the ~150ms
+      // wherever we are.
+      await stored.catch(() => {});
+      return respond(items, sparse);
     }
 
     const snapshot = { items: classified, ...(sparse ? { sparse } : {}) };
@@ -377,8 +384,8 @@ export async function GET(request: Request) {
       }
     };
     final.then(
-      (finished) => {
-        finalize(finished);
+      async (finished) => {
+        await finalize(finished).stored.catch(() => {});
         settle();
         console.log(
           `[history] dressed ${key}: decoration landed ${Date.now() - decorateStart}ms after start`
