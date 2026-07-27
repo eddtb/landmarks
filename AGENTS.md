@@ -51,8 +51,23 @@ anyone to remember: change the runtime and old binaries stop being
 offered the update instead of crashing on it. When a phone stops
 receiving updates, the answer is a new build — never a looser policy.
 
-Server-side API routes are a third road entirely: they ship with
-`eas deploy --prod` and reach every client at once, binary or not.
+Server-side API routes are a third road entirely: they reach every
+client at once, binary or not. The command is:
+
+```
+npx expo export -p web
+npx eas-cli deploy --prod --environment production
+```
+
+**`--environment production` is not optional.** Without it the worker
+deploys with NO server-side environment: no `TURSO_DATABASE_URL`, so
+the durable store silently switches off and every cache — tellings,
+retellings, feeds — becomes per-isolate memory again. It fails
+quietly, exactly like the mode the store is designed to degrade into,
+and it cost a day: #231's store was dead in production from the day it
+shipped and nobody could tell, because the edge offers no log to read.
+The route answers with `x-feed-cache` and `x-feed-store-error` headers
+now — `curl -sI` a feed URL after any deploy and read them.
 
 
 # AI call-site audit (keep this table true)
