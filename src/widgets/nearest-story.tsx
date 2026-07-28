@@ -2,6 +2,7 @@ import { HStack, Image, Rectangle, Spacer, Text, VStack, ZStack } from '@expo/ui
 import {
   aspectRatio,
   clipped,
+  containerRelativeFrame,
   font,
   foregroundStyle,
   frame,
@@ -149,7 +150,19 @@ const NearestStory = (props: NearestStoryProps, environment: WidgetEnvironment) 
     <ZStack alignment="bottomLeading" modifiers={[fill, ...(props.url ? [widgetURL(props.url)] : [])]}>
       <Image
         uiImage={props.photo}
-        modifiers={[resizable(), aspectRatio({ contentMode: 'fill' }), fill, clipped()]}
+        // containerRelativeFrame, not frame(maxWidth/maxHeight). An
+        // aspect-FILLED image is larger than the widget by definition,
+        // and a max-frame does not stop it driving the ZStack's
+        // bounds — so "bottomLeading" meant the IMAGE's corner, which
+        // is off-screen, and every text layout above was being pushed
+        // out with it. Proved by deleting the image: the same text
+        // laid out perfectly. This pins the picture to the container.
+        modifiers={[
+          resizable(),
+          aspectRatio({ contentMode: 'fill' }),
+          containerRelativeFrame({ axes: 'both' }),
+          clipped(),
+        ]}
       />
 
       {/* The scrim. Photographs are unpredictable — a bright sky behind
@@ -172,43 +185,47 @@ const NearestStory = (props: NearestStoryProps, environment: WidgetEnvironment) 
         ]}
       />
 
-      <VStack
-        alignment="leading"
-        spacing={2}
-        modifiers={[padding({ all: 14 }), fill]}>
+      {/* Spacers on BOTH axes, never a frame alignment. Measured on
+          the Home Screen: frame(maxWidth: Infinity) with no alignment
+          silently centres the block, and adding alignment: 'leading'
+          places the inner CONTENT at the edge and throws the leading
+          padding away, clipping the text to "utty Sark". A Spacer
+          above and a Spacer trailing push the padded block into the
+          bottom-left corner with its padding intact. */}
+      <VStack modifiers={[fill]}>
         <Spacer />
-        <Text
-          modifiers={[
-            // Both families are the SAME height (~158pt) — medium is
-            // only wider — so a bigger face on medium buys nothing and
-            // costs a line: at title3 the hook and meta were pushed
-            // clean out of the bottom of the widget.
-            font({ textStyle: 'headline', weight: 'bold' }),
-            foregroundStyle('#FFFFFF'),
-            lineLimit(2),
-            // A long name shrinks rather than vanishing behind an ellipsis
-            minimumScaleFactor(0.75),
-          ]}>
-          {props.title}
-        </Text>
+        <HStack modifiers={[frame({ maxWidth: Infinity })]}>
+          <VStack alignment="leading" spacing={2} modifiers={[padding({ all: 16 })]}>
+            <Text
+              modifiers={[
+                font({ size: 15, weight: 'bold' }),
+                foregroundStyle('#FFFFFF'),
+                lineLimit(2),
+                // A long name shrinks rather than vanishing behind an ellipsis
+                minimumScaleFactor(0.8),
+              ]}>
+              {props.title}
+            </Text>
 
-
-        <HStack spacing={5}>
-          <Text
-            modifiers={[
-              font({ size: 10, weight: 'bold' }),
-              foregroundStyle('rgba(255,255,255,0.65)'),
-            ]}>
-            NEAREST
-          </Text>
-          <Text
-            modifiers={[
-              font({ textStyle: 'caption', weight: 'medium' }),
-              foregroundStyle('rgba(255,255,255,0.92)'),
-              lineLimit(1),
-            ]}>
-            {meta}
-          </Text>
+            <HStack spacing={5}>
+              <Text
+                modifiers={[
+                  font({ size: 9, weight: 'bold' }),
+                  foregroundStyle('rgba(255,255,255,0.6)'),
+                ]}>
+                NEAREST
+              </Text>
+              <Text
+                modifiers={[
+                  font({ size: 11, weight: 'medium' }),
+                  foregroundStyle('rgba(255,255,255,0.92)'),
+                  lineLimit(1),
+                ]}>
+                {meta}
+              </Text>
+            </HStack>
+          </VStack>
+          <Spacer />
         </HStack>
       </VStack>
     </ZStack>
