@@ -33,10 +33,16 @@ export type NearestStoryProps = {
   url: string;
 };
 
-const BrandPurple = '#6A4BDB';
-
 const NearestStory = (props: NearestStoryProps, environment: WidgetEnvironment) => {
   'widget';
+
+  // Declared INSIDE the directive, and it has to be. The widget body
+  // runs in an isolated runtime that cannot see this module's scope,
+  // so a `const BrandPurple` hoisted to the top of the file compiles
+  // fine, passes every test, and then renders a red error box on the
+  // user's Home Screen: "ReferenceError: Can't find variable:
+  // BrandPurple". Caught only by opening the widget gallery.
+  const brandPurple = '#6A4BDB';
 
   // The honest empty state. A widget added before the app has ever
   // loaded a feed has nothing to show, and inventing a placeholder
@@ -47,7 +53,7 @@ const NearestStory = (props: NearestStoryProps, environment: WidgetEnvironment) 
         <Text
           modifiers={[
             font({ size: 11, weight: 'semibold' }),
-            foregroundStyle(BrandPurple),
+            foregroundStyle(brandPurple),
           ]}>
           VENTURE
         </Text>
@@ -71,7 +77,7 @@ const NearestStory = (props: NearestStoryProps, environment: WidgetEnvironment) 
         ...(props.url ? [widgetURL(props.url)] : []),
       ]}>
       <Text
-        modifiers={[font({ size: 11, weight: 'semibold' }), foregroundStyle(BrandPurple)]}>
+        modifiers={[font({ size: 11, weight: 'semibold' }), foregroundStyle(brandPurple)]}>
         NEAREST
       </Text>
       <Text
