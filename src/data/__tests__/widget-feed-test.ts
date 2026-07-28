@@ -184,11 +184,20 @@ describe('what the widget is told', () => {
       era: '',
       url: '',
       photo: '',
+      emptyNote: 'No recorded history right here.',
     });
   });
 
   it('shows an honest nothing when everything nearby is unwalkable', () => {
     expect(nearestStoryProps([item(1, 'A Fire', 10, { event: true })]).title).toBe('');
+  });
+
+  it('distinguishes "nothing here" from "never opened"', () => {
+    // The widget's own default says "Open Venture…", which is right
+    // before the app has ever run and wrong in the middle of the North
+    // Sea. Only a real, empty feed carries the note.
+    expect(nearestStoryProps([]).emptyNote).toBe('No recorded history right here.');
+    expect(nearestStoryProps([item(1, 'The Mill', 40)]).emptyNote).toBe('');
   });
 });
 

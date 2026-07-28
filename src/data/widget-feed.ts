@@ -28,6 +28,11 @@ const NothingNearby: NearestStoryProps = {
   url: '',
   photo: '',
   era: '',
+  // Only ever pushed once the app HAS a feed — the hook does not push
+  // at all while one is still loading — so this cannot be mistaken for
+  // "the widget has never been told anything". Echoes the feed's own
+  // empty state rather than inventing a second voice for it.
+  emptyNote: 'No recorded history right here.',
 };
 
 /**
@@ -126,6 +131,7 @@ export function nearestStoryProps(
     era: nearest.pastTag ?? '',
     url: storyUrl(nearest.pageId),
     photo,
+    emptyNote: '',
   };
 }
 

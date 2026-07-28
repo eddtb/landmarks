@@ -519,9 +519,11 @@ export function HistoryBody({
 
   // The Home Screen widget rides the same feed, without the opt-in:
   // nothing leaves the device and nothing runs in the background.
+  // Only once the feed is READY — an empty list mid-load would tell
+  // the widget there is no history here, which is its own untruth.
   useNearestWidget(
     state.status === 'ready' ? state.items : NoItems,
-    !exploring && !locationDenied
+    state.status === 'ready' && !exploring && !locationDenied
   );
 
   const onRefresh = useCallback(async () => {

@@ -13,6 +13,12 @@ import { HistoryItem } from '@/types/history';
  * Guarded to real position: while exploring a pinned centre, "nearest"
  * would name somewhere the user is nowhere near, and a Home Screen
  * that quietly lies is worse than one that stays as it was.
+ *
+ * The same guard covers a feed still loading — callers pass live=false
+ * until it is ready. An empty list pushed mid-load would reach the
+ * widget as "No recorded history right here", which is a different
+ * untruth from the one it replaces; saying nothing leaves the last
+ * place on screen, which is the honest thing to show while looking.
  */
 export function useNearestWidget(items: HistoryItem[], live: boolean) {
   useEffect(() => {
