@@ -77,9 +77,9 @@
           "groupIdentifier": "group.com.eddtb.landmarks",
           "widgets": [
             {
-              "name": "NearestStory",
-              "displayName": "Nearest story",
-              "description": "The closest piece of history to where you are standing.",
+              "name": "AreaStories",
+              "displayName": "History nearby",
+              "description": "How much history is within a walk of where you are.",
               "contentMarginsDisabled": true,
               "supportedFamilies": [
                 "systemSmall",
