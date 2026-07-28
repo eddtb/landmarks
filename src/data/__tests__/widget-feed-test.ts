@@ -8,6 +8,7 @@ import {
   nearestStoryProps,
   resetWidgetFeedForTests,
   updateNearestWidget,
+  widgetDistance,
 } from '@/data/widget-feed';
 import { HistoryItem } from '@/types/history';
 
@@ -23,6 +24,57 @@ jest.mock('@/widgets/nearest-story', () => ({
 // this pins the scheme so the deep link's SHAPE stays asserted
 jest.mock('expo-linking', () => ({
   createURL: (path: string) => `landmarks://${path}`,
+}));
+
+const mockDownload = jest.fn();
+const mockCreate = jest.fn();
+const mockDeleted: string[] = [];
+let mockDirectoryContents: string[] = [];
+let mockExisting: string[] = [];
+// The real download can resolve cleanly having written nothing —
+// exactly what a missing shared directory does on a fresh install
+let mockSilentWrite = false;
+
+jest.mock('expo-widgets', () => ({ widgetsDirectory: 'file:///widgets/' }));
+
+jest.mock('expo-file-system', () => ({
+  Directory: class {
+    uri: string;
+    constructor(uri: string) {
+      this.uri = uri;
+    }
+    create(options: unknown) {
+      mockCreate(options);
+    }
+    list() {
+      return mockDirectoryContents.map((name) => ({
+        name,
+        delete: () => mockDeleted.push(name),
+      }));
+    }
+  },
+  File: class {
+    name: string;
+    uri: string;
+    constructor(directory: { uri: string }, name: string) {
+      this.name = name;
+      this.uri = `${directory.uri}${name}`;
+    }
+    get exists() {
+      return mockExisting.includes(this.name);
+    }
+    // A static METHOD, not an arrow property: as an initialised field
+    // TypeScript reads it as circular and infers `any` (TS7022)
+    static downloadFileAsync(url: string, target: { uri: string; name: string }) {
+      mockDownload(url, target.uri);
+      // The real API writes to disk; the `exists` check after it is
+      // load-bearing, so the mock has to become truthful too
+      if (!mockSilentWrite) {
+        mockExisting.push(target.name);
+      }
+      return Promise.resolve(target);
+    }
+  },
 }));
 
 const item = (
@@ -44,15 +96,37 @@ const item = (
 beforeEach(() => {
   jest.clearAllMocks();
   resetWidgetFeedForTests();
+  mockDirectoryContents = [];
+  mockExisting = [];
+  mockDeleted.length = 0;
+  mockSilentWrite = false;
 });
+
+/** Let the photo leg's promise chain settle. */
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 describe('what the widget is told', () => {
   it('names the nearest place and how far it is', () => {
     const props = nearestStoryProps([item(2, 'The Wharf', 800), item(1, 'The Mill', 40)]);
 
     expect(props.title).toBe('The Mill');
-    expect(props.distance).toContain('away');
+    expect(props.distance).toBe('40 m away');
     expect(props.url).toBe('landmarks:///history/1');
+  });
+
+  it('speaks in the words the feed uses: here, metres, then minutes', () => {
+    // "1 min walk" for thirty metres is the kind of rounding that
+    // makes an app feel like it isn't really looking
+    expect(widgetDistance(12)).toBe('right here');
+    expect(widgetDistance(310)).toBe('310 m away');
+    expect(widgetDistance(1600)).toContain('min walk');
+  });
+
+  it("carries Wikidata's existence fact, and stays silent without one", () => {
+    expect(nearestStoryProps([item(1, 'The Mill', 40, { pastTag: 'Demolished 1936' })]).era).toBe(
+      'Demolished 1936'
+    );
+    expect(nearestStoryProps([item(1, 'The Mill', 40)]).era).toBe('');
   });
 
   it('skips what cannot be arrived at', () => {
@@ -103,7 +177,14 @@ describe('what the widget is told', () => {
   });
 
   it('shows an honest nothing when there is no feed yet', () => {
-    expect(nearestStoryProps([])).toEqual({ title: '', hook: '', distance: '', url: '' });
+    expect(nearestStoryProps([])).toEqual({
+      title: '',
+      hook: '',
+      distance: '',
+      era: '',
+      url: '',
+      photo: '',
+    });
   });
 
   it('shows an honest nothing when everything nearby is unwalkable', () => {
@@ -133,6 +214,82 @@ describe('pushing to the Home Screen', () => {
     updateNearestWidget([item(1, 'The Mill', 40)]);
 
     expect(mockUpdateSnapshot).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the words first and the photograph after', async () => {
+    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+
+    // The first push carries no picture — a download is a round trip,
+    // and the Home Screen must not sit on yesterday's place meanwhile
+    expect(mockUpdateSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSnapshot.mock.calls[0][0].photo).toBe('');
+
+    await settle();
+
+    expect(mockDownload).toHaveBeenCalledWith('https://x/mill.jpg', 'file:///widgets/nearest-1.jpg');
+    expect(mockUpdateSnapshot).toHaveBeenCalledTimes(2);
+    expect(mockUpdateSnapshot.mock.calls[1][0].photo).toBe('file:///widgets/nearest-1.jpg');
+  });
+
+  it('sweeps the previous place’s photograph out of the shared container', async () => {
+    mockDirectoryContents = ['nearest-99.jpg', 'unrelated.txt'];
+
+    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    await settle();
+
+    expect(mockDeleted).toEqual(['nearest-99.jpg']);
+  });
+
+  it('does not download a photograph it already has', async () => {
+    mockExisting = ['nearest-1.jpg'];
+
+    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    await settle();
+
+    expect(mockDownload).not.toHaveBeenCalled();
+    expect(mockUpdateSnapshot.mock.calls[1][0].photo).toBe('file:///widgets/nearest-1.jpg');
+  });
+
+  it('creates the shared directory first — a download into a missing one fails silently', async () => {
+    // Measured on the simulator: on a fresh install the first launch
+    // wrote no file at all, yet still handed the widget a path to one.
+    // Every first-ever user would have had a picture-less widget.
+    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    await settle();
+
+    expect(mockCreate).toHaveBeenCalledWith({ intermediates: true, idempotent: true });
+  });
+
+  it('does not claim a photo the download quietly failed to write', async () => {
+    // The disk is the authority, not the call
+    mockSilentWrite = true;
+
+    updateNearestWidget([item(7, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    await settle();
+
+    // Only the text push happened — no second push claiming a picture
+    expect(mockUpdateSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSnapshot.mock.calls[0][0].photo).toBe('');
+  });
+
+  it('leaves the widget plain rather than broken when the photo fails', async () => {
+    mockDownload.mockImplementation(() => {
+      throw new Error('offline');
+    });
+
+    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    await settle();
+
+    expect(mockUpdateSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockUpdateSnapshot.mock.calls[0][0].title).toBe('The Mill');
+  });
+
+  it('skips the photo leg entirely for a place with no picture', async () => {
+    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: undefined })]);
+    await settle();
+
+    expect(mockDownload).not.toHaveBeenCalled();
+    expect(mockUpdateSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('never lets a failed widget update break the app', () => {

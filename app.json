@@ -12,7 +12,9 @@
       "bundleIdentifier": "com.eddtb.landmarks",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["location"],
+        "UIBackgroundModes": [
+          "location"
+        ],
         "NSLocationAlwaysUsageDescription": "Turn on Arrivals and Venture will tell you when you walk up to somewhere historic, even with the app closed. Off until you ask for it."
       },
       "runtimeVersion": {
@@ -78,10 +80,14 @@
               "name": "NearestStory",
               "displayName": "Nearest story",
               "description": "The closest piece of history to where you are standing.",
-              "contentMarginsDisabled": false,
-              "supportedFamilies": ["systemSmall", "systemMedium"],
+              "contentMarginsDisabled": true,
+              "supportedFamilies": [
+                "systemSmall"
+              ],
               "ios": {
-                "supportedFamilies": ["systemSmall", "systemMedium"]
+                "supportedFamilies": [
+                  "systemSmall"
+                ]
               }
             }
           ]
