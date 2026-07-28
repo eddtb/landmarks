@@ -11,7 +11,9 @@
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.eddtb.landmarks",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["location"],
+        "NSLocationAlwaysUsageDescription": "Turn on Arrivals and Venture will tell you when you walk up to somewhere historic, even with the app closed. Off until you ask for it."
       },
       "runtimeVersion": {
         "policy": "fingerprint"
@@ -26,7 +28,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -38,9 +42,12 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Venture uses your location to find the stories within a walk of you."
+          "locationWhenInUsePermission": "Venture uses your location to find the stories within a walk of you.",
+          "locationAlwaysAndWhenInUsePermission": "Turn on Arrivals and Venture will tell you when you walk up to somewhere historic, even with the app closed. Off until you ask for it.",
+          "isAndroidBackgroundLocationEnabled": true
         }
       ],
+      "expo-notifications",
       [
         "expo-splash-screen",
         {
@@ -58,7 +65,27 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.eddtb.landmarks.widgets",
+          "groupIdentifier": "group.com.eddtb.landmarks",
+          "widgets": [
+            {
+              "name": "NearestStory",
+              "displayName": "Nearest story",
+              "description": "The closest piece of history to where you are standing.",
+              "contentMarginsDisabled": false,
+              "supportedFamilies": ["systemSmall", "systemMedium"],
+              "ios": {
+                "supportedFamilies": ["systemSmall", "systemMedium"]
+              }
+            }
+          ]
+        }
+      ],
+      "./plugins/with-honest-capabilities"
     ],
     "experiments": {
       "typedRoutes": true,

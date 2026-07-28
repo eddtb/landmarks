@@ -212,6 +212,10 @@ describe('the Exploring header (StoriesScreen)', () => {
     // privacy policy be reachable inside the app, not only on the store
     const menu = screen.getByTestId('overflow-menu');
     expect(menu.props.actions).toEqual([
+      // The arrivals switch shares the ⋯: the feed invitation is
+      // offered once and then gone, and a background permission the
+      // user cannot find their way back to turning off is not fair
+      { id: 'arrivals', title: 'Turn on Arrivals' },
       { id: 'privacy', title: 'Privacy Policy' },
       { id: 'support', title: 'Support' },
     ]);

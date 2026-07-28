@@ -46,3 +46,19 @@ jest.mock('expo-maps', () => {
     GoogleMaps: { View: MockMapView },
   };
 });
+
+// expo-widgets renders a real WidgetKit extension out of process —
+// there is no JS runtime for it under test. createWidget hands back the
+// same control surface the app talks to, so a screen that pushes a
+// snapshot renders instead of exploding. Assertions about WHAT the
+// widget is told live in widget-feed-test, which mocks the widget
+// module itself and never reaches this.
+jest.mock('expo-widgets', () => ({
+  createWidget: () => ({
+    updateSnapshot: jest.fn(),
+    updateTimeline: jest.fn(),
+    reload: jest.fn(),
+    getTimeline: jest.fn().mockResolvedValue([]),
+  }),
+  widgetsDirectory: 'file:///widgets',
+}));
