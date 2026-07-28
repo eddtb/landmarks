@@ -5,17 +5,17 @@
  * widget's correctness can be tested at all.
  */
 import {
-  nearestStoryProps,
+  areaStoriesProps,
   resetWidgetFeedForTests,
-  updateNearestWidget,
+  updateAreaWidget,
   widgetDistance,
-} from '@/data/widget-feed';
+} from '@/data/area-widget';
 import { HistoryItem } from '@/types/history';
 
 // Safe above the imports: the factory only closes over this lazily
 const mockUpdateSnapshot = jest.fn();
 
-jest.mock('@/widgets/nearest-story', () => ({
+jest.mock('@/widgets/area-stories', () => ({
   __esModule: true,
   default: { updateSnapshot: (...args: unknown[]) => mockUpdateSnapshot(...args) },
 }));
@@ -106,12 +106,41 @@ beforeEach(() => {
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 describe('what the widget is told', () => {
-  it('names the nearest place and how far it is', () => {
-    const props = nearestStoryProps([item(2, 'The Wharf', 800), item(1, 'The Mill', 40)]);
+  const greenwich = [item(1, 'Cutty Sark', 31), item(2, 'The Wharf', 400)];
 
-    expect(props.title).toBe('The Mill');
-    expect(props.distance).toBe('40 m away');
-    expect(props.url).toBe('landmarks:///history/1');
+  it('counts the area and names where it is', () => {
+    const props = areaStoriesProps(greenwich, 'Greenwich');
+
+    expect(props.count).toBe(2);
+    expect(props.area).toBe('Greenwich');
+  });
+
+  it('counts what it is given — the feed decides what is walkable, not this', () => {
+    // The count line and the widget print the SAME number, so the
+    // filtering lives in one shared place (walkableStories) and this
+    // must not quietly apply a second opinion on top of it
+    expect(areaStoriesProps(greenwich, 'Greenwich').count).toBe(greenwich.length);
+  });
+
+  it('names the nearest for the wider size, and how far it is', () => {
+    const props = areaStoriesProps(greenwich, 'Greenwich');
+
+    expect(props.nearest).toBe('Cutty Sark');
+    expect(props.nearestWalk).toBe('31 m away');
+  });
+
+  it("uses a plaque's subject rather than its inscription", () => {
+    const props = areaStoriesProps(
+      [item(1, 'Erected by the council in 1968…', 10, { subject: 'Ada Lovelace' })],
+      'Greenwich'
+    );
+
+    expect(props.nearest).toBe('Ada Lovelace');
+  });
+
+  it('opens the feed, not one arbitrary member of it', () => {
+    // A widget that counts what is around you should show the list
+    expect(areaStoriesProps(greenwich, 'Greenwich').url).toBe('landmarks:///');
   });
 
   it('speaks in the words the feed uses: here, metres, then minutes', () => {
@@ -122,111 +151,60 @@ describe('what the widget is told', () => {
     expect(widgetDistance(1600)).toContain('min walk');
   });
 
-  it("carries Wikidata's existence fact, and stays silent without one", () => {
-    expect(nearestStoryProps([item(1, 'The Mill', 40, { pastTag: 'Demolished 1936' })]).era).toBe(
-      'Demolished 1936'
-    );
-    expect(nearestStoryProps([item(1, 'The Mill', 40)]).era).toBe('');
+  it('stays countable when the area could not be named', () => {
+    const props = areaStoriesProps(greenwich, null);
+
+    expect(props.count).toBe(2);
+    expect(props.area).toBe('');
   });
 
-  it('skips what cannot be arrived at', () => {
-    const props = nearestStoryProps([
-      item(1, 'A Train Crash', 10, { event: true }),
-      item(2, 'Greenwich', 20, { area: true }),
-      item(3, 'The Mill', 900),
-    ]);
-
-    expect(props.title).toBe('The Mill');
-  });
-
-  it("uses a plaque's subject rather than its inscription", () => {
-    const props = nearestStoryProps([
-      item(1, 'Erected by the council in 1968…', 10, { subject: 'Ada Lovelace' }),
-    ]);
-
-    expect(props.title).toBe('Ada Lovelace');
-  });
-
-  it('drops a hook that only restates the name — the title sits above it', () => {
-    const props = nearestStoryProps([item(1, 'The Mill', 10)]);
-
-    expect(props.hook).toBe('');
-  });
-
-  it('drops a restating hook even when it opens with an article', () => {
-    // Read off the simulator's App Group container: the widget was
-    // handed "Royal Naval College, Greenwich" and then a hook opening
-    // "The Royal Naval College, Greenwich, was…" — one word of
-    // difference, and a bare prefix test lets it straight through
-    const props = nearestStoryProps([
-      item(1, 'Royal Naval College, Greenwich', 34, {
-        extract:
-          'The Royal Naval College, Greenwich, was a Royal Navy training establishment between 1873 and 1998.',
-      }),
-    ]);
-
-    expect(props.hook).toBe('');
-  });
-
-  it('keeps a hook that says something the name does not', () => {
-    const props = nearestStoryProps([
-      item(1, 'The Mill', 10, { extract: 'A prison stood on this ground until 1842.' }),
-    ]);
-
-    expect(props.hook).toContain('1842');
-  });
-
-  it('shows an honest nothing when there is no feed yet', () => {
-    expect(nearestStoryProps([])).toEqual({
-      title: '',
-      hook: '',
-      distance: '',
-      era: '',
+  it('shows an honest nothing when there is nothing to count', () => {
+    expect(areaStoriesProps([], 'Greenwich')).toEqual({
+      area: '',
+      count: 0,
+      nearest: '',
+      nearestWalk: '',
       url: '',
       photo: '',
       emptyNote: 'No recorded history right here.',
     });
   });
 
-  it('shows an honest nothing when everything nearby is unwalkable', () => {
-    expect(nearestStoryProps([item(1, 'A Fire', 10, { event: true })]).title).toBe('');
-  });
-
   it('distinguishes "nothing here" from "never opened"', () => {
     // The widget's own default says "Open Venture…", which is right
     // before the app has ever run and wrong in the middle of the North
     // Sea. Only a real, empty feed carries the note.
-    expect(nearestStoryProps([]).emptyNote).toBe('No recorded history right here.');
-    expect(nearestStoryProps([item(1, 'The Mill', 40)]).emptyNote).toBe('');
+    expect(areaStoriesProps([], 'Greenwich').emptyNote).toBe('No recorded history right here.');
+    expect(areaStoriesProps(greenwich, 'Greenwich').emptyNote).toBe('');
   });
 });
 
 describe('pushing to the Home Screen', () => {
-  it('tells the widget when the nearest story changes', () => {
-    updateNearestWidget([item(1, 'The Mill', 40)]);
-    updateNearestWidget([item(2, 'The Wharf', 30)]);
+  it('tells the widget when what is around the user changes', () => {
+    updateAreaWidget([item(1, 'The Mill', 40)], 'Greenwich');
+    updateAreaWidget([item(2, 'The Wharf', 30)], 'Greenwich');
 
     expect(mockUpdateSnapshot).toHaveBeenCalledTimes(2);
-    expect(mockUpdateSnapshot.mock.calls[1][0].title).toBe('The Wharf');
+    expect(mockUpdateSnapshot.mock.calls[1][0].nearest).toBe('The Wharf');
   });
 
   it('stays quiet when nothing has changed — reloads are rate-limited', () => {
-    updateNearestWidget([item(1, 'The Mill', 40)]);
-    updateNearestWidget([item(1, 'The Mill', 40)]);
-    updateNearestWidget([item(1, 'The Mill', 40)]);
+    updateAreaWidget([item(1, 'The Mill', 40)], 'Greenwich');
+    updateAreaWidget([item(1, 'The Mill', 40)], 'Greenwich');
+    updateAreaWidget([item(1, 'The Mill', 40)], 'Greenwich');
 
     expect(mockUpdateSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it('speaks up when the same place gets nearer', () => {
-    updateNearestWidget([item(1, 'The Mill', 400)]);
-    updateNearestWidget([item(1, 'The Mill', 40)]);
+    updateAreaWidget([item(1, 'The Mill', 400)], 'Greenwich');
+    updateAreaWidget([item(1, 'The Mill', 40)], 'Greenwich');
 
     expect(mockUpdateSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('shows the words first and the photograph after', async () => {
-    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    updateAreaWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })], 'Greenwich');
 
     // The first push carries no picture — a download is a round trip,
     // and the Home Screen must not sit on yesterday's place meanwhile
@@ -243,7 +221,7 @@ describe('pushing to the Home Screen', () => {
   it('sweeps the previous place’s photograph out of the shared container', async () => {
     mockDirectoryContents = ['nearest-99.jpg', 'unrelated.txt'];
 
-    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    updateAreaWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })], 'Greenwich');
     await settle();
 
     expect(mockDeleted).toEqual(['nearest-99.jpg']);
@@ -252,7 +230,7 @@ describe('pushing to the Home Screen', () => {
   it('does not download a photograph it already has', async () => {
     mockExisting = ['nearest-1.jpg'];
 
-    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    updateAreaWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })], 'Greenwich');
     await settle();
 
     expect(mockDownload).not.toHaveBeenCalled();
@@ -263,7 +241,7 @@ describe('pushing to the Home Screen', () => {
     // Measured on the simulator: on a fresh install the first launch
     // wrote no file at all, yet still handed the widget a path to one.
     // Every first-ever user would have had a picture-less widget.
-    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    updateAreaWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })], 'Greenwich');
     await settle();
 
     expect(mockCreate).toHaveBeenCalledWith({ intermediates: true, idempotent: true });
@@ -273,7 +251,7 @@ describe('pushing to the Home Screen', () => {
     // The disk is the authority, not the call
     mockSilentWrite = true;
 
-    updateNearestWidget([item(7, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    updateAreaWidget([item(7, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })], 'Greenwich');
     await settle();
 
     // Only the text push happened — no second push claiming a picture
@@ -286,15 +264,15 @@ describe('pushing to the Home Screen', () => {
       throw new Error('offline');
     });
 
-    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })]);
+    updateAreaWidget([item(1, 'The Mill', 40, { thumbnailUrl: 'https://x/mill.jpg' })], 'Greenwich');
     await settle();
 
     expect(mockUpdateSnapshot).toHaveBeenCalledTimes(1);
-    expect(mockUpdateSnapshot.mock.calls[0][0].title).toBe('The Mill');
+    expect(mockUpdateSnapshot.mock.calls[0][0].nearest).toBe('The Mill');
   });
 
   it('skips the photo leg entirely for a place with no picture', async () => {
-    updateNearestWidget([item(1, 'The Mill', 40, { thumbnailUrl: undefined })]);
+    updateAreaWidget([item(1, 'The Mill', 40, { thumbnailUrl: undefined })], 'Greenwich');
     await settle();
 
     expect(mockDownload).not.toHaveBeenCalled();
@@ -306,6 +284,6 @@ describe('pushing to the Home Screen', () => {
       throw new Error('WidgetKit unavailable');
     });
 
-    expect(() => updateNearestWidget([item(1, 'The Mill', 40)])).not.toThrow();
+    expect(() => updateAreaWidget([item(1, 'The Mill', 40)], 'Greenwich')).not.toThrow();
   });
 });

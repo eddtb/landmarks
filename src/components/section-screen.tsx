@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { ReactNode, useCallback, useState } from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -31,7 +31,7 @@ import { useAreaName } from '@/hooks/use-area-name';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
-import { useNearestWidget } from '@/hooks/use-nearest-widget';
+import { useAreaWidget } from '@/hooks/use-area-widget';
 import { setPin, usePin } from '@/hooks/use-pin';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
@@ -45,6 +45,21 @@ const SupportUrl = 'https://eddtb-landmarks.expo.app/support';
 /** One identity for "no feed yet", so a loading render can't re-fire
  * the arrivals effect with a fresh [] on every tick. */
 const NoItems: HistoryItem[] = [];
+
+/**
+ * Nearby = things you can visit AND recognise: a subject photo and no
+ * structured evidence of pastness. The past and the unphotographed
+ * live in the Gazetteer next door.
+ *
+ * Exported and shared rather than inlined twice: the count line and
+ * the Home Screen widget both print this number, and a widget that
+ * disagreed with the screen behind it would be worse than no widget.
+ */
+export function walkableStories(items: HistoryItem[]): HistoryItem[] {
+  return items.filter(
+    (item) => item.thumbnailUrl && !item.pastTag && !item.event && !item.area
+  );
+}
 
 /** Pure and unit-tested: the story you are physically standing on. */
 export function standingOn(
@@ -521,8 +536,13 @@ export function HistoryBody({
   // nothing leaves the device and nothing runs in the background.
   // Only once the feed is READY — an empty list mid-load would tell
   // the widget there is no history here, which is its own untruth.
-  useNearestWidget(
-    state.status === 'ready' ? state.items : NoItems,
+  const widgetStories = useMemo(
+    () => (state.status === 'ready' ? walkableStories(state.items) : NoItems),
+    [state]
+  );
+  useAreaWidget(
+    widgetStories,
+    areaName,
     state.status === 'ready' && !exploring && !locationDenied
   );
 
@@ -549,12 +569,7 @@ export function HistoryBody({
     );
   }
 
-  // Nearby = things you can visit AND recognise: a subject photo and
-  // no structured evidence of pastness. The past and the
-  // unphotographed live in the Gazetteer next door.
-  const items = state.items.filter(
-    (item) => item.thumbnailUrl && !item.pastTag && !item.event && !item.area
-  );
+  const items = walkableStories(state.items);
 
   // No standing-on unless the center is a real GPS fix: while
   // exploring the pinned center is somewhere the user is NOT, and with

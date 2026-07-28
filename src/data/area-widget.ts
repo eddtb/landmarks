@@ -2,32 +2,31 @@ import { Directory, File } from 'expo-file-system';
 import * as Linking from 'expo-linking';
 import { widgetsDirectory } from 'expo-widgets';
 
-import NearestStory, { NearestStoryProps } from '@/widgets/nearest-story';
+import AreaStories, { AreaStoriesProps } from '@/widgets/area-stories';
 import { HistoryItem } from '@/types/history';
-import { formatDistance, formatWalkTimeForMeters, storyHook } from '@/utils/format';
+import { formatDistance, formatWalkTimeForMeters } from '@/utils/format';
 
 /**
  * What the Home Screen widget is told. The widget runs in an isolated
  * runtime with no hooks, no async work and no access to this app's
  * helpers, so everything it shows has to be computed here and pushed
- * across already flattened — including the distance string and the
- * deep link.
+ * across already flattened — the counted noun, the walk, the deep
+ * link and a file path to the photograph.
  *
  * Pushed as a SNAPSHOT rather than a timeline: a timeline is for
  * content whose future is known (a countdown, a scheduled event), and
- * nothing about this is predictable. The nearest story changes when
- * the user walks, and the app finding out is the only reason it ever
- * changes.
+ * nothing about this is predictable. What is around you changes when
+ * you walk, and the app finding out is the only reason it changes.
  */
 
-/** Nothing to show — an empty title is the widget's honest empty state. */
-const NothingNearby: NearestStoryProps = {
-  title: '',
-  hook: '',
-  distance: '',
+/** Nothing to count — a zero count is the widget's empty state. */
+const NothingNearby: AreaStoriesProps = {
+  area: '',
+  count: 0,
+  nearest: '',
+  nearestWalk: '',
   url: '',
   photo: '',
-  era: '',
   // Only ever pushed once the app HAS a feed — the hook does not push
   // at all while one is still loading — so this cannot be mistaken for
   // "the widget has never been told anything". Echoes the feed's own
@@ -58,42 +57,18 @@ export function widgetDistance(meters: number): string {
 }
 
 /**
- * Does the hook just say the name again? A small square has room for
- * about two lines, and spending them on "Royal Naval College,
- * Greenwich" directly under the heading "Royal Naval College,
- * Greenwich" wastes the widget's only chance to be interesting.
- *
- * The leading article has to come off first — caught on the simulator,
- * where the widget was handed exactly that title with the hook "The
- * Royal Naval College, Greenwich, was a Royal Navy training
- * establishment…". A bare prefix test misses it over one word.
- *
- * Deliberately local rather than pushed into hookEchoesTitle: that
- * helper governs the feed card, a shipped surface with its own tests,
- * and widening it is a change to the feed, not to this widget.
- */
-function hookRestatesTitle(title: string, hook: string): boolean {
-  const strip = (text: string) =>
-    text
-      .toLowerCase()
-      .replace(/^(the|a|an)\s+/, '')
-      .trim();
-  const name = strip(title);
-  const opening = strip(hook);
-  return Boolean(name) && Boolean(opening) && opening.startsWith(name);
-}
-
-/**
- * The story's deep link, or nothing. createURL is the right call
+ * The feed's deep link, or nothing. A widget that counts what is
+ * around you should open the list of it, not one arbitrary member.
+ * createURL is the right call
  * rather than a hardcoded scheme — the development client answers to
  * `landmarks-dev` and would otherwise hand the widget a URL that opens
  * the release app. It reads the scheme from the Expo manifest, which
  * is not always there to read (no manifest under test), and a widget
  * that merely can't be tapped must never take the feed down with it.
  */
-function storyUrl(pageId: number): string {
+function feedUrl(): string {
   try {
-    return Linking.createURL(`/history/${pageId}`);
+    return Linking.createURL('/');
   } catch {
     return '';
   }
@@ -110,26 +85,29 @@ export function nearestStory(items: HistoryItem[]): HistoryItem | undefined {
     .sort((a, b) => a.distanceMeters - b.distanceMeters)[0];
 }
 
-export function nearestStoryProps(
-  items: HistoryItem[],
+/**
+ * What the widget is told about where you are.
+ *
+ * `stories` is the feed's OWN walkable list — the same one its header
+ * counts — so the widget can never disagree with the screen behind it.
+ * The nearest of them supplies the photograph and the wider size's
+ * second line.
+ */
+export function areaStoriesProps(
+  stories: HistoryItem[],
+  area: string | null,
   photo = ''
-): NearestStoryProps {
-  const nearest = nearestStory(items);
-  if (!nearest) {
+): AreaStoriesProps {
+  if (stories.length === 0) {
     return NothingNearby;
   }
-  const title = nearest.subject ?? nearest.title;
-  const hook = storyHook(nearest.extract) ?? '';
+  const nearest = nearestStory(stories);
   return {
-    title,
-    // The hook is dropped when it merely restates the name — on a
-    // widget the title sits directly above it, exactly as on a card.
-    hook: hookRestatesTitle(title, hook) ? '' : hook,
-    distance: widgetDistance(nearest.distanceMeters),
-    // Wikidata's structured existence fact — "Demolished 1936". Honest
-    // silence when there isn't one, never a guess.
-    era: nearest.pastTag ?? '',
-    url: storyUrl(nearest.pageId),
+    area: area ?? '',
+    count: stories.length,
+    nearest: nearest ? (nearest.subject ?? nearest.title) : '',
+    nearestWalk: nearest ? widgetDistance(nearest.distanceMeters) : '',
+    url: feedUrl(),
     photo,
     emptyNote: '',
   };
@@ -190,33 +168,33 @@ async function cacheHeroPhoto(pageId: number, url: string): Promise<string> {
 // rate-limited by the system and worth spending only on real news.
 let lastPushed: string | null = null;
 
-function push(props: NearestStoryProps) {
+function push(props: AreaStoriesProps) {
   const fingerprint = JSON.stringify(props);
   if (fingerprint === lastPushed) {
     return;
   }
   lastPushed = fingerprint;
   try {
-    NearestStory.updateSnapshot(props);
+    AreaStories.updateSnapshot(props);
   } catch (error) {
     // A widget that won't update is a stale square on the Home Screen,
     // never a reason for the app itself to fall over.
-    console.warn('[widget] could not update the nearest story:', error);
+    console.warn('[widget] could not update the area snapshot:', error);
   }
 }
 
 /**
- * Tell the Home Screen what is nearest now.
+ * Tell the Home Screen what is around the user now.
  *
  * Words first, picture second — the same shape as the feed's own
  * dressing pass, where the server answers with complete text and lets
  * the photographs catch up. A download is a network round trip, and
- * the widget should not sit on yesterday's place while it happens.
+ * the widget should not sit on yesterday's area while it happens.
  */
-export function updateNearestWidget(items: HistoryItem[]) {
-  push(nearestStoryProps(items));
+export function updateAreaWidget(stories: HistoryItem[], area: string | null) {
+  push(areaStoriesProps(stories, area));
 
-  const nearest = nearestStory(items);
+  const nearest = nearestStory(stories);
   const url = nearest?.thumbnailUrl;
   if (!nearest || !url) {
     return;
@@ -224,9 +202,9 @@ export function updateNearestWidget(items: HistoryItem[]) {
   void cacheHeroPhoto(nearest.pageId, url)
     .then((photo) => {
       // The ground may have moved while the download ran; only dress
-      // the place that is still the nearest one.
-      if (nearestStory(items)?.pageId === nearest.pageId) {
-        push(nearestStoryProps(items, photo));
+      // the area that is still the one being shown.
+      if (nearestStory(stories)?.pageId === nearest.pageId) {
+        push(areaStoriesProps(stories, area, photo));
       }
     })
     .catch((error) => {
