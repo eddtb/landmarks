@@ -82,11 +82,13 @@
               "description": "The closest piece of history to where you are standing.",
               "contentMarginsDisabled": true,
               "supportedFamilies": [
-                "systemSmall"
+                "systemSmall",
+                "systemMedium"
               ],
               "ios": {
                 "supportedFamilies": [
-                  "systemSmall"
+                  "systemSmall",
+                  "systemMedium"
                 ]
               }
             }

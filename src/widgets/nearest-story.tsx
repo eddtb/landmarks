@@ -49,6 +49,13 @@ export type NearestStoryProps = {
   url: string;
   /** file:// path inside the App Group, or empty until one is cached. */
   photo: string;
+  /**
+   * What to say when there is no place to show. Set by the app only
+   * once it HAS a feed and found nothing walkable in it; left empty
+   * before the app has ever run, so the two situations can say
+   * different things. The widget never guesses which it is in.
+   */
+  emptyNote: string;
 };
 
 const NearestStory = (props: NearestStoryProps, environment: WidgetEnvironment) => {
@@ -80,7 +87,7 @@ const NearestStory = (props: NearestStoryProps, environment: WidgetEnvironment) 
           VENTURE
         </Text>
         <Text modifiers={[font({ textStyle: 'headline' }), lineLimit(3)]}>
-          Open Venture to see the history around you.
+          {props.emptyNote || 'Open Venture to see the history around you.'}
         </Text>
         <Spacer />
       </VStack>
