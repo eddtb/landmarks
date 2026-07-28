@@ -270,6 +270,46 @@ describe('arming', () => {
     expect(mockStartGeofencingAsync).toHaveBeenCalledTimes(2);
   });
 
+  it('announces a place the user is already standing inside when it arms', async () => {
+    // The crossing that never arrives: CoreLocation delivers no
+    // didEnterRegion for a region you are already within when
+    // monitoring starts, and this app re-arms every ~111m against a
+    // 120m radius. Measured on the simulator — walking 220m to the
+    // Cutty Sark left the app inside FOUR armed regions in silence.
+    await geofence.syncArrivalRegions([item(1, 'Cutty Sark', 0)], []);
+
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+    expect(mockScheduleNotificationAsync.mock.calls[0][0].content.title).toBe('Cutty Sark');
+  });
+
+  it('picks the nearest of several it is standing inside, and only that one', async () => {
+    await geofence.syncArrivalRegions(
+      [
+        item(1, 'New Zealand Memorial', 71),
+        item(2, 'Cutty Sark', 0),
+        item(3, 'Statue of Sir Walter Raleigh', 82),
+      ],
+      []
+    );
+
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+    expect(mockScheduleNotificationAsync.mock.calls[0][0].content.title).toBe('Cutty Sark');
+  });
+
+  it('stays silent when arming somewhere it has not yet reached', async () => {
+    await geofence.syncArrivalRegions([item(1, 'The Mill', 300)], []);
+
+    expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not trust a saved place’s stale distance to mean "here"', async () => {
+    // A shelf entry's distanceMeters was minted wherever the feed that
+    // saved it was fetched — possibly another town (see saved.ts)
+    await geofence.syncArrivalRegions([], [item(1, 'Saved Elsewhere', 0)]);
+
+    expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
   it('arms nothing while the user has not opted in', async () => {
     arrivals.setArrivalsForTests({ enabled: false });
 

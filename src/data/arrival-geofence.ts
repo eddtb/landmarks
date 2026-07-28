@@ -94,6 +94,78 @@ export function arrivalNotificationText(region: ArrivalRegion): {
 }
 
 /**
+ * Say it, once. Shared by the two ways an arrival is noticed: iOS
+ * waking us for a boundary crossing, and the app discovering on arming
+ * that the user is already standing inside one (see
+ * announceIfAlreadyThere).
+ *
+ * The turn is claimed SYNCHRONOUSLY — the check and the mark with no
+ * await between them. iOS delivers crossings concurrently: measured on
+ * the simulator, arriving in Westminster woke the task nineteen times
+ * inside 127ms, and with the mark written after the notification
+ * await, all nineteen passed the quiet check before any had set it.
+ */
+async function announceArrival(region: ArrivalRegion): Promise<boolean> {
+  if (recentlyAnnounced(region.pageId) || inQuietPeriod()) {
+    return false;
+  }
+  markAnnounced(region.pageId);
+
+  const { title, body } = arrivalNotificationText(region);
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      // The tap target: the story screen for this place.
+      data: { pageId: region.pageId },
+      ...(Platform.OS === 'android' ? { channelId: AndroidChannelId } : null),
+    },
+    trigger: null,
+  });
+  await flushArrivals();
+  return true;
+}
+
+/**
+ * The crossing that never arrives.
+ *
+ * CoreLocation does not deliver didEnterRegion for a region you are
+ * ALREADY inside when monitoring begins — and this app re-arms as the
+ * feed moves, which it does every ~111m bucket, against a 120m radius.
+ * So walking up to a place and re-arming at the same moment is the
+ * normal case, not the edge one, and the arrival is simply lost.
+ *
+ * Caught on the simulator: walking 220m to the Cutty Sark left the
+ * app standing inside FOUR armed regions in silence.
+ *
+ * Distances come from the feed items, which carry their metres from
+ * the position the feed was fetched at — no second location call.
+ * Saved places are deliberately excluded from this: their
+ * distanceMeters was minted wherever the feed that saved them was
+ * fetched, and on the shelf it is a lie (see saved.ts).
+ */
+async function announceIfAlreadyThere(
+  armed: ArrivalRegion[],
+  nearby: HistoryItem[]
+): Promise<void> {
+  const metres = new Map(nearby.map((item) => [item.pageId, item.distanceMeters]));
+  const standing = armed
+    .map((region) => ({ region, meters: metres.get(region.pageId) }))
+    .filter(
+      (candidate): candidate is { region: ArrivalRegion; meters: number } =>
+        typeof candidate.meters === 'number' && candidate.meters <= ArrivalRadiusMeters
+    )
+    .sort((a, b) => a.meters - b.meters);
+
+  // One arrival, one banner — the nearest is the one you're at.
+  for (const candidate of standing) {
+    if (await announceArrival(candidate.region)) {
+      return;
+    }
+  }
+}
+
+/**
  * The wake. Runs cold: the store is read from disk before anything is
  * decided, and the "already said" mark is flushed before returning,
  * because iOS may kill this runtime the instant it does.
@@ -121,38 +193,10 @@ TaskManager.defineTask<{
       return;
     }
     const region = armedRegion(pageId);
-    if (!region || recentlyAnnounced(pageId)) {
+    if (!region) {
       return;
     }
-    // Something else just spoke. Dense ground delivers many crossings
-    // in the same instant and one arrival should be one banner. The
-    // skipped place is not marked — it simply didn't get this turn.
-    //
-    // Claim the turn SYNCHRONOUSLY. iOS delivers these wakes
-    // concurrently: measured on the simulator, arriving in
-    // Westminster fired nineteen of them inside 127ms, and with the
-    // mark written after the notification await, all nineteen passed
-    // the quiet check before any of them had set it. JS is
-    // single-threaded, so a check and a set with no await between
-    // them cannot interleave — the claim has to happen here, not
-    // after the banner is scheduled.
-    if (inQuietPeriod()) {
-      return;
-    }
-    markAnnounced(pageId);
-
-    const { title, body } = arrivalNotificationText(region);
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        // The tap target: the story screen for this place.
-        data: { pageId },
-        ...(Platform.OS === 'android' ? { channelId: AndroidChannelId } : null),
-      },
-      trigger: null,
-    });
-    await flushArrivals();
+    await announceArrival(region);
   } catch (taskError) {
     // A failed wake is a missed greeting, never a crash on a user's
     // phone in their pocket.
@@ -232,6 +276,8 @@ export async function syncArrivalRegions(
     return;
   }
   if (sameArmedSet(armedRegions(), next)) {
+    // Unchanged set, nothing re-armed — so nothing can have been lost
+    // to the already-inside hole either.
     return;
   }
   try {
@@ -243,7 +289,11 @@ export async function syncArrivalRegions(
     await Location.startGeofencingAsync(ArrivalTaskName, toLocationRegions(next));
   } catch (error) {
     console.warn('[arrivals] could not arm regions:', error);
+    return;
   }
+  // Arming is exactly when a crossing goes missing — see the note on
+  // announceIfAlreadyThere.
+  await announceIfAlreadyThere(next, nearby);
 }
 
 /**
