@@ -13,14 +13,16 @@ const { withInfoPlist } = require('expo/config-plugins');
  * app never performs a background fetch. The one mode it genuinely
  * needs, `location`, is declared in app.json.
  *
- * Scope note — this deliberately does NOT touch
- * NSSupportsLiveActivities, which expo-widgets sets unconditionally
- * and which is likewise unused. Mod ordering here is not the array
- * order: measured at prebuild, this mod runs BEFORE expo-widgets'
- * (which sees an Info.plist without the key at all), so deleting it
- * from here is a line that silently does nothing. It is also a
- * capability declaration rather than a background mode, so it is not
- * the 2.5.4 shape. Left alone knowingly, not overlooked.
+ * expo-widgets likewise sets NSSupportsLiveActivities unconditionally.
+ * There is one Home Screen widget here and no Live Activity.
+ *
+ * ORDERING — this plugin must stay near the FRONT of app.json's
+ * plugins array, and that is not a typo. Config mods execute in
+ * REVERSE registration order, so the plugin listed first runs last.
+ * Measured at prebuild: registered at the end of the array, this mod
+ * ran before expo-widgets' and before expo-task-manager's, and every
+ * edit it made was simply overwritten afterwards. A plugin whose job
+ * is to undo another's default has to be registered ahead of it.
  */
 
 /** Modes the app genuinely uses. Anything else gets stripped. */
@@ -38,6 +40,11 @@ module.exports = function withHonestCapabilities(config) {
         delete plist.UIBackgroundModes;
       }
     }
+
+    // No Live Activity in this app — a declared-but-absent capability
+    // is the same shape of claim as the background mode above.
+    delete plist.NSSupportsLiveActivities;
+    delete plist.NSSupportsLiveActivitiesFrequentUpdates;
 
     return modConfig;
   });

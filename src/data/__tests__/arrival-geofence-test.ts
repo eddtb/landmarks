@@ -65,7 +65,10 @@ const item = (
 ): HistoryItem => ({
   pageId,
   title,
-  coordinates: { latitude: 51.48, longitude: 0 },
+  // Distinct ground per place by default (~111m apart): the selection
+  // spends one slot per patch of ground, so a shared coordinate would
+  // silently collapse fixtures that are about ordering, not geography
+  coordinates: { latitude: 51.48 + pageId / 1000, longitude: 0 },
   distanceMeters,
   extract: `${title} was a debtors' prison that stood for two centuries.`,
   url: 'https://en.wikipedia.org/wiki/x',
@@ -106,6 +109,37 @@ describe('the wake', () => {
     await enter('42');
 
     expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('is one banner per arrival when a whole cluster is crossed at once', async () => {
+    // The measured shape of the bug: arriving in Westminster woke the
+    // task NINETEEN times inside 127ms. Every wake passed the quiet
+    // check before any of them had written the mark, so all nineteen
+    // announced. These must be delivered CONCURRENTLY — awaiting them
+    // one at a time passes against the broken code too.
+    const cluster = Array.from({ length: 19 }, (_, index) =>
+      item(200 + index, `Place ${index}`, 10 + index)
+    );
+    arrivals.setArmedRegions(arrivals.selectArrivalRegions(cluster, []));
+
+    await Promise.all(cluster.map((place) => enter(String(place.pageId))));
+
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the next place speak once the quiet period has lapsed', async () => {
+    arrivals.setArmedRegions(
+      arrivals.selectArrivalRegions([item(1, 'The Mill', 10), item(2, 'The Wharf', 20)], [])
+    );
+
+    await enter('1');
+    // Walking on: the quiet period is a debounce, not a rate limit
+    const later = Date.now() + arrivals.AnnounceQuietMs + 1;
+    jest.spyOn(Date, 'now').mockReturnValue(later);
+    await enter('2');
+    jest.spyOn(Date, 'now').mockRestore();
+
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledTimes(2);
   });
 
   it('stays silent for a crossing delivered after the user opted out', async () => {
@@ -203,14 +237,17 @@ describe('arming', () => {
   });
 
   it('passes CoreLocation an enter-only region per place', async () => {
-    await geofence.syncArrivalRegions([item(1, 'The Mill', 10)], []);
+    await geofence.syncArrivalRegions(
+      [item(1, 'The Mill', 10, { coordinates: { latitude: 51.481, longitude: 0 } })],
+      []
+    );
 
     const [taskName, regions] = mockStartGeofencingAsync.mock.calls[0];
     expect(taskName).toBe(geofence.ArrivalTaskName);
     expect(regions).toEqual([
       {
         identifier: '1',
-        latitude: 51.48,
+        latitude: 51.481,
         longitude: 0,
         radius: arrivals.ArrivalRadiusMeters,
         notifyOnEnter: true,

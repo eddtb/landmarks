@@ -11,6 +11,7 @@ import {
   arrivalsEnabled,
   arrivalsHydrated,
   flushArrivals,
+  inQuietPeriod,
   markAnnounced,
   recentlyAnnounced,
   sameArmedSet,
@@ -123,6 +124,23 @@ TaskManager.defineTask<{
     if (!region || recentlyAnnounced(pageId)) {
       return;
     }
+    // Something else just spoke. Dense ground delivers many crossings
+    // in the same instant and one arrival should be one banner. The
+    // skipped place is not marked — it simply didn't get this turn.
+    //
+    // Claim the turn SYNCHRONOUSLY. iOS delivers these wakes
+    // concurrently: measured on the simulator, arriving in
+    // Westminster fired nineteen of them inside 127ms, and with the
+    // mark written after the notification await, all nineteen passed
+    // the quiet check before any of them had set it. JS is
+    // single-threaded, so a check and a set with no await between
+    // them cannot interleave — the claim has to happen here, not
+    // after the banner is scheduled.
+    if (inQuietPeriod()) {
+      return;
+    }
+    markAnnounced(pageId);
+
     const { title, body } = arrivalNotificationText(region);
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -134,7 +152,6 @@ TaskManager.defineTask<{
       },
       trigger: null,
     });
-    markAnnounced(pageId);
     await flushArrivals();
   } catch (taskError) {
     // A failed wake is a missed greeting, never a crash on a user's

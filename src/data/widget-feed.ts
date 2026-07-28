@@ -22,6 +22,32 @@ import { formatDistance, storyHook } from '@/utils/format';
 const NothingNearby: NearestStoryProps = { title: '', hook: '', distance: '', url: '' };
 
 /**
+ * Does the hook just say the name again? A small square has room for
+ * about two lines, and spending them on "Royal Naval College,
+ * Greenwich" directly under the heading "Royal Naval College,
+ * Greenwich" wastes the widget's only chance to be interesting.
+ *
+ * The leading article has to come off first — caught on the simulator,
+ * where the widget was handed exactly that title with the hook "The
+ * Royal Naval College, Greenwich, was a Royal Navy training
+ * establishment…". A bare prefix test misses it over one word.
+ *
+ * Deliberately local rather than pushed into hookEchoesTitle: that
+ * helper governs the feed card, a shipped surface with its own tests,
+ * and widening it is a change to the feed, not to this widget.
+ */
+function hookRestatesTitle(title: string, hook: string): boolean {
+  const strip = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/^(the|a|an)\s+/, '')
+      .trim();
+  const name = strip(title);
+  const opening = strip(hook);
+  return Boolean(name) && Boolean(opening) && opening.startsWith(name);
+}
+
+/**
  * The nearest thing worth walking to. Events and areas are excluded on
  * the same ground the feed excludes them: an article about a train
  * crash has no doorstep, and "Greenwich" is not somewhere you arrive.
@@ -56,7 +82,7 @@ export function nearestStoryProps(items: HistoryItem[]): NearestStoryProps {
     title,
     // The hook is dropped when it merely restates the name — on a
     // widget the title sits directly above it, exactly as on a card.
-    hook: hook.toLowerCase().startsWith(title.toLowerCase()) ? '' : hook,
+    hook: hookRestatesTitle(title, hook) ? '' : hook,
     distance: `${formatDistance(nearest.distanceMeters)} away`,
     url: storyUrl(nearest.pageId),
   };

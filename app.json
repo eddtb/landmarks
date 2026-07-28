@@ -38,6 +38,8 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/with-honest-capabilities",
+      "./plugins/with-widget-version-match",
       "expo-router",
       [
         "expo-location",
@@ -84,8 +86,7 @@
             }
           ]
         }
-      ],
-      "./plugins/with-honest-capabilities"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

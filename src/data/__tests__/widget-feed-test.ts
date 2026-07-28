@@ -79,6 +79,21 @@ describe('what the widget is told', () => {
     expect(props.hook).toBe('');
   });
 
+  it('drops a restating hook even when it opens with an article', () => {
+    // Read off the simulator's App Group container: the widget was
+    // handed "Royal Naval College, Greenwich" and then a hook opening
+    // "The Royal Naval College, Greenwich, was…" — one word of
+    // difference, and a bare prefix test lets it straight through
+    const props = nearestStoryProps([
+      item(1, 'Royal Naval College, Greenwich', 34, {
+        extract:
+          'The Royal Naval College, Greenwich, was a Royal Navy training establishment between 1873 and 1998.',
+      }),
+    ]);
+
+    expect(props.hook).toBe('');
+  });
+
   it('keeps a hook that says something the name does not', () => {
     const props = nearestStoryProps([
       item(1, 'The Mill', 10, { extract: 'A prison stood on this ground until 1842.' }),

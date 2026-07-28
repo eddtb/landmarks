@@ -51,6 +51,8 @@ type ArrivalState = {
   announced: Record<string, number>;
   /** The invitation was declined — offered once, not on every launch. */
   invitationDismissed?: boolean;
+  /** When anything last spoke, for the quiet period between banners. */
+  lastAnnouncedAt?: number;
 };
 
 const EmptyState: ArrivalState = { enabled: false, regions: {}, announced: {} };
@@ -72,6 +74,33 @@ export const ArrivalRadiusMeters = 120;
 
 /** A place says its piece once a week at most, however often you pass. */
 export const ReannounceAfterMs = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * The quiet period after any announcement — a debounce, not a rate
+ * limit. Measured on the simulator walking into Greenwich: FOUR
+ * regions were crossed in the same instant and four banners fired at
+ * once. Historic ground is dense, and a 120m radius over twenty
+ * regions means simultaneous crossings are the normal case, not the
+ * edge one.
+ *
+ * Two minutes is roughly 160m at walking pace — about one radius — so
+ * a cluster collapses to a single banner while a genuinely new place
+ * further along the street still gets to speak.
+ */
+export const AnnounceQuietMs = 2 * 60 * 1000;
+
+/**
+ * How close two places must be to count as the same doorstep. The
+ * same Greenwich walk armed "Royal Naval College", "Greenwich
+ * Hospital" and "Palace of Placentia" at an IDENTICAL coordinate —
+ * three Wikipedia articles about one set of buildings, spending three
+ * of the twenty slots to say the same thing. ~11m, the fourth decimal
+ * place of a degree.
+ */
+const GroundKeyPrecision = 4;
+
+const groundKey = (coordinates: Coordinates) =>
+  `${coordinates.latitude.toFixed(GroundKeyPrecision)},${coordinates.longitude.toFixed(GroundKeyPrecision)}`;
 
 // Infinity TTL: a preference and its armed set never go stale on a
 // clock — they change when the user moves or changes their mind.
@@ -143,6 +172,16 @@ export function recentlyAnnounced(pageId: number, now = Date.now()): boolean {
   return typeof at === 'number' && now - at < ReannounceAfterMs;
 }
 
+/**
+ * Has something else just spoken? Crossing into a cluster of regions
+ * delivers several task wakes in the same instant; only the first of
+ * them gets to be a banner.
+ */
+export function inQuietPeriod(now = Date.now()): boolean {
+  const at = state?.lastAnnouncedAt;
+  return typeof at === 'number' && now - at < AnnounceQuietMs;
+}
+
 export function markAnnounced(pageId: number, now = Date.now()) {
   if (state === null) {
     return;
@@ -156,7 +195,7 @@ export function markAnnounced(pageId: number, now = Date.now()) {
       live.has(key)
     )
   );
-  write({ ...state, announced });
+  write({ ...state, announced, lastAnnouncedAt: now });
 }
 
 /** Remember the choice. Arming itself is the geofence module's job. */
@@ -227,12 +266,25 @@ export function selectArrivalRegions(
 ): ArrivalRegion[] {
   const arrivable = (item: HistoryItem) => !item.event && !item.area;
   const chosen = new Map<number, HistoryItem>();
+  // One slot per patch of ground, not per article. Twenty is a small
+  // budget and three articles about one set of buildings must not
+  // spend three of it — nor fire three banners for one arrival.
+  const takenGround = new Set<string>();
+
+  const take = (item: HistoryItem) => {
+    const ground = groundKey(item.coordinates);
+    if (chosen.has(item.pageId) || takenGround.has(ground)) {
+      return;
+    }
+    takenGround.add(ground);
+    chosen.set(item.pageId, item);
+  };
 
   for (const item of saved.filter(arrivable)) {
     if (chosen.size >= limit) {
       break;
     }
-    chosen.set(item.pageId, item);
+    take(item);
   }
   // The feed arrives sorted by distance, but it is not this function's
   // place to trust that — a caller passing the saved shelf as `nearby`
@@ -244,9 +296,7 @@ export function selectArrivalRegions(
     if (chosen.size >= limit) {
       break;
     }
-    if (!chosen.has(item.pageId)) {
-      chosen.set(item.pageId, item);
-    }
+    take(item);
   }
 
   return [...chosen.values()].map((item) => ({
