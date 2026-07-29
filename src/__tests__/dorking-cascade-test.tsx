@@ -47,6 +47,12 @@ const dorkingRetold = {
 function serveDorkingOnly() {
   mockFetch.mockImplementation(async (url: string) => {
     const path = String(url);
+    if (path.includes('/api/area?')) {
+      // Surrey's real answer, live-probed: nothing near Dorking is
+      // area-classed, so this candidate abstains and the ward-then-town
+      // cascade below is exactly the one #205 shipped.
+      return { ok: true, status: 200, json: async () => ({ name: null }) };
+    }
     if (path.includes('/api/article')) {
       if (path.includes('title=Dorking&') || path.endsWith('title=Dorking')) {
         return { ok: true, status: 200, json: async () => ({ article: dorkingArticle }) };
@@ -65,10 +71,11 @@ function serveDorkingOnly() {
 
 /** The real hook feeding the real gazetteer — the two tabs' shape. */
 function Harness({ center, relics = [] }: { center: Coordinates; relics?: HistoryItem[] }) {
-  const { name, settled } = useAreaName(center);
+  const { name, label, settled } = useAreaName(center);
   return (
     <AreaGazetteer
       areaName={name}
+      areaLabel={label}
       areaSettled={settled}
       relics={relics}
       allStories={relics}
@@ -127,7 +134,11 @@ describe('the Dorking case (ward 404 → the cascade finds the town)', () => {
     expect(
       await screen.findByText('Nothing hidden here that the records know of.')
     ).toBeOnTheScreen();
-    expect(mockFetch).not.toHaveBeenCalled();
+    // The area lookup is asked — Wikipedia, not Apple, decides whether
+    // this water has a name — and answers nothing. No candidate follows
+    // it, so not one article or retold probe is spent on a nameless spot.
+    const urls = mockFetch.mock.calls.map((call) => String(call[0]));
+    expect(urls).toEqual([expect.stringContaining('/api/area?')]);
   });
 
   test('a named area with no article anywhere says so above its relics — in words', async () => {

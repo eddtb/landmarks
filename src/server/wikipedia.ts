@@ -83,10 +83,6 @@ export function pickBestArticle(placeName: string, candidateTitles: string[]): s
   return best && best.score >= 0.5 ? best.title : null;
 }
 
-type GeosearchResponse = {
-  query?: { geosearch?: { title: string }[] };
-};
-
 type SummaryResponse = {
   type?: string;
   title?: string;
@@ -99,16 +95,8 @@ export async function findStory(
   placeName: string,
   coordinates: Coordinates
 ): Promise<StoryResult | null> {
-  const geoUrl =
-    'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
-    `&gscoord=${coordinates.latitude}%7C${coordinates.longitude}&gsradius=250&gslimit=10`;
-
-  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
-  if (!geoResponse.ok) {
-    throw new Error(`Wikipedia geosearch failed with status ${geoResponse.status}`);
-  }
-  const geo = (await geoResponse.json()) as GeosearchResponse;
-  const candidates = geo.query?.geosearch?.map((entry) => entry.title) ?? [];
+  const entries = await geosearchEntries(coordinates, 250, 10);
+  const candidates = entries.map((entry) => entry.title);
 
   const title = pickBestArticle(placeName, candidates);
   if (!title) {
@@ -145,6 +133,30 @@ type GeosearchEntry = {
   lat: number;
   lon: number;
 };
+
+/**
+ * Wikipedia articles with coordinates near a point, NEAREST FIRST —
+ * the one geosearch every caller shares: the feed's backbone, the
+ * plaque-subject probe, and the area-name resolver. The ordering is
+ * the API's own and is load-bearing for the resolver, which takes the
+ * first area-classed title as the nearest one.
+ */
+export async function geosearchEntries(
+  center: Coordinates,
+  radius: number,
+  limit: number
+): Promise<GeosearchEntry[]> {
+  const url =
+    'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
+    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=${limit}`;
+
+  const response = await fetch(url, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
+  if (!response.ok) {
+    throw new Error(`Wikipedia geosearch failed with status ${response.status}`);
+  }
+  const body = (await response.json()) as { query?: { geosearch?: GeosearchEntry[] } };
+  return body.query?.geosearch ?? [];
+}
 
 type BatchPage = {
   pageid: number;
@@ -278,16 +290,7 @@ export async function findNearbyHistory(
   // byte-identical results, all within 1212m, silently amputating the
   // last 4 walking minutes (21 stories) of the promised 19-min walk.
   // (And not 20: Queen's House once sat 27th — the treasure ranks low.)
-  const geoUrl =
-    'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
-    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=200`;
-
-  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
-  if (!geoResponse.ok) {
-    throw new Error(`Wikipedia geosearch failed with status ${geoResponse.status}`);
-  }
-  const geo = (await geoResponse.json()) as { query?: { geosearch?: GeosearchEntry[] } };
-  const entries = geo.query?.geosearch ?? [];
+  const entries = await geosearchEntries(center, radius, 200);
   if (entries.length === 0) {
     return [];
   }

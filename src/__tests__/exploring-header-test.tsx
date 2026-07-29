@@ -32,6 +32,7 @@ jest.mock('@/hooks/use-location', () => ({
 jest.mock('@/hooks/use-area-name', () => ({
   useAreaName: (center: Coordinates) => ({
     name: center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
+    label: center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
     settled: true,
   }),
 }));
