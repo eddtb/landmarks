@@ -88,13 +88,13 @@ export function standingOn(
 /** The two long cold loads (approved mock 2): the wander line draws
  * itself — the walked part solid, the path ahead faint — instead of an
  * anonymous spinner. Every short wait elsewhere keeps the spinner. */
-function ColdLoad({ areaName }: { areaName: string | null }) {
+function ColdLoad({ areaLabel }: { areaLabel: string | null }) {
   const theme = useTheme();
   return (
     <View style={styles.centered} testID="cold-load">
       <DrawingWanderLine arcSpan={64} stroke={7} count={4} color={theme.accent} />
       <ThemedText type="small" themeColor="textSecondary">
-        {areaName ? `Finding the stories of ${areaName}…` : 'Finding the stories near you…'}
+        {areaLabel ? `Finding the stories of ${areaLabel}…` : 'Finding the stories near you…'}
       </ThemedText>
     </View>
   );
@@ -194,8 +194,9 @@ function SectionHeader({
 }) {
   const [searchText, setSearchText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  // The cascade winner — "Dorking", never the ward "Dorking North"
-  const { name: areaName } = useAreaName(center);
+  // The cascade winner, as the user would say it — "Crystal Palace",
+  // never the borough "Bromley" nor the ward "Dorking North"
+  const { label: areaLabel } = useAreaName(center);
   const theme = useTheme();
 
   const onSearchSubmit = useCallback(async () => {
@@ -220,7 +221,7 @@ function SectionHeader({
     }
   }, [searchText, onManualCenter]);
 
-  const title = areaName ?? 'Near you';
+  const title = areaLabel ?? 'Near you';
 
   return (
     <View style={styles.header}>
@@ -357,7 +358,7 @@ export function HistoryArchiveScreen() {
 function GazetteerBody({ center }: { center: Coordinates }) {
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
-  const { name: areaName, settled: areaSettled } = useAreaName(center);
+  const { name: areaName, label: areaLabel, settled: areaSettled } = useAreaName(center);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -366,7 +367,7 @@ function GazetteerBody({ center }: { center: Coordinates }) {
   }, [refresh]);
 
   if (state.status === 'loading') {
-    return <ColdLoad areaName={areaName} />;
+    return <ColdLoad areaLabel={areaLabel} />;
   }
   if (state.status === 'error') {
     return (
@@ -387,6 +388,7 @@ function GazetteerBody({ center }: { center: Coordinates }) {
   return (
     <AreaGazetteer
       areaName={areaName}
+      areaLabel={areaLabel}
       areaSettled={areaSettled}
       relics={relics}
       allStories={state.items}
@@ -517,7 +519,9 @@ export function HistoryBody({
   const theme = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
-  const { name: areaName } = useAreaName(center);
+  // The widget and the cold-load copy both SHOW this name, so both take
+  // the spoken form: "Crystal Palace", not "Crystal Palace, London"
+  const { label: areaLabel } = useAreaName(center);
   const arrivalsOn = useArrivalsEnabled();
 
   // Arrivals monitor the WHOLE feed, not the photo-filtered Nearby list
@@ -542,7 +546,7 @@ export function HistoryBody({
   );
   useAreaWidget(
     widgetStories,
-    areaName,
+    areaLabel,
     state.status === 'ready' && !exploring && !locationDenied
   );
 
@@ -553,7 +557,7 @@ export function HistoryBody({
   }, [refresh]);
 
   if (state.status === 'loading') {
-    return <ColdLoad areaName={areaName} />;
+    return <ColdLoad areaLabel={areaLabel} />;
   }
 
   if (state.status === 'error') {

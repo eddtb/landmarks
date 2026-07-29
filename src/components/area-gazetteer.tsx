@@ -269,6 +269,7 @@ function useRetoldSpeaker(retold: Retold | null) {
 
 export function AreaGazetteer({
   areaName,
+  areaLabel,
   areaSettled = true,
   relics,
   allStories,
@@ -280,7 +281,12 @@ export function AreaGazetteer({
   tellingItem,
   onReadThreshold,
 }: {
+  /** The ARTICLE TITLE — every fetch and filter below keys off it. */
   areaName: string | null;
+  /** The same place spoken plainly, for the hero only ("Crystal
+   * Palace" where areaName is "Crystal Palace, London"). Place screens
+   * pass no label; the title is already how they name themselves. */
+  areaLabel?: string | null;
   /** False while the area-name cascade is still resolving: a null
    * areaName then means "wait", not "nowhere". Once settled, a null
    * name lets the fetch effects declare "none" instead of pending
@@ -723,7 +729,7 @@ export function AreaGazetteer({
               accessibilityRole="imagebutton"
               accessibilityLabel="Open the cover photo"
               onPress={() => (article.images ?? []).length > 0 && setViewerIndex(0)}>
-              <Hero areaName={areaName} article={article} retold={retold} />
+              <Hero areaName={areaLabel ?? areaName} article={article} retold={retold} />
             </Pressable>
             {(article.images ?? []).length > 1 && (
               <ScrollView
