@@ -43,6 +43,22 @@ deliberately: `eas workflow:run .eas/workflows/ota-production.yml`.
 No review, no wait; also no undo but a rollback publish, so an OTA
 carries the same test/lint/typecheck bar as anything else.
 
+**Run `scripts/preflight-ota.sh <channel>` first.** An `eas update`
+always says "Published!" — whether any phone RECEIVES it depends on the
+runtime version matching a binary that exists, and nothing tells you
+when it doesn't. An update nobody can receive is indistinguishable from
+one everybody got. The preflight refuses a dirty tree, a red suite, or a
+fingerprint that matches no finished build on the channel.
+
+**`eas update` writes to app.json.** It auto-configures any platform
+missing a `runtimeVersion` policy, and serialises the config back out
+AFTER the plugins have run — so expo-location's permissions and the
+`location` background mode return duplicated, three plugin-default
+permissions appear, and the native fingerprint silently moves. Both
+platforms therefore declare `fingerprint` explicitly, and
+`src/__tests__/app-config-test.ts` fails CI if that corruption returns.
+Never fix a fingerprint mismatch by loosening the policy; build.
+
 **A build** — everything that touches the native runtime: a new native
 module, an SDK bump, a permission string, an app.json plugin change.
 The `fingerprint` runtimeVersion policy decides which of the two a
