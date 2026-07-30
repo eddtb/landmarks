@@ -53,9 +53,24 @@ FINGERPRINT="$(npx eas-cli fingerprint:generate --platform "$PLATFORM" --environ
 [ -n "$FINGERPRINT" ] || fail "could not compute the project fingerprint"
 ok "fingerprint $FINGERPRINT"
 
+# Parse the field, do not grep for hex: a build record also carries commit
+# SHAs and ids of the same shape, and a guardrail that can match one of
+# those by accident would wave a broken update through.
 RUNTIMES="$(npx eas-cli build:list --channel "$CHANNEL" --platform "$PLATFORM" \
-  --status finished --limit 10 --json --non-interactive 2>/dev/null \
-  | grep -oE '[0-9a-f]{40}' | sort -u || true)"
+  --status finished --limit 20 --json --non-interactive 2>/dev/null \
+  | python3 -c '
+import json, sys
+try:
+    builds = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+seen = []
+for build in builds if isinstance(builds, list) else []:
+    runtime = build.get("runtimeVersion")
+    if runtime and runtime not in seen:
+        seen.append(runtime)
+print("\n".join(seen))
+' || true)"
 
 if [ -z "$RUNTIMES" ]; then
   fail "No finished $PLATFORM builds found on channel '$CHANNEL', so there is
@@ -63,8 +78,8 @@ if [ -z "$RUNTIMES" ]; then
 fi
 
 if ! printf '%s\n' "$RUNTIMES" | grep -qx "$FINGERPRINT"; then
-  printf '\nRuntime versions of finished builds on %s:\n' "$CHANNEL"
-  printf '  %s\n' $RUNTIMES
+  printf '\nMost recent runtime versions on %s:\n' "$CHANNEL"
+  printf '%s\n' "$RUNTIMES" | head -5 | sed 's/^/  /'
   fail "The fingerprint matches NO build on '$CHANNEL'. Something native has
   changed since those binaries were made, so an update published now
   would be offered to nobody.
