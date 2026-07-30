@@ -49,6 +49,13 @@ let panels = [
         subhead: "Read it, or listen while you walk.",
         topColor: purple, bottomColor: NSColor(calibratedRed: 0.27, green: 0.12, blue: 0.62, alpha: 1),
         textColor: .white, mutedColor: NSColor.white.withAlphaComponent(0.80)),
+  // The quiz earned the sixth slot: it is the surface that answers
+  // "content aggregated from the Internet" — the app asking, not telling
+  Panel(file: "06-test-yourself.png", sourceFile: "06-quiz.png",
+        headline: "How much of it\ndo you know?",
+        subhead: "A quiz about the ground you're standing on.",
+        topColor: cream, bottomColor: NSColor(calibratedRed: 0.90, green: 0.86, blue: 1.00, alpha: 1),
+        textColor: ink, mutedColor: NSColor(calibratedWhite: 0.25, alpha: 1)),
 ]
 
 func topRect(x: CGFloat, y: CGFloat, width: CGFloat, height rectHeight: CGFloat) -> NSRect {
