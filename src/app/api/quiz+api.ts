@@ -10,8 +10,16 @@ import { MinStoriesToQuiz, QuizSubject, getQuiz } from '@/server/quiz';
 
 const MaxTitleChars = 300;
 const MaxExtractChars = 4_000;
-/** The nearest dozen is all quiz.ts will read; refuse a flood earlier. */
-const MaxStories = 40;
+/**
+ * The nearest dozen is all quiz.ts will read, so anything past this is
+ * simply ignored. It is NOT a rejection: a client sending its whole feed
+ * is not abusing anything, and refusing at 40 made the Quiz tab fail
+ * outright in every dense area — Deptford answers with 96 stories, so
+ * the tab said "Couldn't set the quiz right now" on a real phone while
+ * this route tested clean against a hand-made twelve. MaxBodyBytes is
+ * what guards against an actual flood.
+ */
+const MaxStories = 60;
 const MaxBodyBytes = 256 * 1024;
 
 export async function POST(request: Request): Promise<Response> {
@@ -37,12 +45,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!Array.isArray(stories)) {
     return Response.json({ error: 'stories is required' }, { status: 400 });
   }
-  if (stories.length > MaxStories) {
-    return Response.json({ error: 'Body too large' }, { status: 413 });
-  }
-
   const subjects: QuizSubject[] = [];
-  for (const raw of stories) {
+  for (const raw of stories.slice(0, MaxStories)) {
     if (typeof raw !== 'object' || raw === null) {
       continue;
     }

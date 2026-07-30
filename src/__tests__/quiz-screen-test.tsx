@@ -97,6 +97,26 @@ describe('<QuizScreen />', () => {
     ]);
   });
 
+  test('sends the nearest dozen, not the whole feed', async () => {
+    // Deptford answers with 96 stories. Sending all of them made the
+    // route refuse the request and the tab show its error state on a
+    // real phone — the bug that no amount of route testing found,
+    // because the route was tested with a hand-made twelve.
+    mockUseHistory.mockReturnValue({
+      state: {
+        status: 'ready',
+        items: Array.from({ length: 96 }, (_, i) => story(i + 1, `Place ${i + 1}`)),
+      },
+      refresh: jest.fn(),
+    });
+
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+
+    const sent = mockFetchQuiz.mock.calls[0][1] as unknown[];
+    expect(sent).toHaveLength(12);
+  });
+
   test('the answer stays hidden until you commit to one', async () => {
     await render(<QuizScreen />);
     await screen.findByTestId('quiz-run');

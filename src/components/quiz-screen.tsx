@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
@@ -30,6 +30,13 @@ import { Coordinates } from '@/utils/geo';
 
 type Phase = 'loading' | 'ready' | 'none' | 'error';
 
+/**
+ * How many of the feed's stories the quiz is set from. The server reads
+ * the nearest twelve and its route refuses more than forty, so sending
+ * the whole feed was both wasteful and a hard failure in any dense area.
+ */
+const QuizStories = 12;
+
 export function QuizScreen() {
   return (
     <LocationGate>
@@ -50,10 +57,16 @@ function QuizBody({ center }: { center: Coordinates }) {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempt, setAttempt] = useState(0);
 
+  // The nearest dozen, and no more. The feed runs to ~100 stories in a
+  // dense area and the server only ever reads twelve — sending all of
+  // them made the route answer 413 "Body too large" and the tab said
+  // "Couldn't set the quiz right now" in Deptford, on a phone, while the
+  // route itself tested clean against a hand-made twelve.
   const stories =
     state.status === 'ready'
       ? state.items
           .filter((item) => item.extract?.trim())
+          .slice(0, QuizStories)
           .map((item) => ({
             pageId: item.pageId,
             title: item.title,
@@ -111,49 +124,55 @@ function QuizBody({ center }: { center: Coordinates }) {
   const retry = () => setAttempt((previous) => previous + 1);
 
   return (
+    // ThemedView for the ground, SafeAreaView for the top edge — the
+    // Nearby tab's own arrangement. Without the safe area the title drew
+    // underneath the status bar clock (caught on Edd's phone); without
+    // ThemedView the screen loses its themed background in dark mode.
     <ThemedView style={styles.screen}>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}>
-        <ThemedText type="eyebrow" themeColor="textSecondary">
-          Test yourself on
-        </ThemedText>
-        <ThemedText type="largeTitle">{areaLabel ?? 'this ground'}</ThemedText>
+      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}>
+          <ThemedText type="eyebrow" themeColor="textSecondary">
+            Test yourself on
+          </ThemedText>
+          <ThemedText type="largeTitle">{areaLabel ?? 'this ground'}</ThemedText>
 
-        {resolved === 'loading' && (
-          <View style={styles.centered} testID="quiz-loading">
-            <ActivityIndicator color={theme.accent} />
-            <ThemedText type="small" themeColor="textSecondary">
-              Setting the questions…
-            </ThemedText>
-          </View>
-        )}
+          {resolved === 'loading' && (
+            <View style={styles.centered} testID="quiz-loading">
+              <ActivityIndicator color={theme.accent} />
+              <ThemedText type="small" themeColor="textSecondary">
+                Setting the questions…
+              </ThemedText>
+            </View>
+          )}
 
-        {resolved === 'error' && (
-          <View style={styles.centered} testID="quiz-error">
-            <ThemedText type="small" themeColor="textSecondary">
-              Couldn’t set the quiz right now.
-            </ThemedText>
-            <Pressable accessibilityRole="button" testID="quiz-retry" onPress={retry}>
-              <ThemedText type="linkPrimary">Try again</ThemedText>
-            </Pressable>
-          </View>
-        )}
+          {resolved === 'error' && (
+            <View style={styles.centered} testID="quiz-error">
+              <ThemedText type="small" themeColor="textSecondary">
+                Couldn’t set the quiz right now.
+              </ThemedText>
+              <Pressable accessibilityRole="button" testID="quiz-retry" onPress={retry}>
+                <ThemedText type="linkPrimary">Try again</ThemedText>
+              </Pressable>
+            </View>
+          )}
 
-        {/* The floor: too little recorded history here to ask about it
-            honestly. Words and a wander line, the same answer the empty
-            feed gives — never a blank tab. */}
-        {resolved === 'none' && (
-          <View style={styles.centered} testID="quiz-none">
-            <WanderLine arcSpan={52} stroke={6} count={4} color={theme.accent} />
-            <ThemedText type="small" themeColor="textSecondary" style={styles.emptyCopy}>
-              Not enough recorded history right here to set a quiz. Wander a little, or look
-              somewhere with more of it.
-            </ThemedText>
-          </View>
-        )}
+          {/* The floor: too little recorded history here to ask about it
+              honestly. Words and a wander line, the same answer the empty
+              feed gives — never a blank tab. */}
+          {resolved === 'none' && (
+            <View style={styles.centered} testID="quiz-none">
+              <WanderLine arcSpan={52} stroke={6} count={4} color={theme.accent} />
+              <ThemedText type="small" themeColor="textSecondary" style={styles.emptyCopy}>
+                Not enough recorded history right here to set a quiz. Wander a little, or look
+                somewhere with more of it.
+              </ThemedText>
+            </View>
+          )}
 
-        {resolved === 'ready' && quiz && <QuizRun quiz={quiz} key={quiz.areaName} />}
-      </ScrollView>
+          {resolved === 'ready' && quiz && <QuizRun quiz={quiz} key={quiz.areaName} />}
+        </ScrollView>
+      </SafeAreaView>
     </ThemedView>
   );
 }
