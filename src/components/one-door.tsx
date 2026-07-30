@@ -135,14 +135,19 @@ export function OneDoor({ onEnable, onNotNow }: Props) {
           Palaces, ships, plaques, vanished things — the stories of wherever you stand. Venture
           needs your location to find them.
         </ThemedText>
+        {/* "Continue", never "Enable location": App Review rejected 1.0(8)
+            under 5.1.1(iv) for a pre-permission button that DIRECTS the
+            user to grant, and named this exact remedy. The screen may
+            explain why the ask is coming; the button may not lobby for
+            the answer. The paragraph above carries the reason. */}
         <Pressable
           testID="one-door-enable"
           accessibilityRole="button"
-          accessibilityLabel="Enable location"
+          accessibilityLabel="Continue"
           onPress={onEnable}
           style={({ pressed }) => [styles.enable, pressed && { opacity: 0.9 }]}>
           <ThemedText type="smallBold" style={styles.enableText}>
-            Enable location
+            Continue
           </ThemedText>
         </Pressable>
         <Pressable
