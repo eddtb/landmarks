@@ -6,7 +6,6 @@ import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, View } from 
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { ExternalLink } from '@/components/external-link';
 import { OverflowMenu } from '@/components/overflow-menu';
-import { StoryFolds } from '@/components/story-folds';
 import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -127,7 +126,7 @@ function JournalVisitMarker({ item }: { item: HistoryItem }) {
   return null;
 }
 
-/** No Wikipedia article of its own: the extract-and-folds story stands. */
+/** No Wikipedia article of its own: the record stands, and cites itself. */
 function ExtractStory({ item }: { item: HistoryItem }) {
   if (!item.extract) {
     return null;
@@ -149,7 +148,11 @@ function ExtractStory({ item }: { item: HistoryItem }) {
             {paragraph}
           </ThemedText>
         ))}
-      <StoryFolds item={item} />
+      {/* No StoryFolds. This used to render the source article in full
+          beneath the record — the same republication the Gazetteer's
+          fallback row did, and the exhibit App Review cited 4.2.2 for
+          three times. The record above is short and the source is one
+          citation away; a copy of the page adds nothing but the charge. */}
       <ExternalLink href={item.url as `https://${string}`}>
         <ThemedText type="small" themeColor="accent">
           From {item.source}
@@ -164,7 +167,7 @@ function ExtractStory({ item }: { item: HistoryItem }) {
  * Gazetteer — hero, gallery, the story retold in parts, timeline,
  * the web of history — pointed at the place's OWN article, with the
  * venue grammar (one violet Go) riding under the hero. Places without
- * an article of their own keep the extract-and-folds story.
+ * an article of their own show the record itself and a citation.
  */
 export default function HistoryDetailScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();

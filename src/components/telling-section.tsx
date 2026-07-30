@@ -206,26 +206,32 @@ export function TellingLead({ item }: { item: HistoryItem }) {
   }
   return (
     <View style={styles.lead} testID="telling-lead">
-      <View style={styles.leadLabel}>
-        {/* Words, not glyphs (PR #186): no ✦ for VoiceOver to call
-            "four-pointed star", and Stop is a word */}
-        <ThemedText type="small" themeColor="textSecondary" style={styles.leadLabelText}>
-          Told by AI from {item.source} — source below
-        </ThemedText>
-        {speechAvailable && (
-          // 16pt slop on the 20px label clears the 44pt target
+      {/* The control stays ABOVE the prose — you decide whether to listen
+          before you start reading. Words, not glyphs (PR #186): no ✦ for
+          VoiceOver to call "four-pointed star", and Stop is a word. */}
+      {speechAvailable && (
+        <View style={styles.leadControl}>
+          {/* 16pt slop on the 20px label clears the 44pt target */}
           <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.three}>
             <ThemedText type="smallBold" themeColor="accent">
               {speaking ? 'Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
             </ThemedText>
           </Pressable>
-        )}
-      </View>
+        </View>
+      )}
       {storyParagraphs(telling).map((paragraph, index) => (
         <ThemedText key={index} type="default" style={index === 0 && styles.leadLede}>
           {paragraph}
         </ThemedText>
       ))}
+      {/* Attribution goes UNDER the piece, where a byline belongs. It sat
+          above, as the first line of every story — so the first thing a
+          reader (or an App Review reviewer looking for aggregation) met
+          was the app announcing itself as AI output over a web page. The
+          disclosure is unchanged and deliberate; only its place is. */}
+      <ThemedText type="small" themeColor="textSecondary" style={styles.leadAttribution}>
+        Told by AI from {item.source} — source below
+      </ThemedText>
     </View>
   );
 }
@@ -245,14 +251,15 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.two + Spacing.half,
     gap: Spacing.three,
   },
-  leadLabel: {
+  // Just the Listen control now, held to the right above the prose
+  leadControl: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
+    justifyContent: 'flex-end',
   },
-  leadLabelText: {
-    flex: 1,
+  // A byline, under the piece
+  leadAttribution: {
     fontSize: 11,
+    paddingTop: Spacing.one,
   },
   // The same lede treatment a retold part's opening gets — the telling
   // IS the story's opening here

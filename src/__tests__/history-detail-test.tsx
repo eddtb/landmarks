@@ -101,20 +101,22 @@ describe('<HistoryDetailScreen />', () => {
     // Words, not glyphs: no ✦ for VoiceOver to call "four-pointed star"
     expect(screen.getByText('Told by AI from Wikipedia — source below')).toBeOnTheScreen();
 
-    // …and the original article still stands as the story IN FULL
-    // beneath it: intro first, then the folds (first chapter open, the
-    // rest peeking) — not shortened behind a door
-    expect(await screen.findByText('The intro, the surprising true thing.')).toBeOnTheScreen();
-    expect(screen.getByText('Built by the Borough in 1791.')).toBeOnTheScreen();
-    expect(screen.getByText('Torn down for the railway in 1855.')).toBeOnTheScreen();
-    // The folds tell VoiceOver which way they stand: chapter one opens
-    // by default, the rest sit collapsed under their titles (their
-    // first line is only the sighted peek)
-    expect(screen.getByLabelText('Construction')).toBeExpanded();
-    expect(screen.getByLabelText('Demolition')).toBeCollapsed();
-    // …and a link out to the source, which holds more than we parse
-    expect(screen.getByText('Read more on Wikipedia ›')).toBeOnTheScreen();
-    expect(screen.getByText('Wikipedia · source')).toBeOnTheScreen();
+    // …and the SOURCE ARTICLE IS NOT REPUBLISHED beneath it. It used to
+    // be, in full, under a "From Wikipedia" eyebrow — and since eleven of
+    // the twenty nearest Greenwich places fall under the retelling gate,
+    // that was the majority of screens. App Review cited 4.2.2 three
+    // times for "content aggregated from the Internet"; against that
+    // screen the sentence was accurate.
+    expect(screen.queryByText('The intro, the surprising true thing.')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Built by the Borough in 1791.')).not.toBeOnTheScreen();
+    expect(screen.queryByText('Torn down for the railway in 1855.')).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Construction')).toBeNull();
+
+    // What stands in its place: one citation to the source we read
+    // ONE citation, reading as attribution. Two labels on a screen whose
+    // meta line already says "Wikipedia" was three mentions of it.
+    expect(screen.getByText('Source: Wikipedia ›')).toBeOnTheScreen();
+    expect(screen.queryByText('Wikipedia · source')).not.toBeOnTheScreen();
     expect(screen.getByTestId('wikipedia-link')).toHaveStyle({
       backgroundColor: '#EFEAFC',
       borderRadius: 14,
@@ -344,7 +346,7 @@ describe('<HistoryDetailScreen />', () => {
       backgroundColor: '#EFEAFC',
       borderRadius: 14,
     });
-    expect(screen.getByText('Read more on Wikipedia ›')).toBeOnTheScreen();
+    expect(screen.getByText('Source: Wikipedia ›')).toBeOnTheScreen();
     expect(screen.queryByText('Read the original article ›')).not.toBeOnTheScreen();
 
     // The retold rows give VirtualizedList a follow-up render batch on

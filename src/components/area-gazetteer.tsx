@@ -19,7 +19,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChapterFolds } from '@/components/chapter-folds';
 import { ExternalLink } from '@/components/external-link';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
@@ -30,7 +29,7 @@ import { Spacing } from '@/constants/theme';
 import { fetchArticle, fetchArticleLight } from '@/data/article-client';
 import { ApiError } from '@/data/cached-get';
 import { fetchRetold } from '@/data/retold-client';
-import { Article, ArticleChapter, ArticleImage } from '@/types/article';
+import { Article, ArticleImage } from '@/types/article';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
 import { LinkCandidate, linkifyParagraph, planStoryLinks } from '@/utils/linkify';
 import { withoutPullQuote } from '@/utils/pull-quote';
@@ -67,7 +66,6 @@ export type GazetteerRow =
   | { kind: 'retelling-pending'; key: string }
   | { kind: 'retelling-halted'; key: string }
   | { kind: 'telling-lead'; key: string }
-  | { kind: 'fallback-article'; key: string }
   | { kind: 'source-link'; key: string }
   | { kind: 'section'; key: string; title: string }
   | { kind: 'relic'; key: string; item: HistoryItem };
@@ -91,13 +89,28 @@ export function buildGazetteerRows(options: {
   const streamedParts = options.streamedParts ?? [];
   const rows: GazetteerRow[] = [];
 
-  // The fallback pair: the telling (when a place carries one) leads,
-  // the original article stands in full beneath — never gated by it
-  const pushFallbackArticle = () => {
+  /**
+   * No retelling earned this place. Venture's own telling stands as the
+   * story and the source is cited — the SAME shape the retold path has
+   * always used ("no inline door, no second copy of the article").
+   *
+   * It used to render the whole original article here instead, in full,
+   * under a "From Wikipedia" eyebrow. Measured on the twenty nearest
+   * Greenwich places, ELEVEN fell under retold.ts's 3,000-character gate
+   * — so on the majority of screens, and on exactly the small local
+   * things that are nearest you (a statue, a memorial, a pub), the app
+   * republished a Wikipedia article verbatim beside two links to
+   * Wikipedia. App Review's words for this were "only includes links,
+   * images, or content aggregated from the Internet", cited three times,
+   * and read against that screen the sentence was simply accurate. No
+   * widget or geofence was ever going to outweigh an exhibit still on
+   * display.
+   */
+  const pushOwnStory = () => {
     if (options.tellingLead) {
       rows.push({ kind: 'telling-lead', key: 'telling-lead' });
     }
-    rows.push({ kind: 'fallback-article', key: 'fallback-article' });
+    rows.push({ kind: 'source-link', key: 'source-link' });
   };
 
   if (!hasArticle && storyMissing && relics.length > 0) {
@@ -110,7 +123,6 @@ export function buildGazetteerRows(options: {
 
   if (hasArticle) {
     if (retoldStatus === 'ready' && retold) {
-      rows.push({ kind: 'ai-label', key: 'ai-label' });
       if ((retold.timeline ?? []).length > 0) {
         rows.push({ kind: 'timeline', key: 'timeline', stops: retold.timeline });
       }
@@ -119,9 +131,15 @@ export function buildGazetteerRows(options: {
           (part, index): GazetteerRow => ({ kind: 'part', key: `part-${index}`, part, index })
         )
       );
-      // After the telling, the way to the source: a link out to the
-      // Wikipedia page (Edd's ruling — no inline door, no second copy
-      // of the article behind it)
+      // The byline, then the citation. The label led the whole screen
+      // until now, so the first line of every retold place announced the
+      // story as AI output over a web page — which is the reviewer's
+      // conclusion, volunteered. Under the piece it is the same
+      // disclosure doing the same job, in the place a byline goes.
+      // (While a retelling is still STREAMING it stays at the top: there
+      // it is news rather than attribution — the story is being written
+      // for you as you watch.)
+      rows.push({ kind: 'ai-label', key: 'ai-label' });
       rows.push({ kind: 'source-link', key: 'source-link' });
     } else if (retoldStatus === 'streaming' || retoldStatus === 'halted') {
       // A live stream: the label lands with the first part; the story
@@ -132,7 +150,7 @@ export function buildGazetteerRows(options: {
         if (retoldStatus === 'streaming') {
           rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
         } else {
-          pushFallbackArticle();
+          pushOwnStory();
         }
       } else {
         rows.push({ kind: 'ai-label', key: 'ai-label' });
@@ -150,8 +168,8 @@ export function buildGazetteerRows(options: {
     } else if (retoldStatus === 'pending') {
       rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
     } else {
-      // No retelling exists: the original article stands as the story
-      pushFallbackArticle();
+      // No retelling exists: our telling is the story, the source is cited
+      pushOwnStory();
     }
   }
 
@@ -543,15 +561,6 @@ export function AreaGazetteer({
     [rows]
   );
 
-  const intro = useMemo(
-    () => article?.chapters.find((chapter) => chapter.title === '')?.paragraphs ?? [],
-    [article]
-  );
-  const chapters = useMemo(
-    () => article?.chapters.filter((chapter) => chapter.title !== '') ?? [],
-    [article]
-  );
-
   // Where "Read more on Wikipedia" points: places pass the item's own
   // URL; areas fetch their article by name alone, so the link derives
   // from the title (Wikipedia resolves spacing and redirects itself).
@@ -639,21 +648,6 @@ export function AreaGazetteer({
         );
       case 'telling-lead':
         return tellingItem ? <TellingLead item={tellingItem} /> : null;
-      case 'fallback-article':
-        // No retelling earned this place (a short article, under the
-        // MinSourceChars gate): the original stands AS the story, in
-        // full. The eyebrow frames it as deliberate (not a retelling
-        // that failed to load — device-triaged: the Spanish Galleon),
-        // and the link out reaches the source, which holds more than we
-        // parse (the reference apparatus, every image).
-        return (
-          <ArticleBody
-            intro={intro}
-            chapters={chapters}
-            label="From Wikipedia"
-            sourceUrl={sourceUrl}
-          />
-        );
       case 'source-link':
         // The telling read, the source one tap away — in the browser,
         // not behind an inline door (Edd's ruling)
@@ -682,9 +676,6 @@ export function AreaGazetteer({
       partParagraphs,
       linkPlan,
       tellingItem,
-      intro,
-      chapters,
-      sourceUrl,
       articleUrl,
     ]
   );
@@ -809,40 +800,6 @@ export function AreaGazetteer({
   );
 }
 
-/**
- * The Wikipedia article as the story body — shared by the two rows
- * shows it: the `fallback-article` row, where no retelling exists and
- * the original stands as the story, labelled by its eyebrow.
- */
-function ArticleBody({
-  intro,
-  chapters,
-  label,
-  sourceUrl,
-}: {
-  intro: string[];
-  chapters: ArticleChapter[];
-  label?: string;
-  /** When set, a "Read more on Wikipedia" link out follows the body. */
-  sourceUrl?: string;
-}) {
-  return (
-    <View style={styles.article}>
-      {label && (
-        <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.articleLabel}>
-          {label}
-        </ThemedText>
-      )}
-      {intro.map((paragraph, index) => (
-        <ThemedText key={index} type="default" style={styles.para}>
-          {paragraph}
-        </ThemedText>
-      ))}
-      <ChapterFolds chapters={chapters} />
-      {sourceUrl && <WikipediaLinkRow href={sourceUrl} />}
-    </View>
-  );
-}
 
 /** The one way out to the source, wherever it stands: opens the Wikipedia
  * page in the browser. `standalone` carries its own side margins for
@@ -868,11 +825,16 @@ function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boo
           standalone ? styles.linkRowStandalone : styles.sourceLink,
           { backgroundColor: theme.accentSoft },
         ])}>
+        {/* ONE label, and it reads as attribution rather than an
+            invitation. It used to be two ("Read more on Wikipedia ›" over
+            "Wikipedia · source") on a screen whose meta line already
+            named the source — three mentions of Wikipedia, on an app
+            being cited under a guideline about collections of links. And
+            "read more" framed the source as the fuller product, which is
+            the opposite of what is true now that our own writing is the
+            story. */}
         <ThemedText type="smallBold" themeColor="accent">
-          Read more on Wikipedia ›
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          Wikipedia · source
+          Source: Wikipedia ›
         </ThemedText>
       </Pressable>
     </ExternalLink>

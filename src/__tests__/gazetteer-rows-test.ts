@@ -33,19 +33,22 @@ describe('buildGazetteerRows', () => {
       retold,
       relics: [relic(1, 'Palace of Placentia')],
     });
+    // The label is a BYLINE now — under the piece, above the citation.
+    // It used to lead the screen, so the first line of every retold place
+    // announced it as AI output over a web page.
     expect(rows.map((row) => row.kind)).toEqual([
-      'ai-label',
       'timeline',
       'part',
       'part',
       'part',
+      'ai-label',
       'source-link',
       'section',
       'relic',
     ]);
   });
 
-  test('pending shows the shimmer, not the fallback; failed shows the original article', () => {
+  test('pending shows the shimmer; no retelling shows OUR story and cites the source', () => {
     const pending = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'pending',
@@ -60,7 +63,11 @@ describe('buildGazetteerRows', () => {
       retold: null,
       relics: [],
     });
-    expect(failed.map((row) => row.kind)).toEqual(['fallback-article']);
+    // Never the source article's body. Eleven of the twenty nearest
+    // Greenwich places fall under the 3,000-char retelling gate, so this
+    // branch was republishing Wikipedia verbatim on the MAJORITY of
+    // screens — which is what App Review kept citing 4.2.2 for.
+    expect(failed.map((row) => row.kind)).toEqual(['source-link']);
   });
 
   test('streaming: the label lands with the first part; the story grows part by part', () => {
@@ -101,7 +108,7 @@ describe('buildGazetteerRows', () => {
     });
     expect(rows.map((row) => row.kind)).toEqual(['ai-label', 'part', 'retelling-halted']);
 
-    // Halted before anything arrived: the original article stands
+    // Halted before anything arrived: our story stands, source cited
     const nothing = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'halted',
@@ -109,10 +116,10 @@ describe('buildGazetteerRows', () => {
       streamedParts: [],
       relics: [],
     });
-    expect(nothing.map((row) => row.kind)).toEqual(['fallback-article']);
+    expect(nothing.map((row) => row.kind)).toEqual(['source-link']);
   });
 
-  test('a place with a telling to hand: the telling leads the fallback article', () => {
+  test('a place with a telling to hand: the telling IS the story, then the citation', () => {
     const rows = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'none',
@@ -120,10 +127,10 @@ describe('buildGazetteerRows', () => {
       relics: [],
       tellingLead: true,
     });
-    expect(rows.map((row) => row.kind)).toEqual(['telling-lead', 'fallback-article']);
+    expect(rows.map((row) => row.kind)).toEqual(['telling-lead', 'source-link']);
   });
 
-  test('the telling lead also opens a halted-before-anything fallback', () => {
+  test('a halted-before-anything retelling gets the same treatment', () => {
     const rows = buildGazetteerRows({
       hasArticle: true,
       retoldStatus: 'halted',
@@ -132,7 +139,22 @@ describe('buildGazetteerRows', () => {
       relics: [],
       tellingLead: true,
     });
-    expect(rows.map((row) => row.kind)).toEqual(['telling-lead', 'fallback-article']);
+    expect(rows.map((row) => row.kind)).toEqual(['telling-lead', 'source-link']);
+  });
+
+  test('no row anywhere renders the source article body', () => {
+    // The rule, fenced: whatever the state, the app shows its own writing
+    // and a citation — never a copy of the page it read
+    for (const retoldStatus of ['pending', 'streaming', 'ready', 'halted', 'none'] as const) {
+      const rows = buildGazetteerRows({
+        hasArticle: true,
+        retoldStatus,
+        retold: retoldStatus === 'ready' ? { parts: [], minutes: 1, timeline: [] } : null,
+        relics: [],
+        tellingLead: true,
+      });
+      expect(rows.map((row) => row.kind)).not.toContain('fallback-article');
+    }
   });
 
   test('a READY retelling never doubles up with a telling lead', () => {
@@ -144,11 +166,11 @@ describe('buildGazetteerRows', () => {
       tellingLead: true,
     });
     expect(rows.map((row) => row.kind)).toEqual([
-      'ai-label',
       'timeline',
       'part',
       'part',
       'part',
+      'ai-label',
       'source-link',
     ]);
   });
@@ -194,8 +216,9 @@ describe('partRowIndex (a tapped year finds its part)', () => {
       retold,
       relics: [],
     });
-    // ai-label, timeline, part0 → part 2 (1-based) sits at row 3
-    expect(partRowIndex(rows, 2)).toBe(3);
+    // timeline, part0 → part 2 (1-based) sits at row 2, one earlier than
+    // before: the ai-label byline moved out from the top of the screen
+    expect(partRowIndex(rows, 2)).toBe(2);
     expect(rows[partRowIndex(rows, 2)]).toMatchObject({ kind: 'part', index: 1 });
     expect(partRowIndex(rows, 99)).toBe(-1);
   });
