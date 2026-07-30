@@ -131,11 +131,20 @@ function QuizBody({
           }))
       : null;
 
+  // With location denied the center is the FALLBACK — central London —
+  // not the reader. A quiz about Charing Cross, served without comment to
+  // someone in Cupertino who tapped "Not now", is nonsense wearing a
+  // straight face (and denying location is the first thing an App Review
+  // reviewer does). Say what is needed instead, and spend nothing.
+  // Exploring is different and stays: a pinned place is somewhere the
+  // reader CHOSE, and quizzing it is the point of exploring.
+  const denied = Boolean(locationDenied);
+
   // Ask only once BOTH have settled: before the area is named the quiz
   // would be keyed to a placeholder, and before the feed lands it would
   // be set from three stories when twelve were coming.
   const askKey =
-    stories && areaSettled && areaName
+    !denied && stories && areaSettled && areaName
       ? `${areaName}:${stories.map((story) => story.pageId).join(',')}:${attempt}`
       : null;
 
@@ -205,9 +214,21 @@ function QuizBody({
           <ThemedText type="eyebrow" themeColor="textSecondary">
             Test yourself on
           </ThemedText>
-          <ThemedText type="largeTitle">{areaLabel ?? 'this ground'}</ThemedText>
+          <ThemedText type="largeTitle">
+            {denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
+          </ThemedText>
 
-          {resolved === 'loading' && (
+          {denied && (
+            <View style={styles.centered} testID="quiz-denied">
+              <WanderLine arcSpan={52} stroke={6} count={4} color={theme.accent} />
+              <ThemedText type="small" themeColor="textSecondary" style={styles.emptyCopy}>
+                Venture sets its quiz from the history around you, so it needs your location —
+                or a place searched on the Nearby tab.
+              </ThemedText>
+            </View>
+          )}
+
+          {!denied && resolved === 'loading' && (
             <View style={styles.centered} testID="quiz-loading">
               <ActivityIndicator color={theme.accent} />
               <ThemedText type="small" themeColor="textSecondary">
@@ -216,7 +237,7 @@ function QuizBody({
             </View>
           )}
 
-          {resolved === 'error' && (
+          {!denied && resolved === 'error' && (
             <View style={styles.centered} testID="quiz-error">
               <ThemedText type="small" themeColor="textSecondary">
                 Couldn’t set the quiz right now.
@@ -230,7 +251,7 @@ function QuizBody({
           {/* The floor: too little recorded history here to ask about it
               honestly. Words and a wander line, the same answer the empty
               feed gives — never a blank tab. */}
-          {resolved === 'none' && (
+          {!denied && resolved === 'none' && (
             <View style={styles.centered} testID="quiz-none">
               <WanderLine arcSpan={52} stroke={6} count={4} color={theme.accent} />
               <ThemedText type="small" themeColor="textSecondary" style={styles.emptyCopy}>
@@ -240,7 +261,7 @@ function QuizBody({
             </View>
           )}
 
-          {resolved === 'ready' && quiz && (
+          {!denied && resolved === 'ready' && quiz && (
             <QuizGuard onRetry={retry}>
               <QuizRun quiz={quiz} pointing={pointing} key={quiz.areaName} />
             </QuizGuard>

@@ -225,6 +225,31 @@ describe('<QuizScreen />', () => {
       expect(mockFetchQuiz).not.toHaveBeenCalled();
     });
 
+    test('location denied: says what it needs, quizzes NOTHING — never Charing Cross', async () => {
+      // The fallback center is central London. Without this state a
+      // reviewer in Cupertino who tapped "Not now" was served "Test
+      // yourself on Charing Cross" with no explanation.
+      mockGate.locationDenied = true;
+
+      await render(<QuizScreen />);
+
+      expect(await screen.findByTestId('quiz-denied')).toBeOnTheScreen();
+      expect(screen.getByText('wherever you are')).toBeOnTheScreen();
+      // The fallback's area label must not surface…
+      expect(screen.queryByText('Greenwich')).toBeNull();
+      // …and nothing is spent finding out about a place nobody is at
+      expect(mockFetchQuiz).not.toHaveBeenCalled();
+    });
+
+    test('exploring a pinned place still quizzes it — that is the point of exploring', async () => {
+      mockGate.exploring = true;
+
+      await render(<QuizScreen />);
+
+      expect(await screen.findByTestId('quiz-run')).toBeOnTheScreen();
+      expect(mockFetchQuiz).toHaveBeenCalled();
+    });
+
     test('a failure offers Try again, never a blank tab', async () => {
       mockFetchQuiz.mockRejectedValue(new Error('breaker open'));
       await render(<QuizScreen />);
@@ -373,13 +398,16 @@ describe('the pointing question', () => {
     expect(screen.queryByTestId('quiz-direction')).toBeNull();
   });
 
-  test('not with location denied — the center is the fallback, not the reader', async () => {
+  test('not with location denied — no quiz at all now, not just no pointing', async () => {
+    // Superseded twice over: denied used to run the written questions
+    // against the fallback center (Charing Cross). Now the whole tab
+    // says what it needs instead.
     withAPointableStory();
     mockGate.locationDenied = true;
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
 
-    expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
+    expect(await screen.findByTestId('quiz-denied')).toBeOnTheScreen();
+    expect(screen.queryByTestId('quiz-run')).toBeNull();
   });
 
   test('nothing far enough away, no pointing question', async () => {
