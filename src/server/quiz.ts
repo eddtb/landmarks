@@ -35,10 +35,28 @@ const SourceCharsPerStory = 1200;
  * gun was cast in 1790-91 (AH 1212) in…" — which renders as a broken
  * sentence in the citation link the question hangs off. Such a record
  * also makes a poorer question subject than a named place, so it is
- * dropped before the model ever sees it. Well clear of real names:
- * "Statue of Sir Walter Raleigh" is 28.
+ * dropped before the model ever sees it.
+ *
+ * Two signals, because the first attempt at this used only the length
+ * and the live route still cited the gun: the feed hands over titles
+ * ALREADY truncated (that one arrives at 57 characters), so length alone
+ * cannot see it. A trailing ellipsis means the title was cut, and a cut
+ * title is never a name. The cap then catches the untruncated ones,
+ * staying well clear of real names — "Statue of Sir Walter Raleigh" is
+ * 28.
  */
 const MaxTitleChars = 70;
+
+/** A name is not a sentence that ran out of room. */
+function isNamedPlace(title: string): boolean {
+  const trimmed = title.trim();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= MaxTitleChars &&
+    !trimmed.endsWith('…') &&
+    !trimmed.endsWith('...')
+  );
+}
 /** The nearest dozen: the ground you are on, not the whole 3km. */
 const MaxStories = 12;
 
@@ -210,10 +228,7 @@ export async function getQuiz(
   subjects: QuizSubject[]
 ): Promise<Quiz | null> {
   const usable = subjects
-    .filter(
-      (subject) =>
-        subject.extract.trim().length > 0 && subject.title.trim().length <= MaxTitleChars
-    )
+    .filter((subject) => subject.extract.trim().length > 0 && isNamedPlace(subject.title))
     .slice(0, MaxStories);
   // The floor, before any key or call: no stories, no quiz
   if (usable.length < MinStoriesToQuiz) {
