@@ -1,0 +1,130 @@
+/**
+ * The map that answers 4.2.2: a native map of where you are, on the
+ * first screen, with a pin per walkable story. What matters is that the
+ * pins ARE the stories (a pin that opens the wrong article is worse
+ * than no map) and that the nearest dozen frame the walk rather than
+ * the whole 3km feed.
+ */
+import { render, screen } from '@testing-library/react-native';
+
+import { StoriesMap } from '@/components/stories-map';
+import { HistoryItem } from '@/types/history';
+
+// jest-setup mocks expo-maps globally, but only so screens can render;
+// these tests assert what the native map is HANDED, so they need the
+// props kept rather than passed to a View (expo-maps' own props don't
+// include testID, so there is nothing to query them by).
+const mockMapProps: Record<string, unknown>[] = [];
+jest.mock('expo-maps', () => {
+  // Renders nothing: what is asserted is the props, and the frame
+  // around the map is what tells us a map was placed at all.
+  const Fake = (props: Record<string, unknown>) => {
+    mockMapProps.push(props);
+    return null;
+  };
+  return { AppleMaps: { View: Fake }, GoogleMaps: { View: Fake } };
+});
+
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockPush(...args) } }));
+
+const center = { latitude: 51.4226, longitude: -0.0685 };
+
+const story = (pageId: number, title: string, metres: number): HistoryItem => ({
+  pageId,
+  title,
+  coordinates: { latitude: 51.4226 + metres / 111_000, longitude: -0.0685 },
+  distanceMeters: metres,
+  url: `https://en.wikipedia.org/wiki/${title.replace(/ /g, '_')}`,
+  source: 'Wikipedia',
+});
+
+beforeEach(() => {
+  mockMapProps.length = 0;
+  jest.clearAllMocks();
+});
+
+/** What the native map was handed. */
+const mapProps = () => mockMapProps[mockMapProps.length - 1];
+
+describe('StoriesMap', () => {
+  test('one pin per story, carrying the pageId that opens it', async () => {
+    const items = [story(1, 'Crystal Palace Bowl', 161), story(2, 'Crystal Palace Park', 222)];
+
+    await render(<StoriesMap items={items} center={center} />);
+
+    const markers = mapProps().markers as { id: string; title: string }[];
+    expect(markers).toHaveLength(2);
+    expect(markers.map((marker) => marker.id)).toEqual(['1', '2']);
+    expect(markers.map((marker) => marker.title)).toEqual([
+      'Crystal Palace Bowl',
+      'Crystal Palace Park',
+    ]);
+  });
+
+  test('a story pin is not mistakable for the position dot', async () => {
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} center={center} />);
+
+    // The dot is the same brand accent, so a bare violet pin differed
+    // from "me" only by having a tail — the glyph is what separates them
+    const markers = mapProps().markers as { systemImage: string; tintColor: string }[];
+    expect(markers[0].systemImage).toBe('building.columns');
+    expect(markers[0].tintColor).toBeTruthy();
+  });
+
+  test('tapping a pin opens THAT story — the id is the route parameter', async () => {
+    await render(<StoriesMap items={[story(4242, 'Crystal Palace Dinosaurs', 300)]} center={center} />);
+
+    const onMarkerClick = mapProps().onMarkerClick as (marker: { id?: string }) => void;
+    onMarkerClick({ id: '4242' });
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/history/[pageId]',
+      params: { pageId: '4242' },
+    });
+  });
+
+  test('a pin with no id routes nowhere rather than to a broken screen', async () => {
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} center={center} />);
+
+    (mapProps().onMarkerClick as (marker: { id?: string }) => void)({});
+
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  test('the nearest dozen only: the deep feed must not zoom the map to a smudge', async () => {
+    const deep = Array.from({ length: 150 }, (_, i) => story(i + 1, `Story ${i + 1}`, 50 + i * 20));
+
+    await render(<StoriesMap items={deep} center={center} />);
+
+    const markers = mapProps().markers as { id: string }[];
+    expect(markers).toHaveLength(12);
+    // Distance-sorted by the feed, so the dozen is the NEAREST dozen
+    expect(markers[0].id).toBe('1');
+    expect(markers[11].id).toBe('12');
+  });
+
+  test('your own position is on the map, and the camera frames it with the pins', async () => {
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 900)]} center={center} />);
+
+    const properties = mapProps().properties as {
+      isMyLocationEnabled: boolean;
+      selectionEnabled: boolean;
+    };
+    expect(properties.isMyLocationEnabled).toBe(true);
+    // Off: a tapped pin otherwise stayed drawn at ~3x over its neighbour
+    // after returning from the story (caught on the simulator)
+    expect(properties.selectionEnabled).toBe(false);
+    const camera = mapProps().cameraPosition as { coordinates: { latitude: number }; zoom: number };
+    // Centred BETWEEN you and the story, not on either one
+    expect(camera.coordinates.latitude).toBeGreaterThan(center.latitude);
+    expect(camera.zoom).toBeGreaterThan(0);
+  });
+
+  test('no stories, no map — an empty frame would just be a grey box', async () => {
+    await render(<StoriesMap items={[]} center={center} />);
+
+    expect(screen.queryByTestId('stories-map')).toBeNull();
+    expect(mockMapProps).toHaveLength(0);
+  });
+});

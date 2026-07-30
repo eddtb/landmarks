@@ -97,9 +97,17 @@ for panel in panels {
            font: NSFont.systemFont(ofSize: 41, weight: .medium), color: panel.mutedColor, lineSpacing: 5)
 
   let shotTop: CGFloat = 645
-  let shotWidth: CGFloat = 1150
-  let shotHeight = shotWidth * CGFloat(height) / CGFloat(width)
-  let shotRect = topRect(x: 85, y: shotTop, width: shotWidth, height: shotHeight)
+  let shotBottom: CGFloat = 120
+  let shotHeight = CGFloat(height) - shotTop - shotBottom
+  let shotWidth = shotHeight * CGFloat(width) / CGFloat(height)
+  let shotX = (CGFloat(width) - shotWidth) / 2
+  let shotRect = topRect(x: shotX, y: shotTop, width: shotWidth, height: shotHeight)
+
+  precondition(
+    shotRect.minX >= 0 && shotRect.minY >= 0 &&
+    shotRect.maxX <= CGFloat(width) && shotRect.maxY <= CGFloat(height),
+    "Screenshot must fit entirely within the marketing canvas"
+  )
 
   NSGraphicsContext.saveGraphicsState()
   let shadow = NSShadow()

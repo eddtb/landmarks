@@ -9,7 +9,20 @@ import { HistoryItem } from '@/types/history';
 import { storyParagraphs } from '@/utils/format';
 import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
 
-/** The telling, spoken — or read, on clients without the native module. */
+/**
+ * The telling behind a press, for the extract story — a place with no
+ * article of its own, which in practice means an unresolved plaque.
+ *
+ * It stays a button here on purpose. The Gazetteer path leads with
+ * authored prose (a retelling, or TellingLead below), but this path's
+ * extract IS a plaque's inscription, and a telling written from an
+ * inscription speaks past the subject it is quoting — the same rule the
+ * Gazetteer's own tellingItem gate enforces. Promoting prose here was
+ * tried and reverted: the heading it introduced could not be reached
+ * (a Historic England item either resolves to a Wikipedia story or is
+ * dropped — see heritage.ts), and the one case that DID reach it was
+ * the inscription this rule exists to protect.
+ */
 
 type Status = 'idle' | 'writing' | 'ready' | 'speaking' | 'error' | 'engine-failed';
 
@@ -62,11 +75,11 @@ export function TellingSection({ item }: { item: HistoryItem }) {
           'Stop'
         : status === 'engine-failed'
           ? 'The speech engine failed — tap to retry (is silent mode on?)'
-        : status === 'error'
-          ? 'Couldn’t write the telling — try again'
-          : telling && speechAvailable
-            ? 'Listen again'
-            : 'Listen · about a minute';
+          : status === 'error'
+            ? 'Couldn’t write the telling — try again'
+            : telling && speechAvailable
+              ? 'Listen again'
+              : 'Listen · about a minute';
 
   return (
     <>
@@ -89,11 +102,17 @@ export function TellingSection({ item }: { item: HistoryItem }) {
 }
 
 /**
- * The auto-written lead above a fallback article: where no retelling
- * earned the place, the short telling opens the story instead of raw
- * Wikipedia. Writes itself on mount; failure renders nothing — the
- * full article below stands either way, the telling never gates the
- * read.
+ * Venture's own account of a place, and the opening of every story that
+ * isn't led by a full retelling: in the Gazetteer where no retelling
+ * earned the place, and on the story screen for a place with no article
+ * of its own (a plaque, a Historic England entry). Writes itself on
+ * mount — the authored prose is the first thing read, never something
+ * a tap has to reveal.
+ *
+ * Failure is spoken, not swallowed. It used to render null, which left
+ * the source extract standing alone as the entire story: the app
+ * looking like the aggregator it is not, exactly when App Review was
+ * citing 4.2.2 for that.
  */
 export function TellingLead({ item }: { item: HistoryItem }) {
   const [telling, setTelling] = useState<string | null>(null);
@@ -101,6 +120,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
   const [speaking, setSpeaking] = useState(false);
   const [engineFailed, setEngineFailed] = useState(false);
   const [itemFor, setItemFor] = useState<HistoryItem | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   // Adjust-during-render (the Gazetteer's own pattern): a new place
   // must not show the last one's telling while its own writes
@@ -133,7 +153,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
     return () => {
       active = false;
     };
-  }, [item]);
+  }, [item, attempt]);
 
   const toggle = async () => {
     if (speaking) {
@@ -153,8 +173,29 @@ export function TellingLead({ item }: { item: HistoryItem }) {
     setSpeaking(false);
   };
 
+  // Never silently: a telling that vanishes leaves the source extract
+  // standing alone as the whole story, which is the one thing this app
+  // is not. Say it failed and offer the retry.
   if (failed) {
-    return null;
+    return (
+      <View style={styles.lead} testID="telling-failed">
+        <ThemedText type="small" themeColor="textSecondary">
+          Couldn’t write the telling just now.
+        </ThemedText>
+        <Pressable
+          accessibilityRole="button"
+          testID="telling-retry"
+          onPress={() => {
+            setFailed(false);
+            setAttempt((previous) => previous + 1);
+          }}
+          hitSlop={Spacing.two}>
+          <ThemedText type="smallBold" themeColor="accent">
+            Write it again
+          </ThemedText>
+        </Pressable>
+      </View>
+    );
   }
   if (!telling) {
     return (
@@ -169,7 +210,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
         {/* Words, not glyphs (PR #186): no ✦ for VoiceOver to call
             "four-pointed star", and Stop is a word */}
         <ThemedText type="small" themeColor="textSecondary" style={styles.leadLabelText}>
-          Told by AI from Wikipedia — original below
+          Told by AI from {item.source} — source below
         </ThemedText>
         {speechAvailable && (
           // 16pt slop on the 20px label clears the 44pt target

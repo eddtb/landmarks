@@ -99,7 +99,7 @@ describe('<HistoryDetailScreen />', () => {
       screen.getByText('The compter held debtors two centuries before the railway ate it.')
     ).toBeOnTheScreen();
     // Words, not glyphs: no ✦ for VoiceOver to call "four-pointed star"
-    expect(screen.getByText('Told by AI from Wikipedia — original below')).toBeOnTheScreen();
+    expect(screen.getByText('Told by AI from Wikipedia — source below')).toBeOnTheScreen();
 
     // …and the original article still stands as the story IN FULL
     // beneath it: intro first, then the folds (first chapter open, the
@@ -359,5 +359,67 @@ describe('<HistoryDetailScreen />', () => {
     await render(<HistoryDetailScreen />);
 
     expect(await screen.findByText('This story could not be found.')).toBeOnTheScreen();
+  });
+
+  /**
+   * The telling is Venture's own prose, and the two things that matter
+   * about it here are that it names the source it was written from
+   * (a hardcoded "Wikipedia" became false the moment a resolved listed
+   * building rendered one) and that a failure is spoken rather than
+   * swallowed — returning null left the fetched article standing alone
+   * as the whole story, which is the aggregation 4.2.2 cites.
+   */
+  describe('the authored telling', () => {
+    const fetchTellingMock = jest.requireMock('@/data/telling-client')
+      .fetchTelling as jest.Mock;
+
+    beforeAll(() => {
+      cacheHistoryItems([
+        {
+          pageId: 77,
+          title: 'Ardencaple Castle',
+          coordinates: { latitude: 51.5045, longitude: -0.0905 },
+          distanceMeters: 90,
+          extract: 'A tower house held by the MacAulays, largely demolished in 1957.',
+          thumbnailUrl: 'https://upload.wikimedia.org/ardencaple.jpg',
+          url: 'https://en.wikipedia.org/wiki/Ardencaple_Castle',
+          // What heritage.ts actually badges a listed building with once
+          // its Wikipedia story is found — a real, reachable source string
+          source: 'Wikipedia \u00b7 Grade II listed',
+        },
+      ]);
+    });
+
+    test('names the source it was written from, not a hardcoded Wikipedia', async () => {
+      mockUseLocalSearchParams.mockReturnValue({ pageId: '77' });
+      await render(<HistoryDetailScreen />);
+
+      expect(await screen.findByTestId('telling-lead')).toBeOnTheScreen();
+      expect(
+        screen.getByText('Told by AI from Wikipedia \u00b7 Grade II listed \u2014 source below')
+      ).toBeOnTheScreen();
+
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+    });
+
+    test('a failed telling says so and offers the retry — it never leaves the source alone', async () => {
+      fetchTellingMock.mockRejectedValueOnce(new Error('breaker open'));
+      mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
+      await render(<HistoryDetailScreen />);
+
+      expect(await screen.findByTestId('telling-failed')).toBeOnTheScreen();
+      expect(screen.getByText('Couldn\u2019t write the telling just now.')).toBeOnTheScreen();
+      expect(screen.queryByTestId('telling-lead')).not.toBeOnTheScreen();
+
+      // The retry writes it — the authored prose arrives without a reload
+      fireEvent.press(screen.getByTestId('telling-retry'));
+
+      expect(await screen.findByTestId('telling-lead')).toBeOnTheScreen();
+      expect(
+        screen.getByText('The compter held debtors two centuries before the railway ate it.')
+      ).toBeOnTheScreen();
+
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+    });
   });
 });

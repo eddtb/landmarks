@@ -19,6 +19,7 @@ import { router } from 'expo-router';
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { ArrivalsInvitation } from '@/components/arrivals-invitation';
 import { HistoryCard } from '@/components/history-card';
+import { StoriesMap } from '@/components/stories-map';
 import { useOneDoorDismissed } from '@/components/one-door';
 import { OverflowMenu } from '@/components/overflow-menu';
 import { ThemedText } from '@/components/themed-text';
@@ -619,8 +620,14 @@ export function HistoryBody({
         // Featured scrolls away with the listings (Edd's call) — it's
         // the list's header, not the screen's. The negative margin
         // cancels the list padding so the rail bleeds edge to edge.
+        // The map leads it, on the same terms: visible without a scroll
+        // or a tap (App Review saw none of the native surfaces), and it
+        // scrolls away when you have chosen where to walk.
         ListHeaderComponent={
           <View style={styles.listHeader}>
+            <View style={styles.mapCard}>
+              <StoriesMap items={items} center={center} />
+            </View>
             <FeaturedRail items={state.items} excludePageId={standing?.pageId} />
           </View>
         }
@@ -687,6 +694,12 @@ const styles = StyleSheet.create({
     // insets and must scroll edge to edge
     marginHorizontal: -Spacing.four,
     marginBottom: Spacing.one,
+  },
+  mapCard: {
+    // The header cancels the list padding so the rail can bleed; the
+    // map is a card rather than a rail, so it takes that padding back
+    paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.three,
   },
   standing: {
     marginHorizontal: Spacing.four,
