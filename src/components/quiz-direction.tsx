@@ -47,10 +47,21 @@ export function QuizDirection({
   const [guess, setGuess] = useState<number | null>(null);
 
   // North pinned to the world, so the card counter-rotates under a fixed
-  // mark — the same treatment the compass dial gives its cardinal card
-  const cardStyle = useShortestArc(heading, (degrees) =>
-    available ? (360 - degrees) % 360 : null
-  );
+  // mark — the same treatment the compass dial gives its cardinal card.
+  //
+  // The 'worklet' directive is load-bearing, not decoration: this runs on
+  // the UI thread inside useAnimatedReaction, and without the directive
+  // the first magnetometer tick after mount calls an uncompiled function
+  // there — which is a CRASH in a release build. That is what killed the
+  // quiz on Edd's phone at the pointing question, four questions in.
+  // Jest runs worklets as plain JS and no simulator has a magnetometer,
+  // so no test or sim pass could ever have caught it: every callback
+  // handed to useShortestArc must carry the directive, as PointerDial's
+  // own all do.
+  const cardStyle = useShortestArc(heading, (degrees) => {
+    'worklet';
+    return available ? (360 - degrees) % 360 : null;
+  });
 
   // No magnetometer (a simulator, or an older device): say so plainly and
   // let the quiz finish rather than trapping the reader on a dead question

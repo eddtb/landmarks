@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { Component, ReactNode, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,6 +38,50 @@ type Phase = 'loading' | 'ready' | 'none' | 'error';
  * the whole feed was both wasteful and a hard failure in any dense area.
  */
 const QuizStories = 12;
+
+/**
+ * A crash in the quiz must not kill the tab. The pointing question is
+ * driven by a sensor no simulator has and worklets no test executes for
+ * real, so this is the one surface where a defect can reach a phone with
+ * every check green — it did once (a missing 'worklet' directive, fatal
+ * on the first magnetometer tick). The boundary turns the next one into
+ * words and a retry, and SHOWS the message so a report from a phone
+ * carries the diagnosis with it.
+ */
+class QuizGuard extends Component<
+  { children: ReactNode; onRetry?: () => void },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={styles.centered} testID="quiz-crashed">
+          <ThemedText type="small" themeColor="textSecondary">
+            The quiz hit a bug. ({this.state.error.message})
+          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            testID="quiz-crash-retry"
+            onPress={() => {
+              this.setState({ error: null });
+              // A fresh FETCH, not a re-render of the same broken data —
+              // re-mounting identical children just crashes identically
+              this.props.onRetry?.();
+            }}>
+            <ThemedText type="linkPrimary">Try again</ThemedText>
+          </Pressable>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export function QuizScreen() {
   return (
@@ -197,7 +241,9 @@ function QuizBody({
           )}
 
           {resolved === 'ready' && quiz && (
-            <QuizRun quiz={quiz} pointing={pointing} key={quiz.areaName} />
+            <QuizGuard onRetry={retry}>
+              <QuizRun quiz={quiz} pointing={pointing} key={quiz.areaName} />
+            </QuizGuard>
           )}
         </ScrollView>
       </SafeAreaView>

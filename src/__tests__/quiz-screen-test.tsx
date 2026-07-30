@@ -394,3 +394,26 @@ describe('the pointing question', () => {
     expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
   });
 });
+
+describe('the quiz guard', () => {
+  test('a crash in the run becomes words and a retry, never a dead tab', async () => {
+    // A quiz shaped to blow up in render: options missing entirely
+    mockFetchQuiz.mockResolvedValue({
+      areaName: 'Greenwich',
+      questions: [{ ...quiz.questions[0], options: undefined }],
+    });
+    // The boundary logs the error it catches; keep the test output quiet
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await render(<QuizScreen />);
+
+    expect(await screen.findByTestId('quiz-crashed')).toBeOnTheScreen();
+    // The message rides along, so a report from a phone carries a diagnosis
+    expect(screen.getByText(/The quiz hit a bug\./)).toBeOnTheScreen();
+
+    // …and the retry re-renders instead of leaving a corpse
+    mockFetchQuiz.mockResolvedValue(quiz);
+    fireEvent.press(screen.getByTestId('quiz-crash-retry'));
+    expect(await screen.findByTestId('quiz-run')).toBeOnTheScreen();
+  });
+});
