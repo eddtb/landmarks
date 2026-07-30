@@ -1,16 +1,31 @@
 import { parseRetold, retoldPrompt } from '@/server/retold';
 
-describe('retoldPrompt (the long-form contract)', () => {
-  const prompt = retoldPrompt('Greenwich', 'Some source text.');
+describe('retoldPrompt (the long-form contract, scaled to its source)', () => {
+  // Rich source: the full long-read ask
+  const long = retoldPrompt('Greenwich', 'x'.repeat(6000));
+  // 1,500-3,000 chars — the places the dropped gate newly admits. The
+  // old fixed ask (6-9 parts, 1,200-1,800 words) aimed at THIS source
+  // would be an instruction to invent.
+  const short = retoldPrompt('Greenwich', 'x'.repeat(1700));
 
-  test('carries the organisation, honesty and length rules', () => {
-    expect(prompt).toContain('6 to 9 parts');
-    expect(prompt).toContain('most surprising true thing');
-    expect(prompt).toContain('Use ONLY facts from the source text');
-    expect(prompt).toContain('1,200-1,800 words');
-    expect(prompt).toContain('copied EXACTLY');
-    expect(prompt).toContain('timeline');
-    expect(prompt).toContain('Some source text.');
+  test('a rich source carries the full organisation, honesty and length rules', () => {
+    expect(long).toContain('6 to 9 parts');
+    expect(long).toContain('most surprising true thing');
+    expect(long).toContain('Use ONLY facts from the source text');
+    expect(long).toContain('1,200-1,800 words');
+    expect(long).toContain('copied EXACTLY');
+    expect(long).toContain('4 to 6 pivotal dated moments');
+  });
+
+  test('a short source is asked for a SHORT original account, never a padded one', () => {
+    expect(short).toContain('3 to 5 parts');
+    expect(short).toContain('350-700 words');
+    expect(short).toContain('2 to 4 pivotal dated moments');
+    expect(short).toContain('Never pad');
+    // The honesty rules do not scale away
+    expect(short).toContain('Use ONLY facts from the source text');
+    expect(short).toContain('most surprising true thing');
+    // …and 3 parts still clears parseRetold's floor of 3
   });
 });
 
