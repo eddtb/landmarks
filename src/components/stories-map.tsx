@@ -1,12 +1,13 @@
 import { AppleMaps, GoogleMaps } from 'expo-maps';
 import { router } from 'expo-router';
-import { Platform, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { LayoutChangeEvent, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
-import { cameraForRoute } from '@/utils/route-camera';
+import { cameraForPins } from '@/utils/route-camera';
 
 /**
  * The ground around you as a native map: your own position, and a pin
@@ -31,8 +32,16 @@ import { cameraForRoute } from '@/utils/route-camera';
  * nearest dozen is the walk you are actually deciding about. */
 const MaxPins = 12;
 
+/** The same 220pt card the route map uses — one map shape in the app. */
+const MapHeight = 220;
+
 export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Coordinates }) {
   const theme = useTheme();
+  // The camera has to fit the card, so it needs the card's real size.
+  // The window width is the opening estimate; onLayout corrects it once,
+  // before the tiles have finished drawing.
+  const { width: windowWidth } = useWindowDimensions();
+  const [frame, setFrame] = useState({ width: windowWidth, height: MapHeight });
 
   // Already distance-sorted by the feed; slice is the nearest dozen
   const pinned = items.slice(0, MaxPins);
@@ -40,14 +49,27 @@ export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Co
     return null;
   }
 
+  const onLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setFrame((previous) =>
+      Math.abs(previous.width - width) < 1 && Math.abs(previous.height - height) < 1
+        ? previous
+        : { width, height }
+    );
+  };
+
   // Frame your position AND the pins, so the map opens on the walk
   // rather than on an arbitrary centre
-  const camera = cameraForRoute([center, ...pinned.map((item) => item.coordinates)]);
+  const camera = cameraForPins({
+    points: [center, ...pinned.map((item) => item.coordinates)],
+    widthPixels: frame.width,
+    heightPixels: frame.height,
+  });
+
   const markers = pinned.map((item) => ({
     id: String(item.pageId),
     coordinates: item.coordinates,
     title: item.title,
-    tintColor: theme.accent,
   }));
 
   // The marker object comes back as the event payload, so the id it
@@ -58,15 +80,28 @@ export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Co
     }
   };
 
+  // `selectionEnabled` is about selecting map FEATURES, not markers
+  // (onMarkerClick is independent of it) — and left on, a tapped pin
+  // stayed drawn at ~3x over its neighbour after you came back from the
+  // story. Nothing here needs Apple's place cards either.
+  const properties = { isMyLocationEnabled: true, selectionEnabled: false };
+
   return (
-    <View style={styles.frame} testID="stories-map">
+    <View style={styles.frame} testID="stories-map" onLayout={onLayout}>
       {Platform.OS === 'ios' ? (
         <AppleMaps.View
           style={styles.map}
           cameraPosition={camera ?? undefined}
-          markers={markers}
+          // A story wears the brand violet AND a building glyph: the
+          // position dot is the same accent, and a bare violet pin was
+          // distinguishable from "me" only by having a tail.
+          markers={markers.map((marker) => ({
+            ...marker,
+            tintColor: theme.accent,
+            systemImage: 'building.columns',
+          }))}
           onMarkerClick={openStory}
-          properties={{ isMyLocationEnabled: true, selectionEnabled: true }}
+          properties={properties}
         />
       ) : (
         <GoogleMaps.View
@@ -74,7 +109,7 @@ export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Co
           cameraPosition={camera ?? undefined}
           markers={markers}
           onMarkerClick={openStory}
-          properties={{ isMyLocationEnabled: true, selectionEnabled: true }}
+          properties={properties}
         />
       )}
     </View>
@@ -83,8 +118,7 @@ export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Co
 
 const styles = StyleSheet.create({
   frame: {
-    // The same 220pt card the route map uses — one map shape in the app
-    height: 220,
+    height: MapHeight,
     borderRadius: Spacing.three,
     borderCurve: 'continuous',
     overflow: 'hidden',

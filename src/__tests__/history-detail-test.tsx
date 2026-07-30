@@ -362,13 +362,14 @@ describe('<HistoryDetailScreen />', () => {
   });
 
   /**
-   * App Store 4.2.2 cites "content aggregated from the Internet". The
-   * answer is that Venture writes its own account of a place — so that
-   * account must be the first prose on the screen, on every path, with
-   * the source clearly secondary. It used to be a Listen button here,
-   * which left the fetched extract standing as the story.
+   * The telling is Venture's own prose, and the two things that matter
+   * about it here are that it names the source it was written from
+   * (a hardcoded "Wikipedia" became false the moment a resolved listed
+   * building rendered one) and that a failure is spoken rather than
+   * swallowed — returning null left the fetched article standing alone
+   * as the whole story, which is the aggregation 4.2.2 cites.
    */
-  describe('the authored telling opens the story', () => {
+  describe('the authored telling', () => {
     const fetchTellingMock = jest.requireMock('@/data/telling-client')
       .fetchTelling as jest.Mock;
 
@@ -380,49 +381,34 @@ describe('<HistoryDetailScreen />', () => {
           coordinates: { latitude: 51.5045, longitude: -0.0905 },
           distanceMeters: 90,
           extract: 'A tower house held by the MacAulays, largely demolished in 1957.',
-          url: 'https://historicengland.org.uk/listing/the-list/list-entry/1234567',
-          source: 'Historic England',
+          thumbnailUrl: 'https://upload.wikimedia.org/ardencaple.jpg',
+          url: 'https://en.wikipedia.org/wiki/Ardencaple_Castle',
+          // What heritage.ts actually badges a listed building with once
+          // its Wikipedia story is found — a real, reachable source string
+          source: 'Wikipedia \u00b7 Grade II listed',
         },
       ]);
     });
 
-    test('a place with no article of its own still opens with our prose, not a button', async () => {
-      // No Wikipedia article → the Gazetteer is empty and ExtractStory
-      // stands. This is the path that used to show a bare Listen button.
-      (fetchArticle as jest.Mock).mockResolvedValueOnce(null);
-      (fetchRetold as jest.Mock).mockResolvedValueOnce(null);
+    test('names the source it was written from, not a hardcoded Wikipedia', async () => {
       mockUseLocalSearchParams.mockReturnValue({ pageId: '77' });
       await render(<HistoryDetailScreen />);
 
-      // Written on mount — no tap revealed it
       expect(await screen.findByTestId('telling-lead')).toBeOnTheScreen();
       expect(
-        screen.getByText('The compter held debtors two centuries before the railway ate it.')
-      ).toBeOnTheScreen();
-
-      // Attributed to ITS source, not a hardcoded Wikipedia
-      expect(screen.getByText('Told by AI from Historic England — source below')).toBeOnTheScreen();
-
-      // …and the fetched extract is framed as the secondary record
-      expect(screen.getByText('From the record')).toBeOnTheScreen();
-      expect(
-        screen.getByText('A tower house held by the MacAulays, largely demolished in 1957.')
+        screen.getByText('Told by AI from Wikipedia \u00b7 Grade II listed \u2014 source below')
       ).toBeOnTheScreen();
 
       await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
     });
 
     test('a failed telling says so and offers the retry — it never leaves the source alone', async () => {
-      // The old behaviour returned null here, so a quota blip left the
-      // extract as the entire story: the aggregator we are denying being
-      (fetchArticle as jest.Mock).mockResolvedValueOnce(null);
-      (fetchRetold as jest.Mock).mockResolvedValueOnce(null);
       fetchTellingMock.mockRejectedValueOnce(new Error('breaker open'));
-      mockUseLocalSearchParams.mockReturnValue({ pageId: '77' });
+      mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
       await render(<HistoryDetailScreen />);
 
       expect(await screen.findByTestId('telling-failed')).toBeOnTheScreen();
-      expect(screen.getByText('Couldn’t write the telling just now.')).toBeOnTheScreen();
+      expect(screen.getByText('Couldn\u2019t write the telling just now.')).toBeOnTheScreen();
       expect(screen.queryByTestId('telling-lead')).not.toBeOnTheScreen();
 
       // The retry writes it — the authored prose arrives without a reload

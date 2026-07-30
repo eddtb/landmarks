@@ -62,6 +62,16 @@ describe('StoriesMap', () => {
     ]);
   });
 
+  test('a story pin is not mistakable for the position dot', async () => {
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} center={center} />);
+
+    // The dot is the same brand accent, so a bare violet pin differed
+    // from "me" only by having a tail — the glyph is what separates them
+    const markers = mapProps().markers as { systemImage: string; tintColor: string }[];
+    expect(markers[0].systemImage).toBe('building.columns');
+    expect(markers[0].tintColor).toBeTruthy();
+  });
+
   test('tapping a pin opens THAT story — the id is the route parameter', async () => {
     await render(<StoriesMap items={[story(4242, 'Crystal Palace Dinosaurs', 300)]} center={center} />);
 
@@ -97,9 +107,14 @@ describe('StoriesMap', () => {
   test('your own position is on the map, and the camera frames it with the pins', async () => {
     await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 900)]} center={center} />);
 
-    expect((mapProps().properties as { isMyLocationEnabled: boolean }).isMyLocationEnabled).toBe(
-      true
-    );
+    const properties = mapProps().properties as {
+      isMyLocationEnabled: boolean;
+      selectionEnabled: boolean;
+    };
+    expect(properties.isMyLocationEnabled).toBe(true);
+    // Off: a tapped pin otherwise stayed drawn at ~3x over its neighbour
+    // after returning from the story (caught on the simulator)
+    expect(properties.selectionEnabled).toBe(false);
     const camera = mapProps().cameraPosition as { coordinates: { latitude: number }; zoom: number };
     // Centred BETWEEN you and the story, not on either one
     expect(camera.coordinates.latitude).toBeGreaterThan(center.latitude);

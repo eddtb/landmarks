@@ -4,9 +4,102 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { fetchTelling } from '@/data/telling-client';
+import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { storyParagraphs } from '@/utils/format';
 import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
+
+/**
+ * The telling behind a press, for the extract story — a place with no
+ * article of its own, which in practice means an unresolved plaque.
+ *
+ * It stays a button here on purpose. The Gazetteer path leads with
+ * authored prose (a retelling, or TellingLead below), but this path's
+ * extract IS a plaque's inscription, and a telling written from an
+ * inscription speaks past the subject it is quoting — the same rule the
+ * Gazetteer's own tellingItem gate enforces. Promoting prose here was
+ * tried and reverted: the heading it introduced could not be reached
+ * (a Historic England item either resolves to a Wikipedia story or is
+ * dropped — see heritage.ts), and the one case that DID reach it was
+ * the inscription this rule exists to protect.
+ */
+
+type Status = 'idle' | 'writing' | 'ready' | 'speaking' | 'error' | 'engine-failed';
+
+export function TellingSection({ item }: { item: HistoryItem }) {
+  const theme = useTheme();
+  const [status, setStatus] = useState<Status>('idle');
+  const [telling, setTelling] = useState<string | null>(null);
+
+  // Leaving the screen must silence it
+  useEffect(() => {
+    return () => {
+      void stopSpeech();
+    };
+  }, []);
+
+  const speak = async (text: string) => {
+    if (!speechAvailable) {
+      setStatus('ready');
+      return;
+    }
+    setStatus('speaking');
+    const outcome = await speakAsync(text);
+    setStatus(outcome === 'error' ? 'engine-failed' : 'ready');
+  };
+
+  const onPress = async () => {
+    if (status === 'speaking') {
+      await stopSpeech();
+      return;
+    }
+    if (telling) {
+      void speak(telling);
+      return;
+    }
+    setStatus('writing');
+    try {
+      const text = await fetchTelling(item);
+      setTelling(text);
+      void speak(text);
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  const label =
+    status === 'writing'
+      ? 'Writing the telling…'
+      : status === 'speaking'
+        ? // A word, not ◼ (PR #186): violet already means tappable
+          'Stop'
+        : status === 'engine-failed'
+          ? 'The speech engine failed — tap to retry (is silent mode on?)'
+          : status === 'error'
+            ? 'Couldn’t write the telling — try again'
+            : telling && speechAvailable
+              ? 'Listen again'
+              : 'Listen · about a minute';
+
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        disabled={status === 'writing' || (telling !== null && !speechAvailable)}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.button,
+          { backgroundColor: theme.accentSoft },
+          pressed && { opacity: 0.85 },
+        ]}>
+        <ThemedText type="smallBold" themeColor="accent">
+          {label}
+        </ThemedText>
+      </Pressable>
+      {telling && <ThemedText type="small">{telling}</ThemedText>}
+    </>
+  );
+}
 
 /**
  * Venture's own account of a place, and the opening of every story that
@@ -138,6 +231,11 @@ export function TellingLead({ item }: { item: HistoryItem }) {
 }
 
 const styles = StyleSheet.create({
+  button: {
+    alignItems: 'center',
+    paddingVertical: Spacing.two + Spacing.half,
+    borderRadius: Spacing.three - Spacing.one,
+  },
   leadPending: {
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
