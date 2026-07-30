@@ -144,7 +144,7 @@ describe('the root overlay (OneDoorGate)', () => {
     expect(backdrop).toHaveProp('importantForAccessibility', 'auto');
   });
 
-  test('"Enable location" is the one permission-request path', async () => {
+  test('the primary button is the one permission-request path', async () => {
     permissionUndetermined();
     const screen = await render(atRoot());
 
@@ -153,6 +153,20 @@ describe('the root overlay (OneDoorGate)', () => {
     expect(mockRequestLocationPermission).toHaveBeenCalledTimes(1);
     // The door stays up — it leaves only when the permission status does
     expect(screen.getByTestId('one-door')).toBeOnTheScreen();
+  });
+
+  test('the button says "Continue" and never lobbies for the grant (5.1.1(iv))', async () => {
+    // App Review rejected 1.0(8) for a pre-permission button that
+    // directed the user to allow. The screen still explains WHY —
+    // that part Apple invites — but the button stays neutral.
+    permissionUndetermined();
+    const screen = await render(atRoot());
+
+    expect(await screen.findByText('Continue')).toBeOnTheScreen();
+    expect(screen.queryByText('Enable location')).toBeNull();
+    expect(screen.getByTestId('one-door-enable')).toHaveProp('accessibilityLabel', 'Continue');
+    // The reason keeps its place above the button
+    expect(screen.getByText(/Venture needs your location to find them/)).toBeOnTheScreen();
   });
 
   test('"Not now" persists the flag and takes the door down', async () => {
