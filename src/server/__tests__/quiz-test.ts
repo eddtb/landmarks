@@ -199,6 +199,31 @@ describe('getQuiz', () => {
     expect(mockResearch).not.toHaveBeenCalled();
   });
 
+  test('a plaque whose title is its whole inscription is never quizzed', async () => {
+    // Found live: the first real quiz cited "This Turkish bronze gun was
+    // cast in 1790-91 (AH 1212) in…", which reads as broken in the
+    // citation link the question hangs off
+    const inscription =
+      'This Turkish bronze gun was cast in 1790-91 (AH 1212) in Constantinople and presented to the Royal Naval Asylum';
+    mockResearch.mockResolvedValue(
+      fenced([question({ pageId: 1 }), question({ pageId: 2 }), question({ pageId: 3 })])
+    );
+
+    await getQuiz('Greenwich', [...subjects, subject(99, inscription)]);
+
+    const prompt = mockResearch.mock.calls[0][0].prompt as string;
+    expect(prompt).not.toContain('Turkish bronze gun');
+    expect(prompt).toContain('Crystal Palace Bowl');
+  });
+
+  test('dropping the inscription can push an area below the floor', async () => {
+    const inscription = 'A very long inscription indeed, running well past any real place name at all';
+    const thin = [subject(1, 'One'), subject(2, 'Two'), subject(3, inscription)];
+
+    expect(await getQuiz('Nowhere', thin)).toBeNull();
+    expect(mockResearch).not.toHaveBeenCalled();
+  });
+
   test('sets a quiz, caches it, and the second ask spends nothing', async () => {
     mockResearch.mockResolvedValue(
       fenced([question({ pageId: 1 }), question({ pageId: 2 }), question({ pageId: 3 })])

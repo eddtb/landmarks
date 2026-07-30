@@ -29,6 +29,16 @@ export const MinQuestions = 3;
 export const MinStoriesToQuiz = 3;
 /** Per story, so a deep feed cannot make the model read 150 extracts. */
 const SourceCharsPerStory = 1200;
+/**
+ * A place has a NAME. A plaque's "title" in this data is its entire
+ * inscription, and the first live quiz duly cited "This Turkish bronze
+ * gun was cast in 1790-91 (AH 1212) in…" — which renders as a broken
+ * sentence in the citation link the question hangs off. Such a record
+ * also makes a poorer question subject than a named place, so it is
+ * dropped before the model ever sees it. Well clear of real names:
+ * "Statue of Sir Walter Raleigh" is 28.
+ */
+const MaxTitleChars = 70;
 /** The nearest dozen: the ground you are on, not the whole 3km. */
 const MaxStories = 12;
 
@@ -200,7 +210,10 @@ export async function getQuiz(
   subjects: QuizSubject[]
 ): Promise<Quiz | null> {
   const usable = subjects
-    .filter((subject) => subject.extract.trim().length > 0)
+    .filter(
+      (subject) =>
+        subject.extract.trim().length > 0 && subject.title.trim().length <= MaxTitleChars
+    )
     .slice(0, MaxStories);
   // The floor, before any key or call: no stories, no quiz
   if (usable.length < MinStoriesToQuiz) {
