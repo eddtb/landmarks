@@ -54,6 +54,26 @@ export function compassPoint(bearing: number): (typeof CompassPoints)[number] {
   return CompassPoints[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
 }
 
+const CompassWords = [
+  'north',
+  'north-east',
+  'east',
+  'south-east',
+  'south',
+  'south-west',
+  'west',
+  'north-west',
+] as const;
+
+/**
+ * The same bearing in words, for prose rather than a dial. "NE" is right
+ * on a compass card and wrong in a sentence — and VoiceOver reads it as
+ * the letter N, which tells a listener nothing.
+ */
+export function compassWords(bearing: number): (typeof CompassWords)[number] {
+  return CompassWords[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
+}
+
 export function arrowTowards(
   from: Coordinates,
   to: Coordinates,

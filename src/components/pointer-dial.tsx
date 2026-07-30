@@ -47,7 +47,9 @@ type Props = {
  * turns, and reacting to it here costs zero React renders — the old
  * state-driven version re-rendered the whole dial per 2° step.
  */
-function useShortestArc(
+/** Shared with the quiz's pointing question, which rotates a compass card
+ *  the same way but deliberately shows no needle to the target. */
+export function useShortestArc(
   heading: SharedValue<number>,
   angleFrom: (degrees: number) => number | null
 ) {

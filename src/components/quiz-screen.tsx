@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { QuizDirection } from '@/components/quiz-direction';
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -14,6 +15,7 @@ import { useHistory } from '@/hooks/use-history';
 import { useTheme } from '@/hooks/use-theme';
 import { Quiz } from '@/types/quiz';
 import { Coordinates } from '@/utils/geo';
+import { DirectionQuestion, pointableStory } from '@/utils/quiz-direction';
 
 /**
  * The quiz tab: five questions about the ground you are standing on,
@@ -40,12 +42,23 @@ const QuizStories = 12;
 export function QuizScreen() {
   return (
     <LocationGate>
-      {({ center }) => <QuizBody center={center} />}
+      {({ center, exploring, locationDenied }) => (
+        <QuizBody center={center} exploring={exploring} locationDenied={locationDenied} />
+      )}
     </LocationGate>
   );
 }
 
-function QuizBody({ center }: { center: Coordinates }) {
+function QuizBody({
+  center,
+  exploring,
+  locationDenied,
+}: {
+  center: Coordinates;
+  exploring?: boolean;
+  /** No real fix — the center is the fallback, not the user. */
+  locationDenied?: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const { state } = useHistory(center);
@@ -118,6 +131,19 @@ function QuizBody({ center }: { center: Coordinates }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [askKey]);
 
+  // The pointing finale, derived here rather than served: the bearing is
+  // measured from where the reader IS, and a bearing baked into a 30-day
+  // area cache would be wrong the moment they moved.
+  //
+  // Only from a real fix. While exploring, the center is a place the
+  // reader is NOT, and with location denied it is the fallback — asking
+  // either of them to point at something would be asking them to point
+  // from somewhere they are not standing (#208's rule).
+  const pointing =
+    state.status === 'ready' && !exploring && !locationDenied
+      ? pointableStory(state.items, center)
+      : null;
+
   // Settled with no name is an answer, not a wait: nowhere here has a
   // name to quiz you on
   const resolved = areaSettled && !areaName ? 'none' : phase;
@@ -170,33 +196,65 @@ function QuizBody({ center }: { center: Coordinates }) {
             </View>
           )}
 
-          {resolved === 'ready' && quiz && <QuizRun quiz={quiz} key={quiz.areaName} />}
+          {resolved === 'ready' && quiz && (
+            <QuizRun quiz={quiz} pointing={pointing} key={quiz.areaName} />
+          )}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
 }
 
-/** The run itself: one question at a time, the fact after each answer. */
-function QuizRun({ quiz }: { quiz: Quiz }) {
+/**
+ * The run itself: one question at a time, the fact after each answer.
+ *
+ * The written questions come first and the pointing one closes, because
+ * it is the only question that asks anything of the room you are standing
+ * in — a better last taste than a fourth multiple choice, and the one a
+ * reviewer at a desk will remember having done rather than read.
+ */
+function QuizRun({ quiz, pointing }: { quiz: Quiz; pointing: DirectionQuestion | null }) {
   const theme = useTheme();
   const [index, setIndex] = useState(0);
   const [chosen, setChosen] = useState<number | null>(null);
   const [score, setScore] = useState(0);
 
+  const written = quiz.questions.length;
+  const total = written + (pointing ? 1 : 0);
   const question = quiz.questions[index];
-  const last = index === quiz.questions.length - 1;
+  const last = index === total - 1;
   const answered = chosen !== null;
+
+  // Past the written questions, the pointing one closes the run
+  if (!question && pointing && index === written) {
+    return (
+      <View style={styles.run} testID="quiz-run">
+        <ThemedText type="small" themeColor="textSecondary">
+          Question {index + 1} of {total}
+        </ThemedText>
+        <QuizDirection
+          question={pointing}
+          last
+          onAnswered={(correct) => {
+            if (correct) {
+              setScore((previous) => previous + 1);
+            }
+            setIndex((previous) => previous + 1);
+          }}
+        />
+      </View>
+    );
+  }
 
   if (!question) {
     // Finished: the score, and the way round again
     return (
       <View style={styles.run} testID="quiz-done">
         <ThemedText type="headline">
-          {score} out of {quiz.questions.length}
+          {score} out of {total}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          {score === quiz.questions.length
+          {score === total
             ? 'Every one. You know this ground.'
             : 'The stories behind these are all within a walk.'}
         </ThemedText>
@@ -227,7 +285,7 @@ function QuizRun({ quiz }: { quiz: Quiz }) {
   return (
     <View style={styles.run} testID="quiz-run">
       <ThemedText type="small" themeColor="textSecondary">
-        Question {index + 1} of {quiz.questions.length}
+        Question {index + 1} of {total}
       </ThemedText>
       <ThemedText type="subtitle">{question.question}</ThemedText>
 

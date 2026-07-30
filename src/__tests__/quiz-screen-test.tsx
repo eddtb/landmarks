@@ -17,10 +17,24 @@ jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
 }));
 
-// The gate is its own tested surface — hand the body a live fix
+// The gate is its own tested surface — hand the body a live fix. Mutable
+// so a test can put the reader on a pin they are NOT standing at.
+const mockGate = { exploring: false, locationDenied: false };
 jest.mock('@/components/section-screen', () => ({
-  LocationGate: ({ children }: { children: (props: { center: Coordinates }) => unknown }) =>
-    children({ center: { latitude: 51.4826, longitude: -0.0077 } }),
+  LocationGate: ({ children }: { children: (props: Record<string, unknown>) => unknown }) =>
+    children({
+      center: { latitude: 51.4826, longitude: -0.0077 },
+      exploring: mockGate.exploring,
+      locationDenied: mockGate.locationDenied,
+    }),
+}));
+
+// The magnetometer, which no simulator has: a fixed heading standing in
+// for a reader who has turned to face north-east
+const mockHeading = { value: 45 };
+const mockHeadingAvailable = { current: true };
+jest.mock('@/hooks/use-heading', () => ({
+  useHeadingValue: () => ({ heading: mockHeading, available: mockHeadingAvailable.current }),
 }));
 
 const mockUseAreaName = jest.fn();
@@ -72,6 +86,10 @@ const quiz: Quiz = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockGate.exploring = false;
+  mockGate.locationDenied = false;
+  mockHeading.value = 45;
+  mockHeadingAvailable.current = true;
   mockUseAreaName.mockReturnValue({ name: 'Greenwich', label: 'Greenwich', settled: true });
   mockUseHistory.mockReturnValue({
     state: { status: 'ready', items: [story(1, 'Cutty Sark'), story(2, "Queen's House")] },
@@ -236,5 +254,143 @@ describe('<QuizScreen />', () => {
       expect(await screen.findByTestId('quiz-loading')).toBeOnTheScreen();
       expect(mockFetchQuiz).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * The pointing question. Alone in the quiz it is derived rather than
+ * written, needs no model, and asks the DEVICE something — which is why
+ * it closes the run. It cannot be checked on a simulator (no
+ * magnetometer), so the heading is mocked here and the arithmetic lives
+ * in quiz-direction-test.
+ */
+describe('the pointing question', () => {
+  /** Somewhere far enough away to be worth pointing at: ~400m due north. */
+  const northOfHere = {
+    pageId: 9,
+    title: 'Cutty Sark',
+    coordinates: { latitude: 51.4826 + 400 / 111_000, longitude: -0.0077 },
+    distanceMeters: 400,
+    extract: 'A clipper built for the tea trade.',
+    url: 'https://en.wikipedia.org/wiki/Cutty_Sark',
+    source: 'Wikipedia',
+  };
+
+  const withAPointableStory = () =>
+    mockUseHistory.mockReturnValue({
+      state: { status: 'ready', items: [story(1, 'Close by'), northOfHere] },
+      refresh: jest.fn(),
+    });
+
+  const throughTheWrittenQuestions = async () => {
+    for (let i = 0; i < quiz.questions.length; i++) {
+      fireEvent.press(await screen.findByTestId('quiz-option-0'));
+      fireEvent.press(await screen.findByTestId('quiz-next'));
+    }
+  };
+
+  test('closes the run, and the count includes it', async () => {
+    withAPointableStory();
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+
+    // Two written questions plus the pointing one
+    expect(screen.getByText('Question 1 of 3')).toBeOnTheScreen();
+
+    await throughTheWrittenQuestions();
+
+    expect(await screen.findByTestId('quiz-direction')).toBeOnTheScreen();
+    expect(screen.getByText('Which way is Cutty Sark?')).toBeOnTheScreen();
+    expect(screen.getByText('Question 3 of 3')).toBeOnTheScreen();
+  });
+
+  test('facing it counts, and the fact is given either way', async () => {
+    withAPointableStory();
+    mockHeading.value = 10; // the story is due north; 10° out, inside 30°
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+    await throughTheWrittenQuestions();
+
+    fireEvent.press(await screen.findByTestId('quiz-direction-lock'));
+
+    expect(await screen.findByTestId('quiz-direction-verdict')).toBeOnTheScreen();
+    expect(screen.getByText('Right.')).toBeOnTheScreen();
+    expect(screen.getByText(/Cutty Sark is north of here/)).toBeOnTheScreen();
+  });
+
+  test('facing the wrong way says how far out, and still says where it is', async () => {
+    withAPointableStory();
+    mockHeading.value = 180; // due south, 180° out
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+    await throughTheWrittenQuestions();
+
+    fireEvent.press(await screen.findByTestId('quiz-direction-lock'));
+
+    expect(await screen.findByText('Not quite.')).toBeOnTheScreen();
+    expect(screen.getByText(/180° out/)).toBeOnTheScreen();
+    expect(screen.getByText(/north of here/)).toBeOnTheScreen();
+  });
+
+  test('the citation opens THAT story, as the written questions do', async () => {
+    withAPointableStory();
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+    await throughTheWrittenQuestions();
+    fireEvent.press(await screen.findByTestId('quiz-direction-lock'));
+
+    fireEvent.press(await screen.findByTestId('quiz-direction-source'));
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/history/[pageId]',
+      params: { pageId: '9' },
+    });
+  });
+
+  test('no compass, no dead end — it says so and the quiz still finishes', async () => {
+    withAPointableStory();
+    mockHeadingAvailable.current = false;
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+    await throughTheWrittenQuestions();
+
+    expect(await screen.findByTestId('quiz-direction-unavailable')).toBeOnTheScreen();
+    fireEvent.press(screen.getByTestId('quiz-direction-skip'));
+
+    expect(await screen.findByTestId('quiz-done')).toBeOnTheScreen();
+  });
+
+  test('not while exploring — pointing from a pin you are not standing at is meaningless', async () => {
+    withAPointableStory();
+    mockGate.exploring = true;
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+
+    // Two written questions only
+    expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
+    await throughTheWrittenQuestions();
+    expect(await screen.findByTestId('quiz-done')).toBeOnTheScreen();
+    expect(screen.queryByTestId('quiz-direction')).toBeNull();
+  });
+
+  test('not with location denied — the center is the fallback, not the reader', async () => {
+    withAPointableStory();
+    mockGate.locationDenied = true;
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+
+    expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
+  });
+
+  test('nothing far enough away, no pointing question', async () => {
+    // Every story at the reader's own coordinates
+    mockUseHistory.mockReturnValue({
+      state: { status: 'ready', items: [story(1, 'Here'), story(2, 'Also here')] },
+      refresh: jest.fn(),
+    });
+    await render(<QuizScreen />);
+    await screen.findByTestId('quiz-run');
+
+    expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
   });
 });

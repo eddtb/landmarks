@@ -1,5 +1,5 @@
 import { standingOn } from '@/components/section-screen';
-import { arrowTowards, bearingDegrees, distanceMeters } from '@/utils/geo';
+import { arrowTowards, bearingDegrees, compassWords, distanceMeters } from '@/utils/geo';
 
 const TowerBridge = { latitude: 51.5055, longitude: -0.0754 };
 const StPauls = { latitude: 51.5138, longitude: -0.0984 };
@@ -70,5 +70,26 @@ describe('standingOn (imported from section-screen)', () => {
     expect(standingOn([near, far, nearer], here)?.pageId).toBe(2);
     expect(standingOn([far], here)).toBeNull();
     // compose-time distanceMeters (9999) is ignored: live position rules
+  });
+});
+
+describe('compassWords', () => {
+  test('speaks the bearing instead of abbreviating it', () => {
+    // "NE" is right on a dial and wrong in a sentence — and VoiceOver
+    // reads the abbreviation as the letter N
+    expect(compassWords(0)).toBe('north');
+    expect(compassWords(45)).toBe('north-east');
+    expect(compassWords(90)).toBe('east');
+    expect(compassWords(180)).toBe('south');
+    expect(compassWords(270)).toBe('west');
+    expect(compassWords(315)).toBe('north-west');
+  });
+
+  test('rounds to the nearest of the eight, and wraps', () => {
+    expect(compassWords(30)).toBe('north-east'); // the boundary is 22.5°
+    expect(compassWords(20)).toBe('north');
+    expect(compassWords(359)).toBe('north');
+    expect(compassWords(361)).toBe('north');
+    expect(compassWords(-45)).toBe('north-west');
   });
 });
