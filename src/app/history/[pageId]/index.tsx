@@ -151,7 +151,7 @@ function ExtractStory({ item }: { item: HistoryItem }) {
       {!item.subject && <TellingLead item={item} />}
       {/* Reading type (16/24), real paragraphs — an extract is a
           story body, not a meta line. Under its own eyebrow now: the
-          lead says "original below" and this is that original. */}
+          lead says "source below" and this is that source. */}
       {!inscriptionShownAbove && (
         <>
           <ThemedText type="eyebrow" themeColor="textSecondary">

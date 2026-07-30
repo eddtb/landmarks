@@ -99,7 +99,7 @@ describe('<HistoryDetailScreen />', () => {
       screen.getByText('The compter held debtors two centuries before the railway ate it.')
     ).toBeOnTheScreen();
     // Words, not glyphs: no ✦ for VoiceOver to call "four-pointed star"
-    expect(screen.getByText('Told by AI from Wikipedia — original below')).toBeOnTheScreen();
+    expect(screen.getByText('Told by AI from Wikipedia — source below')).toBeOnTheScreen();
 
     // …and the original article still stands as the story IN FULL
     // beneath it: intro first, then the folds (first chapter open, the
@@ -401,7 +401,7 @@ describe('<HistoryDetailScreen />', () => {
       ).toBeOnTheScreen();
 
       // Attributed to ITS source, not a hardcoded Wikipedia
-      expect(screen.getByText('Told by AI from Historic England — original below')).toBeOnTheScreen();
+      expect(screen.getByText('Told by AI from Historic England — source below')).toBeOnTheScreen();
 
       // …and the fetched extract is framed as the secondary record
       expect(screen.getByText('From the record')).toBeOnTheScreen();

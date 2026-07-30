@@ -117,7 +117,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
         {/* Words, not glyphs (PR #186): no ✦ for VoiceOver to call
             "four-pointed star", and Stop is a word */}
         <ThemedText type="small" themeColor="textSecondary" style={styles.leadLabelText}>
-          Told by AI from {item.source} — original below
+          Told by AI from {item.source} — source below
         </ThemedText>
         {speechAvailable && (
           // 16pt slop on the 20px label clears the 44pt target
