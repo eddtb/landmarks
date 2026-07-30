@@ -28,6 +28,20 @@ export function formatWalkTimeForMeters(meters: number): string {
 // building. Existence facts now come structured from Wikidata
 // (src/server/wikidata.ts) and ride items as `pastTag`.
 
+/**
+ * Markdown emphasis, flattened to its words. The retold prompt asks for
+ * plain prose, but the model still italicises the occasional film or
+ * ship title — and the renderer is Text, not markdown, so "*Sherlock
+ * Holmes* (2009)" reached the screen with its asterisks on (caught on
+ * the simulator, Royal Naval College part eight). Display-time so the
+ * 30-day cached retellings are fixed too.
+ */
+export function stripEmphasis(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*\s][^*]*)\*/g, '$1');
+}
+
 /** "https://en.wikipedia.org/wiki/Cutty_Sark" → "Cutty Sark", or null. */
 export function wikiTitleFromUrl(url: string): string | null {
   const match = url.match(/wikipedia\.org\/wiki\/([^#?]+)/);

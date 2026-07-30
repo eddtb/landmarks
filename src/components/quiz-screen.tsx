@@ -86,8 +86,13 @@ class QuizGuard extends Component<
 export function QuizScreen() {
   return (
     <LocationGate>
-      {({ center, exploring, locationDenied }) => (
-        <QuizBody center={center} exploring={exploring} locationDenied={locationDenied} />
+      {({ center, exploring, locationDenied, onBackToNearMe }) => (
+        <QuizBody
+          center={center}
+          exploring={exploring}
+          locationDenied={locationDenied}
+          onBackToNearMe={onBackToNearMe}
+        />
       )}
     </LocationGate>
   );
@@ -97,11 +102,13 @@ function QuizBody({
   center,
   exploring,
   locationDenied,
+  onBackToNearMe,
 }: {
   center: Coordinates;
   exploring?: boolean;
   /** No real fix — the center is the fallback, not the user. */
   locationDenied?: boolean;
+  onBackToNearMe?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -211,8 +218,10 @@ function QuizBody({
       <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}>
-          <ThemedText type="eyebrow" themeColor="textSecondary">
-            Test yourself on
+          {/* A pinned place is a mode the header must admit, exactly as
+              Nearby's does: accent eyebrow, and the worded way home. */}
+          <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
+            {exploring ? 'Exploring · test yourself on' : 'Test yourself on'}
           </ThemedText>
           <ThemedText type="largeTitle">
             {denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
@@ -259,6 +268,16 @@ function QuizBody({
                 somewhere with more of it.
               </ThemedText>
             </View>
+          )}
+
+          {exploring && (
+            <Pressable
+              accessibilityRole="button"
+              testID="quiz-back-to-near-me"
+              onPress={onBackToNearMe}
+              hitSlop={Spacing.two}>
+              <ThemedText type="linkPrimary">Back to near me</ThemedText>
+            </Pressable>
           )}
 
           {!denied && resolved === 'ready' && quiz && (

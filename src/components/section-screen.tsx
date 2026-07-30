@@ -625,9 +625,15 @@ export function HistoryBody({
         // scrolls away when you have chosen where to walk.
         ListHeaderComponent={
           <View style={styles.listHeader}>
-            <View style={styles.mapCard}>
-              <StoriesMap items={items} center={center} />
-            </View>
+            {/* Not with location denied: the center is the fallback, and
+                a map of Charing Cross under a NEARBY eyebrow claims a
+                place the user is not (simulator-caught). Exploring keeps
+                it — a pinned place is somewhere the user chose to look. */}
+            {!locationDenied && (
+              <View style={styles.mapCard}>
+                <StoriesMap items={items} center={center} />
+              </View>
+            )}
             <FeaturedRail items={state.items} excludePageId={standing?.pageId} />
           </View>
         }

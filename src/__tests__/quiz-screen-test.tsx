@@ -20,12 +20,14 @@ jest.mock('expo-router', () => ({
 // The gate is its own tested surface — hand the body a live fix. Mutable
 // so a test can put the reader on a pin they are NOT standing at.
 const mockGate = { exploring: false, locationDenied: false };
+const mockBackToNearMe = jest.fn();
 jest.mock('@/components/section-screen', () => ({
   LocationGate: ({ children }: { children: (props: Record<string, unknown>) => unknown }) =>
     children({
       center: { latitude: 51.4826, longitude: -0.0077 },
       exploring: mockGate.exploring,
       locationDenied: mockGate.locationDenied,
+      onBackToNearMe: mockBackToNearMe,
     }),
 }));
 
@@ -241,13 +243,17 @@ describe('<QuizScreen />', () => {
       expect(mockFetchQuiz).not.toHaveBeenCalled();
     });
 
-    test('exploring a pinned place still quizzes it — that is the point of exploring', async () => {
+    test('exploring a pinned place still quizzes it — and the header admits the mode', async () => {
       mockGate.exploring = true;
 
       await render(<QuizScreen />);
 
       expect(await screen.findByTestId('quiz-run')).toBeOnTheScreen();
       expect(mockFetchQuiz).toHaveBeenCalled();
+      // The accent eyebrow and the worded way home, as Nearby has
+      expect(screen.getByText('Exploring · test yourself on')).toBeOnTheScreen();
+      fireEvent.press(screen.getByTestId('quiz-back-to-near-me'));
+      expect(mockBackToNearMe).toHaveBeenCalled();
     });
 
     test('a failure offers Try again, never a blank tab', async () => {

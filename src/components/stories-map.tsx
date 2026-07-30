@@ -1,6 +1,7 @@
 import { AppleMaps, GoogleMaps } from 'expo-maps';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useIsFocused } from 'expo-router/build/useIsFocused';
+import { useEffect, useRef, useState } from 'react';
 import { LayoutChangeEvent, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
@@ -43,6 +44,23 @@ export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Co
   const { width: windowWidth } = useWindowDimensions();
   const [frame, setFrame] = useState({ width: windowWidth, height: MapHeight });
 
+  // Remount the native map when this screen regains focus. A tapped pin
+  // stays SELECTED inside MapKit — drawn ~3x over its neighbours after
+  // you come back from the story, and the oversize state even migrates
+  // to the next tapped pin (simulator-verified). selectionEnabled:false
+  // was tried first and does NOT clear it (the same run proved taps
+  // still navigate, so it stays off for Apple's place cards) — there is
+  // no deselect on the view ref, so a fresh mount is the lever we have.
+  const focused = useIsFocused();
+  const wasFocused = useRef(true);
+  const [mapEpoch, setMapEpoch] = useState(0);
+  useEffect(() => {
+    if (focused && !wasFocused.current) {
+      setMapEpoch((epoch) => epoch + 1);
+    }
+    wasFocused.current = focused;
+  }, [focused]);
+
   // Already distance-sorted by the feed; slice is the nearest dozen
   const pinned = items.slice(0, MaxPins);
   if (pinned.length === 0) {
@@ -80,16 +98,18 @@ export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Co
     }
   };
 
-  // `selectionEnabled` is about selecting map FEATURES, not markers
-  // (onMarkerClick is independent of it) — and left on, a tapped pin
-  // stayed drawn at ~3x over its neighbour after you came back from the
-  // story. Nothing here needs Apple's place cards either.
+  // `selectionEnabled` is about selecting map FEATURES, not markers —
+  // onMarkerClick fires regardless (simulator-verified both ways).
+  // Nothing here wants Apple's place cards, so it stays off; the sticky
+  // oversize SELECTED pin it was first hoped to cure is actually cleared
+  // by the focus remount above.
   const properties = { isMyLocationEnabled: true, selectionEnabled: false };
 
   return (
     <View style={styles.frame} testID="stories-map" onLayout={onLayout}>
       {Platform.OS === 'ios' ? (
         <AppleMaps.View
+          key={mapEpoch}
           style={styles.map}
           cameraPosition={camera ?? undefined}
           // A story wears the brand violet AND a building glyph: the

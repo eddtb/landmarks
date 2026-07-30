@@ -85,12 +85,19 @@ describe('<HistoryDetailScreen />', () => {
     // The hero leads with the place's own story
     expect(await screen.findByText('The story of')).toBeOnTheScreen();
     expect(screen.getByText('Borough Compter')).toBeOnTheScreen();
-    expect(screen.getByText(/3 min read · 3 chapters/)).toBeOnTheScreen();
+    // The hero speaks for the body it actually shows: the telling,
+    // about a minute — not the article's minutes and chapter count for
+    // chapters the screen no longer renders ("1 chapters", twice wrong)
+    expect(screen.getByText('about a minute')).toBeOnTheScreen();
+    expect(screen.queryByText(/chapters/)).not.toBeOnTheScreen();
 
     // The venue grammar rides under the hero (112m rounds to the 1-min floor)
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
     expect(screen.getByText('Compass')).toBeOnTheScreen();
-    expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
+    // No bare source name under the pills any more: the byline and the
+    // single citation carry it — this was the third "Wikipedia" on a
+    // screen defended against a guideline about collections of links
+    expect(screen.queryByText('Wikipedia')).not.toBeOnTheScreen();
 
     // No retelling exists → the TELLING opens the story (App Store
     // 4.2.2: the AI-told opening is the first thing read, with Listen)
@@ -153,10 +160,8 @@ describe('<HistoryDetailScreen />', () => {
 
     expect(await screen.findByText('Go')).toBeOnTheScreen();
     expect(screen.queryByText(/Go · /)).not.toBeOnTheScreen();
-
-    // The short Go label hands the grey meta more width — it must stay
-    // a one-line annotation (tail ellipsis), never wrap mid-word (#243)
-    expect(screen.getByText('Wikipedia').props.numberOfLines).toBe(1);
+    // (#243's meta line is gone with the source-name dedupe — nothing
+    // left under the pills to wrap)
   });
 
   test('a network failure offers Try again — never "could not be found"', async () => {

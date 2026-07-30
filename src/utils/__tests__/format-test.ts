@@ -1,4 +1,5 @@
 import {
+  stripEmphasis,
   hookEchoesTitle,
   formatDistance,
   formatWalkTime,
@@ -139,5 +140,20 @@ describe('formatDaySince (the journal speaks in days)', () => {
   test('late last night is still yesterday, not "13 hours ago" math', () => {
     const lateLastNight = new Date('2026-07-26T23:30:00').getTime();
     expect(formatDaySince(lateLastNight, monday)).toBe('yesterday');
+  });
+});
+
+describe('stripEmphasis', () => {
+  test('flattens the italicised titles the model sneaks in', () => {
+    // Verbatim from a cached retelling, caught rendering its asterisks
+    expect(stripEmphasis('*Sherlock Holmes* (2009) and *Thor: The Dark World*')).toBe(
+      'Sherlock Holmes (2009) and Thor: The Dark World'
+    );
+    expect(stripEmphasis('a **bold claim** indeed')).toBe('a bold claim indeed');
+  });
+
+  test('leaves honest asterisks and clean prose alone', () => {
+    expect(stripEmphasis('A palace stood here.')).toBe('A palace stood here.');
+    expect(stripEmphasis('rated * by nobody')).toBe('rated * by nobody');
   });
 });

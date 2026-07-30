@@ -100,11 +100,11 @@ function ActionsLead({ item }: { item: HistoryItem }) {
           the meta gets more width and would wrap mid-word — truncate
           with a tail ellipsis instead (DESIGN.md: meta is a meta LINE) */}
       </View>
-      {/* Its own line: squeezed in beside three pills this ellipsised
-          to a bare "W…", which reads as broken rather than terse. */}
-      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-        {item.source}
-      </ThemedText>
+      {/* No source name here any more: with the byline ("Told by AI from
+          {source}") and the one citation row both naming it, this meta
+          line was the THIRD "Wikipedia" on a screen being defended
+          against a guideline about collections of links. The name lives
+          where attribution belongs. */}
     </View>
   );
 }

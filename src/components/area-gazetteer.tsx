@@ -31,6 +31,7 @@ import { ApiError } from '@/data/cached-get';
 import { fetchRetold } from '@/data/retold-client';
 import { Article, ArticleImage } from '@/types/article';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
+import { stripEmphasis } from '@/utils/format';
 import { LinkCandidate, linkifyParagraph, planStoryLinks } from '@/utils/linkify';
 import { withoutPullQuote } from '@/utils/pull-quote';
 import { readingProgress } from '@/utils/reading-progress';
@@ -225,7 +226,11 @@ function Hero({
         <ThemedText type="small" style={styles.heroDim} maxFontSizeMultiplier={1.4}>
           {retold
             ? `${retold.parts.length} parts · about ${retold.minutes} min · retold from Wikipedia`
-            : `${article.minutes} min read · ${article.chapters.length} chapters`}
+            : // No retelling (yet): the body below is the telling, about a
+              // minute — the article's own minutes and chapter count
+              // described a body the screen no longer shows, and "1
+              // chapters" was wrong twice over (caught on the simulator)
+              'about a minute'}
         </ThemedText>
       </View>
     </View>
@@ -542,7 +547,9 @@ export function AreaGazetteer({
   const partParagraphs = useMemo(
     () =>
       partsShown.map((part) =>
-        withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote)
+        // stripEmphasis display-time: cached retellings carry the odd
+        // *italicised title* and the renderer is Text, not markdown
+        withoutPullQuote(part.body.split(/\n+/).filter(Boolean), part.pullQuote).map(stripEmphasis)
       ),
     [partsShown]
   );
