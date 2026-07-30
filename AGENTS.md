@@ -80,5 +80,6 @@ free-keyed and unmetered — they don't belong in this table.
 | Call (kind)          | Cache                    | Cost |
 |----------------------|--------------------------|------|
 | Gemini telling (ungrounded) | tellings 30d (per story + SHA-256 of the extract — a fabricated POST can only poison its own slot): Turso durable store (survives worker recycles; off without TURSO_DATABASE_URL) + per-process map + device session cache, single-flight per key. Retold shares the same store ('retold' kind, incl. 7d no-retell verdicts) | free tier, 300-calls/day breaker |
+| Gemini area quiz (ungrounded) | quiz 30d (per area name + SHA-256 of the stories it was set from — a fabricated POST can only poison its own slot): Turso durable store ('quiz' kind, incl. 7d no-quiz verdicts for ground too thin to ask about) + per-process map + device session cache, single-flight per key. Refuses below 3 usable stories WITHOUT calling | free tier, 300-calls/day breaker |
 | Valhalla walking route (FOSSGIS) | routes 24h (per ~27m origin bucket + destination) | free community server; 300-calls/day breaker out of politeness |
 | Anthropic (dormant fallback) | n/a — only via explicit AI_PROVIDER=anthropic | paid; assertBudget breaker; boot log asks "is this intended?" |

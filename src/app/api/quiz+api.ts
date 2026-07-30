@@ -1,0 +1,73 @@
+import { MinStoriesToQuiz, QuizSubject, getQuiz } from '@/server/quiz';
+
+/**
+ * POST because the client sends the stories: the server holds no
+ * per-area state — history lists are fetched by location and cached on
+ * the device, so the ground's own stories ride in with the request.
+ * They are bound into the quiz's cache key (see quiz.ts), so a
+ * fabricated body can only ever poison its own cache slot.
+ */
+
+const MaxTitleChars = 300;
+const MaxExtractChars = 4_000;
+/** The nearest dozen is all quiz.ts will read; refuse a flood earlier. */
+const MaxStories = 40;
+const MaxBodyBytes = 256 * 1024;
+
+export async function POST(request: Request): Promise<Response> {
+  const declaredBytes = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declaredBytes) && declaredBytes > MaxBodyBytes) {
+    return Response.json({ error: 'Body too large' }, { status: 413 });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  if (typeof body !== 'object' || body === null) {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const { area, stories } = body as Record<string, unknown>;
+
+  if (typeof area !== 'string' || !area.trim()) {
+    return Response.json({ error: 'area is required' }, { status: 400 });
+  }
+  if (!Array.isArray(stories)) {
+    return Response.json({ error: 'stories is required' }, { status: 400 });
+  }
+  if (stories.length > MaxStories) {
+    return Response.json({ error: 'Body too large' }, { status: 413 });
+  }
+
+  const subjects: QuizSubject[] = [];
+  for (const raw of stories) {
+    if (typeof raw !== 'object' || raw === null) {
+      continue;
+    }
+    const { pageId, title, extract } = raw as Record<string, unknown>;
+    if (typeof pageId !== 'number' || typeof title !== 'string' || typeof extract !== 'string') {
+      continue;
+    }
+    subjects.push({
+      pageId,
+      title: title.slice(0, MaxTitleChars),
+      extract: extract.slice(0, MaxExtractChars),
+    });
+  }
+
+  // The floor is a 200, not an error: "no quiz for this ground" is a
+  // real answer the tab is built to show, not a failure to report
+  if (subjects.length < MinStoriesToQuiz) {
+    return Response.json({ quiz: null });
+  }
+
+  try {
+    const quiz = await getQuiz(area.slice(0, MaxTitleChars), subjects);
+    return Response.json({ quiz });
+  } catch (error) {
+    console.error('Quiz failed:', error);
+    return Response.json({ error: 'Quiz failed' }, { status: 502 });
+  }
+}
