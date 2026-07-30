@@ -7,7 +7,7 @@ import { AreaGazetteer } from '@/components/area-gazetteer';
 import { ExternalLink } from '@/components/external-link';
 import { OverflowMenu } from '@/components/overflow-menu';
 import { StoryFolds } from '@/components/story-folds';
-import { TellingSection } from '@/components/telling-section';
+import { TellingLead } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -140,15 +140,30 @@ function ExtractStory({ item }: { item: HistoryItem }) {
       <ThemedText type="eyebrow" themeColor="textSecondary">
         Story
       </ThemedText>
-      <TellingSection item={item} />
+      {/* Venture's own account opens the story, written on mount. The
+          Gazetteer path has always led with original prose — a retelling,
+          or this same lead — but a place with no article of its own used
+          to open with a Listen button and the source extract AS its body,
+          which reads as a page we fetched rather than one we wrote.
+          Gated as the Gazetteer gates it: a plaque's extract is its
+          inscription, and a telling written from that speaks past the
+          subject it is quoting. */}
+      {!item.subject && <TellingLead item={item} />}
       {/* Reading type (16/24), real paragraphs — an extract is a
-          story body, not a meta line */}
-      {!inscriptionShownAbove &&
-        storyParagraphs(item.extract).map((paragraph, index) => (
-          <ThemedText key={index} type="default">
-            {paragraph}
+          story body, not a meta line. Under its own eyebrow now: the
+          lead says "original below" and this is that original. */}
+      {!inscriptionShownAbove && (
+        <>
+          <ThemedText type="eyebrow" themeColor="textSecondary">
+            From the record
           </ThemedText>
-        ))}
+          {storyParagraphs(item.extract).map((paragraph, index) => (
+            <ThemedText key={index} type="default">
+              {paragraph}
+            </ThemedText>
+          ))}
+        </>
+      )}
       <StoryFolds item={item} />
       <ExternalLink href={item.url as `https://${string}`}>
         <ThemedText type="small" themeColor="accent">
