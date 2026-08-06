@@ -62,6 +62,7 @@ export function GlassIslandHeader({
   topOffset?: number;
 }) {
   const insets = useSafeAreaInsets();
+  const dark = useColorScheme() === 'dark';
   const fallback = useGlassFallback();
   const glass = isLiquidGlassAvailable();
   const report = (height: number) => onHeight(IslandTopGap + height);
@@ -72,8 +73,11 @@ export function GlassIslandHeader({
       pointerEvents={passThrough ? 'none' : 'box-none'}
       testID="glass-island">
       {glass ? (
+        // The island's content is theme-coloured, so its glass follows
+        // the APP scheme rather than sampling the backdrop
         <GlassView
           glassEffectStyle="regular"
+          colorScheme={dark ? 'dark' : 'light'}
           style={styles.island}
           onLayout={(event) => report(event.nativeEvent.layout.height)}>
           {children}
@@ -108,7 +112,14 @@ export function GlassChip({
   const glass = isLiquidGlassAvailable();
   if (glass) {
     return (
-      <GlassView glassEffectStyle="regular" style={[styles.chip, circle && styles.circle, style]}>
+      // colorScheme pinned DARK: real glass ADAPTS to its backdrop, and
+      // over a bright sky it turned light under our white glyphs —
+      // "sometimes right, sometimes not" (Edd, 22:51). Photo chrome is
+      // dark by design; the material must agree every time.
+      <GlassView
+        glassEffectStyle="regular"
+        colorScheme="dark"
+        style={[styles.chip, circle && styles.circle, style]}>
         {children}
       </GlassView>
     );
