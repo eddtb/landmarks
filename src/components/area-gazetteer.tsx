@@ -62,6 +62,7 @@ const keyExtractor = (row: GazetteerRow) => row.key;
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
   | { kind: 'no-story'; key: string }
+  | { kind: 'brief'; key: string; lines: string[] }
   | { kind: 'timeline'; key: string; stops: TimelineStop[] }
   | { kind: 'part'; key: string; part: RetoldPart; index: number }
   | { kind: 'retelling-pending'; key: string }
@@ -124,6 +125,12 @@ export function buildGazetteerRows(options: {
 
   if (hasArticle) {
     if (retoldStatus === 'ready' && retold) {
+      // The ten-second read leads (Edd, 2026-08-06): the lines a
+      // stranger standing here most needs, before any part or timeline.
+      // Purely additive — everything below renders exactly as before.
+      if ((retold.brief ?? []).length > 0) {
+        rows.push({ kind: 'brief', key: 'brief', lines: retold.brief });
+      }
       if ((retold.timeline ?? []).length > 0) {
         rows.push({ kind: 'timeline', key: 'timeline', stops: retold.timeline });
       }
@@ -614,6 +621,8 @@ export function AreaGazetteer({
           )}
           </View>
         );
+      case 'brief':
+        return <BriefCard lines={row.lines} />;
       case 'timeline':
         return <TimelineStrip stops={row.stops} onStop={jumpToPart} />;
       case 'part':
@@ -848,6 +857,36 @@ function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boo
   );
 }
 
+/**
+ * The quiet card (Edd's pick from the three mocked treatments): the
+ * brief worn as furniture — a surface card, one fact per line, hairline
+ * separations. Scan it or skip it; everything below is untouched.
+ */
+function BriefCard({ lines }: { lines: string[] }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={[styles.briefCard, { backgroundColor: theme.backgroundElement }]}
+      testID="brief-card">
+      <ThemedText type="eyebrow" themeColor="accent">
+        In brief
+      </ThemedText>
+      {lines.map((line, index) => (
+        <View
+          key={index}
+          style={
+            index > 0 && [
+              styles.briefLine,
+              { borderTopWidth: 1, borderTopColor: theme.backgroundSelected },
+            ]
+          }>
+          <ThemedText type="small">{line}</ThemedText>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function TimelineStrip({
   stops,
   onStop,
@@ -957,6 +996,17 @@ const PartRow = memo(function PartRow({
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
+  },
+  briefCard: {
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    borderCurve: 'continuous',
+    gap: Spacing.two,
+  },
+  briefLine: {
+    paddingTop: Spacing.two,
   },
   // 4px, not 3: thick enough to register at a glance, thin enough to
   // stay a bar and not a banner

@@ -142,7 +142,7 @@ describe('the durable store (the cache that outlives the worker)', () => {
     await retold.getRetold('Greenwich');
     expect(storePut).toHaveBeenCalledWith(
       'retold',
-      'v3:greenwich', // v3: the gate drop must orphan old no-retell verdicts
+      'v4:greenwich', // v3: the gate drop must orphan old no-retell verdicts
       expect.objectContaining({ retold: expect.objectContaining({ parts: expect.any(Array) }) }),
       expect.any(Number)
     );
@@ -151,7 +151,7 @@ describe('the durable store (the cache that outlives the worker)', () => {
     await stub.retold.getRetold('Small Plaque');
     expect(stub.storePut).toHaveBeenCalledWith(
       'retold',
-      'v3:small plaque',
+      'v4:small plaque',
       { retold: null },
       expect.any(Number)
     );

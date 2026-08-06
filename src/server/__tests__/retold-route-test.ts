@@ -46,6 +46,7 @@ const telling: Retold = {
   ],
   minutes: 1,
   timeline: [],
+  brief: [],
 };
 
 function ask(accept?: string): Request {

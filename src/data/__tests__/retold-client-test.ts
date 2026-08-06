@@ -22,6 +22,7 @@ const telling: Retold = {
   ],
   minutes: 1,
   timeline: [],
+  brief: [],
 };
 
 /** The wire as expo/fetch sees it: an SSE body arriving in chunks.
