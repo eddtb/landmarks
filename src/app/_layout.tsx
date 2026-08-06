@@ -1,25 +1,30 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { OneDoorBackdrop, OneDoorGate } from '@/components/one-door';
-import { useArrivalTaps } from '@/hooks/use-arrival-taps';
 
-// Side-effect import, and it must stay one: this registers the
-// geofence task at module scope. iOS launches the app into the
+// Module-scope import, and it must stay one: evaluating it registers
+// the geofence task — now as the DISARM for phones that
+// armed regions while arrivals existed. iOS launches the app into the
 // background when the user crosses a boundary and expects the task to
 // exist by the time the bundle has finished evaluating — a task
 // registered inside a component effect is too late, and the wake is
-// spent on nothing. See src/data/arrival-geofence.ts.
-import '@/data/arrival-geofence';
+// spent with the regions still armed. See src/data/arrival-geofence.ts.
+import { disarmArrivals } from '@/data/arrival-geofence';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  useArrivalTaps();
+  // The foreground half of the eviction: most phones next launch by
+  // being opened, not by crossing a boundary.
+  useEffect(() => {
+    void disarmArrivals();
+  }, []);
   return (
     // The image viewer's pinch/pan (gesture-handler) requires this at the root
     <GestureHandlerRootView style={{ flex: 1 }}>

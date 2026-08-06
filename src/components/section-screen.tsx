@@ -17,7 +17,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
-import { ArrivalsInvitation } from '@/components/arrivals-invitation';
 import { HistoryCard } from '@/components/history-card';
 import { StoriesMap } from '@/components/stories-map';
 import { useOneDoorDismissed } from '@/components/one-door';
@@ -26,8 +25,6 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { DrawingWanderLine, WanderLine } from '@/components/wander-line';
 import { BrandWarmInk, Spacing } from '@/constants/theme';
-import { useArrivalsEnabled } from '@/data/arrivals';
-import { useArrivalsSync, useArrivalsToggle } from '@/hooks/use-arrivals';
 import { useAreaName } from '@/hooks/use-area-name';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useHistory } from '@/hooks/use-history';
@@ -44,7 +41,7 @@ const PrivacyUrl = 'https://eddtb-landmarks.expo.app/privacy';
 const SupportUrl = 'https://eddtb-landmarks.expo.app/support';
 
 /** One identity for "no feed yet", so a loading render can't re-fire
- * the arrivals effect with a fresh [] on every tick. */
+ * the widget effect with a fresh [] on every tick. */
 const NoItems: HistoryItem[] = [];
 
 /**
@@ -185,13 +182,9 @@ function SectionHeader({
   onBackToNearMe,
   eyebrow,
   overflow,
-  arrivalsOn,
-  onToggleArrivals,
 }: GateProps & {
   eyebrow: string;
   overflow?: boolean;
-  arrivalsOn?: boolean;
-  onToggleArrivals?: () => void;
 }) {
   const [searchText, setSearchText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -261,19 +254,10 @@ function SectionHeader({
         {overflow && (
           <OverflowMenu
             actions={[
-              // The arrivals switch lives here as well as in the feed
-              // invitation: the invitation is offered once and then
-              // gone, and a background permission the user can't find
-              // their way back to turning off is not a fair one.
-              { id: 'arrivals', title: arrivalsOn ? 'Turn off Arrivals' : 'Turn on Arrivals' },
               { id: 'privacy', title: 'Privacy Policy' },
               { id: 'support', title: 'Support' },
             ]}
             onAction={(id) => {
-              if (id === 'arrivals') {
-                onToggleArrivals?.();
-                return;
-              }
               Linking.openURL(id === 'privacy' ? PrivacyUrl : SupportUrl);
             }}
           />
@@ -307,19 +291,12 @@ function SectionHeader({
 }
 
 export function StoriesScreen() {
-  const { enabled: arrivalsOn, toggle: toggleArrivals } = useArrivalsToggle();
   return (
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <SectionHeader
-              {...gate}
-              eyebrow="Nearby"
-              overflow
-              arrivalsOn={arrivalsOn}
-              onToggleArrivals={() => void toggleArrivals()}
-            />
+            <SectionHeader {...gate} eyebrow="Nearby" overflow />
             <HistoryBody
               center={gate.center}
               exploring={gate.exploring}
@@ -523,21 +500,8 @@ export function HistoryBody({
   // The widget and the cold-load copy both SHOW this name, so both take
   // the spoken form: "Crystal Palace", not "Crystal Palace, London"
   const { label: areaLabel } = useAreaName(center);
-  const arrivalsOn = useArrivalsEnabled();
 
-  // Arrivals monitor the WHOLE feed, not the photo-filtered Nearby list
-  // below: a demolished building has no photo and wears a pastTag, and
-  // being told you are standing where it stood is the best arrival
-  // this app has. selectArrivalRegions drops what can't be arrived at.
-  //
-  // Not while exploring or denied, though — the center is then a place
-  // the user is NOT, and geofencing another city is meaningless.
-  useArrivalsSync(
-    state.status === 'ready' ? state.items : NoItems,
-    arrivalsOn && !exploring && !locationDenied
-  );
-
-  // The Home Screen widget rides the same feed, without the opt-in:
+  // The Home Screen widget rides the feed:
   // nothing leaves the device and nothing runs in the background.
   // Only once the feed is READY — an empty list mid-load would tell
   // the widget there is no history here, which is its own untruth.
@@ -588,9 +552,6 @@ export function HistoryBody({
   return (
     <>
       {standing && <StandingOnIt item={standing} center={center} />}
-      {/* Only where the user actually is — an offer to be told about
-          arriving somewhere means nothing while browsing another city */}
-      {!exploring && !locationDenied && <ArrivalsInvitation />}
       {state.stale && (
         <View style={styles.controlLine}>
           <ThemedText type="small" themeColor="textSecondary">
