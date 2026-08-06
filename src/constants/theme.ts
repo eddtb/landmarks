@@ -25,9 +25,11 @@ export const Colors = {
     accentSoft: '#EFEAFC',
     /**
      * The board's warm accent. Sparing highlights only — never state.
-     * Its two sanctioned uses, total: the one-door gate's Enable CTA
-     * and the "You're standing on it" banner (approved mock 3). Yellow
-     * is the rarity marker; nothing else earns it.
+     * Its three sanctioned uses, total: the one-door gate's Enable CTA,
+     * the "You're standing on it" banner (approved mock 3), and the
+     * quiz's perfect-run banner (approved 2026-08-06, the rebuilt
+     * quiz's one extravagance). Yellow is the rarity marker; nothing
+     * else earns it.
      */
     accentWarm: '#F0B429',
     /** The warm accent's quiet ground — only under the standing-on banner. */

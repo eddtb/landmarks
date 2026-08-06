@@ -1,10 +1,12 @@
 /**
- * The quiz tab. Two things matter more than the rest: a tab someone
- * deliberately tapped must NEVER be blank (a quiet corner gets words and
- * a way onward), and the answer must not be visible before you commit to
- * one — a quiz that gives itself away is not a quiz.
+ * The quiz tab, v1 of the rebuild. Two things matter more than the
+ * rest: a tab someone deliberately tapped must NEVER be blank (a quiet
+ * corner gets words and a way onward), and the answer must not be
+ * visible before you commit to one — a quiz that gives itself away is
+ * not a quiz. v1 adds a third: state is words and dimming, never
+ * colour, so every verdict here is asserted as TEXT.
  */
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 
 import { QuizScreen } from '@/components/quiz-screen';
 import { Quiz } from '@/types/quiz';
@@ -52,6 +54,18 @@ jest.mock('@/hooks/use-history', () => ({
 const mockFetchQuiz = jest.fn();
 jest.mock('@/data/quiz-client', () => ({
   fetchQuiz: (...args: unknown[]) => mockFetchQuiz(...args),
+  orderedByYear: (items: { year: number }[]) => [...items].sort((a, b) => a.year - b.year),
+}));
+
+// The ground's memory is its own tested surface (quiz-progress-test);
+// here it only needs to be watchable
+const mockRecordRun = jest.fn();
+const mockProgress = { value: undefined as { correct: number; runs: number } | undefined };
+jest.mock('@/data/quiz-progress', () => ({
+  Ranks: ['Stranger', 'Visitor', 'Local', 'Historian'],
+  rankFor: (correct: number) => (correct >= 15 ? 'Local' : correct >= 5 ? 'Visitor' : 'Stranger'),
+  recordRun: (...args: unknown[]) => mockRecordRun(...args),
+  useAreaProgress: () => mockProgress.value,
 }));
 
 const story = (pageId: number, title: string) => ({
@@ -68,6 +82,7 @@ const quiz: Quiz = {
   areaName: 'Greenwich',
   questions: [
     {
+      kind: 'anchor',
       pageId: 1,
       title: 'Cutty Sark',
       question: 'What did the Cutty Sark carry?',
@@ -76,14 +91,36 @@ const quiz: Quiz = {
       because: 'She was built for the China tea trade in 1869.',
     },
     {
+      kind: 'which-place',
       pageId: 2,
       title: "Queen's House",
-      question: 'Who was the House built for?',
-      options: ['Anne of Denmark', 'Elizabeth I', 'Mary II', 'Victoria'],
+      question: 'Anne of Denmark had a house built to step across a road. Which place?',
+      options: ["Queen's House", 'Cutty Sark', 'Trinity Hospital', 'The Fan Museum'],
       answerIndex: 0,
-      because: 'James I commissioned it for his wife Anne of Denmark.',
+      because: 'The Queen’s House bridged the Deptford–Woolwich road.',
     },
   ],
+};
+
+/** Past the start card: the run begins on Begin. */
+const begin = async () => {
+  fireEvent.press(await screen.findByTestId('quiz-begin'));
+  await screen.findByTestId('quiz-run');
+};
+
+/** Choose an option and commit to it. State commits a tick after the
+ *  press in this harness, so the lock is awaited ENABLED before use. */
+const lockIn = async (option: number) => {
+  fireEvent.press(await screen.findByTestId(`quiz-option-${option}`));
+  await waitFor(() => expect(screen.getByTestId('quiz-lock')).toBeEnabled());
+  fireEvent.press(screen.getByTestId('quiz-lock'));
+};
+
+/** On to the next question — and past the flip, so the following
+ *  queries cannot grab the outgoing screen's elements. */
+const next = async () => {
+  fireEvent.press(await screen.findByTestId('quiz-next'));
+  await waitFor(() => expect(screen.queryByTestId('quiz-next')).toBeNull());
 };
 
 beforeEach(() => {
@@ -92,6 +129,7 @@ beforeEach(() => {
   mockGate.locationDenied = false;
   mockHeading.value = 45;
   mockHeadingAvailable.current = true;
+  mockProgress.value = undefined;
   mockUseAreaName.mockReturnValue({ name: 'Greenwich', label: 'Greenwich', settled: true });
   mockUseHistory.mockReturnValue({
     state: { status: 'ready', items: [story(1, 'Cutty Sark'), story(2, "Queen's House")] },
@@ -101,14 +139,17 @@ beforeEach(() => {
 });
 
 describe('<QuizScreen />', () => {
-  test('names the ground and asks the first question', async () => {
+  test('names the ground and opens with the start card, its stories on show', async () => {
     await render(<QuizScreen />);
 
-    expect(await screen.findByTestId('quiz-run')).toBeOnTheScreen();
+    expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
     expect(screen.getByText('Test yourself on')).toBeOnTheScreen();
     expect(screen.getByText('Greenwich')).toBeOnTheScreen();
-    expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
-    expect(screen.getByText('What did the Cutty Sark carry?')).toBeOnTheScreen();
+    // The grounding contract, worn on the outside: the chips name the
+    // exact stories the run was set from
+    expect(screen.getByText('Two questions · set from its own stories')).toBeOnTheScreen();
+    expect(screen.getByText('Cutty Sark')).toBeOnTheScreen();
+    expect(screen.getByText("Queen's House")).toBeOnTheScreen();
 
     // It asks by the CANONICAL area name, never the display label
     expect(mockFetchQuiz).toHaveBeenCalledWith('Greenwich', [
@@ -131,41 +172,52 @@ describe('<QuizScreen />', () => {
     });
 
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await screen.findByTestId('quiz-start');
 
     const sent = mockFetchQuiz.mock.calls[0][1] as unknown[];
     expect(sent).toHaveLength(12);
   });
 
-  test('the answer stays hidden until you commit to one', async () => {
+  test('the answer stays hidden until you lock one in', async () => {
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
 
-    // Nothing on screen says which is right, and no fact is given away
-    expect(screen.queryByTestId('quiz-because')).toBeNull();
+    expect(screen.getByText('What did the Cutty Sark carry?')).toBeOnTheScreen();
+    // Choosing is not committing: still no verdict, no fact given away
+    fireEvent.press(screen.getByTestId('quiz-option-0'));
+    await waitFor(() => expect(screen.getByTestId('quiz-lock')).toBeEnabled());
+    expect(screen.queryByTestId('quiz-verdict-right')).toBeNull();
     expect(screen.queryByText(/China tea trade/)).toBeNull();
 
-    fireEvent.press(screen.getByTestId('quiz-option-0'));
+    fireEvent.press(screen.getByTestId('quiz-lock'));
 
-    expect(await screen.findByTestId('quiz-because')).toBeOnTheScreen();
-    expect(screen.getByText('Right.')).toBeOnTheScreen();
+    // The verdict is WORDS — the palette rule holds even here
+    expect(await screen.findByText('Right — you chose this')).toBeOnTheScreen();
     expect(screen.getByText('She was built for the China tea trade in 1869.')).toBeOnTheScreen();
   });
 
-  test('a wrong answer is told so, and still gives the fact', async () => {
+  test('locking nothing is impossible — the button waits for a choice', async () => {
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
 
-    fireEvent.press(screen.getByTestId('quiz-option-2'));
+    expect(screen.getByTestId('quiz-lock')).toBeDisabled();
+  });
 
-    expect(await screen.findByText('Not this time.')).toBeOnTheScreen();
+  test('a wrong answer is told so in words, and the fact arrives anyway', async () => {
+    await render(<QuizScreen />);
+    await begin();
+
+    await lockIn(2);
+
+    expect(await screen.findByText('Your answer')).toBeOnTheScreen();
+    expect(screen.getByText('The answer')).toBeOnTheScreen();
     expect(screen.getByText('She was built for the China tea trade in 1869.')).toBeOnTheScreen();
   });
 
   test('the citation is the invitation: it opens THAT story', async () => {
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
-    fireEvent.press(screen.getByTestId('quiz-option-0'));
+    await begin();
+    await lockIn(0);
 
     fireEvent.press(await screen.findByTestId('quiz-source'));
 
@@ -175,35 +227,207 @@ describe('<QuizScreen />', () => {
     });
   });
 
-  test('through to the score, and round again', async () => {
+  test('through to the score, the run recorded, and round again', async () => {
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
 
-    fireEvent.press(screen.getByTestId('quiz-option-0')); // right
-    fireEvent.press(await screen.findByTestId('quiz-next'));
+    expect(screen.getByText('1 of 2')).toBeOnTheScreen();
+    await lockIn(0); // right
+    await next();
 
-    expect(await screen.findByText('Question 2 of 2')).toBeOnTheScreen();
-    fireEvent.press(screen.getByTestId('quiz-option-1')); // wrong
-    fireEvent.press(await screen.findByTestId('quiz-next'));
+    expect(await screen.findByText('2 of 2')).toBeOnTheScreen();
+    await lockIn(1); // wrong
+    await next();
 
     expect(await screen.findByTestId('quiz-done')).toBeOnTheScreen();
-    expect(screen.getByText('1 out of 2')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 2')).toBeOnTheScreen();
+    // The ground remembers: one run, one right answer
+    expect(mockRecordRun).toHaveBeenCalledWith('Greenwich', 1, 2);
+    // Both stories are doors back in, worded by outcome
+    expect(screen.getByText('Right')).toBeOnTheScreen();
+    expect(screen.getByText('Missed')).toBeOnTheScreen();
 
     fireEvent.press(screen.getByTestId('quiz-again'));
-    expect(await screen.findByText('Question 1 of 2')).toBeOnTheScreen();
+    // The question text is unambiguous across the flip; '1 of 2' exists
+    // on BOTH screens (score hero and progress) and would race it
+    expect(await screen.findByText('What did the Cutty Sark carry?')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 2')).toBeOnTheScreen();
   });
 
-  test('a full score says so', async () => {
+  test('a perfect run earns the warm banner — yellow’s third sanctioned use', async () => {
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
 
-    fireEvent.press(screen.getByTestId('quiz-option-0'));
-    fireEvent.press(await screen.findByTestId('quiz-next'));
-    fireEvent.press(await screen.findByTestId('quiz-option-0'));
-    fireEvent.press(await screen.findByTestId('quiz-next'));
+    await lockIn(0);
+    await next();
+    await lockIn(0);
+    await next();
 
-    expect(await screen.findByText('2 out of 2')).toBeOnTheScreen();
-    expect(screen.getByText('Every one. You know this ground.')).toBeOnTheScreen();
+    expect(await screen.findByTestId('quiz-perfect')).toBeOnTheScreen();
+    expect(screen.getByText('A perfect run on this ground.')).toBeOnTheScreen();
+  });
+
+  test('an imperfect run does not', async () => {
+    await render(<QuizScreen />);
+    await begin();
+
+    await lockIn(1);
+    await next();
+    await lockIn(0);
+    await next();
+
+    expect(await screen.findByTestId('quiz-done')).toBeOnTheScreen();
+    expect(screen.queryByTestId('quiz-perfect')).toBeNull();
+  });
+
+  test('the rank ladder stands on the area’s whole record, not this run', async () => {
+    mockProgress.value = { correct: 17, runs: 4 };
+    await render(<QuizScreen />);
+    await begin();
+    await lockIn(1);
+    await next();
+    await lockIn(1);
+    await next();
+
+    expect(await screen.findByTestId('quiz-rank')).toBeOnTheScreen();
+    // 17 cumulative right answers: Local, whatever this run scored
+    expect(within(screen.getByTestId('quiz-rank-current')).getByText('Local')).toBeOnTheScreen();
+  });
+
+  describe('the other kinds', () => {
+    test('true-or-myth asks its statement with two doors', async () => {
+      mockFetchQuiz.mockResolvedValue({
+        areaName: 'Greenwich',
+        questions: [
+          {
+            kind: 'true-false',
+            pageId: 5,
+            title: 'Greenwich Foot Tunnel',
+            statement: 'The Foot Tunnel runs under the Thames.',
+            answer: true,
+            because: 'Opened 1902, fifteen metres under the river.',
+          },
+        ],
+      });
+      await render(<QuizScreen />);
+      await begin();
+
+      expect(screen.getByText('The Foot Tunnel runs under the Thames.')).toBeOnTheScreen();
+      expect(screen.getByText('True here')).toBeOnTheScreen();
+      expect(screen.getByText('A myth')).toBeOnTheScreen();
+
+      await lockIn(0);
+      expect(await screen.findByText('Right — you chose this')).toBeOnTheScreen();
+      expect(screen.getByText('Opened 1902, fifteen metres under the river.')).toBeOnTheScreen();
+    });
+
+    test('order the ground: tapped oldest-first is said Right, in words', async () => {
+      mockFetchQuiz.mockResolvedValue({
+        areaName: 'Greenwich',
+        questions: [
+          {
+            kind: 'order',
+            pageId: 3,
+            title: "Queen's House",
+            question: 'Oldest first — the order they arrived on this ground.',
+            // Dealt: presentation deliberately NOT the answer
+            items: [
+              { pageId: 4, title: 'Royal Observatory', year: 1675 },
+              { pageId: 1, title: 'Cutty Sark', year: 1869 },
+              { pageId: 3, title: "Queen's House", year: 1616 },
+            ],
+            because: 'The Observatory rose on the ruin of a castle the Queen’s House knew.',
+          },
+        ],
+      });
+      await render(<QuizScreen />);
+      await begin();
+
+      // The years are NOT on the cards before locking — the reasoning is
+      // architectural, not memorised
+      expect(screen.queryByText('1616')).toBeNull();
+
+      // Oldest first: Queen's House (index 2), Observatory (0), Cutty Sark (1).
+      // Each tap is synced on its spoken pick label — the a11y strings
+      // double as the harness's commit signal
+      fireEvent.press(screen.getByTestId('quiz-order-item-2'));
+      await screen.findByLabelText("Queen's House, picked first");
+      fireEvent.press(screen.getByTestId('quiz-order-item-0'));
+      await screen.findByLabelText('Royal Observatory, picked second');
+      fireEvent.press(screen.getByTestId('quiz-order-item-1'));
+      await screen.findByLabelText('Cutty Sark, picked third');
+      fireEvent.press(screen.getByTestId('quiz-lock'));
+
+      expect(await screen.findByText('Right — oldest first')).toBeOnTheScreen();
+      // …and the reveal shows its dates
+      expect(screen.getByText('1616')).toBeOnTheScreen();
+    });
+
+    test('order the ground: the wrong order is told so, and the years teach', async () => {
+      mockFetchQuiz.mockResolvedValue({
+        areaName: 'Greenwich',
+        questions: [
+          {
+            kind: 'order',
+            pageId: 3,
+            title: "Queen's House",
+            question: 'Oldest first.',
+            items: [
+              { pageId: 4, title: 'Royal Observatory', year: 1675 },
+              { pageId: 1, title: 'Cutty Sark', year: 1869 },
+              { pageId: 3, title: "Queen's House", year: 1616 },
+            ],
+            because: 'The Observatory rose on the ruin of a castle the Queen’s House knew.',
+          },
+        ],
+      });
+      await render(<QuizScreen />);
+      await begin();
+
+      // As presented — which is not oldest-first
+      fireEvent.press(screen.getByTestId('quiz-order-item-0'));
+      await screen.findByLabelText('Royal Observatory, picked first');
+      fireEvent.press(screen.getByTestId('quiz-order-item-1'));
+      await screen.findByLabelText('Cutty Sark, picked second');
+      fireEvent.press(screen.getByTestId('quiz-order-item-2'));
+      await screen.findByLabelText("Queen's House, picked third");
+      fireEvent.press(screen.getByTestId('quiz-lock'));
+
+      expect(await screen.findByText('Not that order')).toBeOnTheScreen();
+      expect(screen.getByText('1675')).toBeOnTheScreen();
+    });
+
+    test('a tapped card un-picks itself and everything after it', async () => {
+      mockFetchQuiz.mockResolvedValue({
+        areaName: 'Greenwich',
+        questions: [
+          {
+            kind: 'order',
+            pageId: 3,
+            title: "Queen's House",
+            question: 'Oldest first.',
+            items: [
+              { pageId: 4, title: 'Royal Observatory', year: 1675 },
+              { pageId: 1, title: 'Cutty Sark', year: 1869 },
+              { pageId: 3, title: "Queen's House", year: 1616 },
+            ],
+            because: 'Because.',
+          },
+        ],
+      });
+      await render(<QuizScreen />);
+      await begin();
+
+      fireEvent.press(screen.getByTestId('quiz-order-item-2'));
+      await screen.findByLabelText("Queen's House, picked first");
+      fireEvent.press(screen.getByTestId('quiz-order-item-0'));
+      await screen.findByLabelText('Royal Observatory, picked second');
+      // Un-pick the first pick: both go, the lock disables again
+      fireEvent.press(screen.getByTestId('quiz-order-item-2'));
+      await screen.findByLabelText("Queen's House");
+
+      expect(screen.getByTestId('quiz-lock')).toBeDisabled();
+    });
   });
 
   describe('the tab is never blank', () => {
@@ -248,7 +472,7 @@ describe('<QuizScreen />', () => {
 
       await render(<QuizScreen />);
 
-      expect(await screen.findByTestId('quiz-run')).toBeOnTheScreen();
+      expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
       expect(mockFetchQuiz).toHaveBeenCalled();
       // The accent eyebrow and the worded way home, as Nearby has
       expect(screen.getByText('Exploring · test yourself on')).toBeOnTheScreen();
@@ -266,7 +490,7 @@ describe('<QuizScreen />', () => {
       mockFetchQuiz.mockResolvedValue(quiz);
       fireEvent.press(screen.getByTestId('quiz-retry'));
 
-      expect(await screen.findByTestId('quiz-run')).toBeOnTheScreen();
+      expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
     });
 
     test('while the feed and the area are still settling, it says what it is doing', async () => {
@@ -315,31 +539,31 @@ describe('the pointing question', () => {
 
   const throughTheWrittenQuestions = async () => {
     for (let i = 0; i < quiz.questions.length; i++) {
-      fireEvent.press(await screen.findByTestId('quiz-option-0'));
-      fireEvent.press(await screen.findByTestId('quiz-next'));
+      await lockIn(0);
+      await next();
     }
   };
 
   test('closes the run, and the count includes it', async () => {
     withAPointableStory();
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
 
     // Two written questions plus the pointing one
-    expect(screen.getByText('Question 1 of 3')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 3')).toBeOnTheScreen();
 
     await throughTheWrittenQuestions();
 
     expect(await screen.findByTestId('quiz-direction')).toBeOnTheScreen();
     expect(screen.getByText('Which way is Cutty Sark?')).toBeOnTheScreen();
-    expect(screen.getByText('Question 3 of 3')).toBeOnTheScreen();
+    expect(screen.getByText('3 of 3')).toBeOnTheScreen();
   });
 
   test('facing it counts, and the fact is given either way', async () => {
     withAPointableStory();
     mockHeading.value = 10; // the story is due north; 10° out, inside 30°
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
     await throughTheWrittenQuestions();
 
     fireEvent.press(await screen.findByTestId('quiz-direction-lock'));
@@ -353,7 +577,7 @@ describe('the pointing question', () => {
     withAPointableStory();
     mockHeading.value = 180; // due south, 180° out
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
     await throughTheWrittenQuestions();
 
     fireEvent.press(await screen.findByTestId('quiz-direction-lock'));
@@ -366,7 +590,7 @@ describe('the pointing question', () => {
   test('the citation opens THAT story, as the written questions do', async () => {
     withAPointableStory();
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
     await throughTheWrittenQuestions();
     fireEvent.press(await screen.findByTestId('quiz-direction-lock'));
 
@@ -382,7 +606,7 @@ describe('the pointing question', () => {
     withAPointableStory();
     mockHeadingAvailable.current = false;
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
     await throughTheWrittenQuestions();
 
     expect(await screen.findByTestId('quiz-direction-unavailable')).toBeOnTheScreen();
@@ -395,10 +619,10 @@ describe('the pointing question', () => {
     withAPointableStory();
     mockGate.exploring = true;
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
 
     // Two written questions only
-    expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 2')).toBeOnTheScreen();
     await throughTheWrittenQuestions();
     expect(await screen.findByTestId('quiz-done')).toBeOnTheScreen();
     expect(screen.queryByTestId('quiz-direction')).toBeNull();
@@ -423,9 +647,9 @@ describe('the pointing question', () => {
       refresh: jest.fn(),
     });
     await render(<QuizScreen />);
-    await screen.findByTestId('quiz-run');
+    await begin();
 
-    expect(screen.getByText('Question 1 of 2')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 2')).toBeOnTheScreen();
   });
 });
 
@@ -440,6 +664,7 @@ describe('the quiz guard', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await render(<QuizScreen />);
+    fireEvent.press(await screen.findByTestId('quiz-begin'));
 
     expect(await screen.findByTestId('quiz-crashed')).toBeOnTheScreen();
     // The message rides along, so a report from a phone carries a diagnosis
@@ -448,6 +673,6 @@ describe('the quiz guard', () => {
     // …and the retry re-renders instead of leaving a corpse
     mockFetchQuiz.mockResolvedValue(quiz);
     fireEvent.press(screen.getByTestId('quiz-crash-retry'));
-    expect(await screen.findByTestId('quiz-run')).toBeOnTheScreen();
+    expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
   });
 });

@@ -3,7 +3,15 @@ import { research } from '@/server/ai-router';
 import { extractAnswerText } from '@/server/gemini';
 import { extractKeyPart } from '@/server/telling';
 import { storeGet, storePut } from '@/server/telling-store';
-import { Quiz, QuizQuestion } from '@/types/quiz';
+import {
+  AnchorQuestion,
+  OrderItem,
+  OrderQuestion,
+  Quiz,
+  QuizQuestion,
+  TrueFalseQuestion,
+  WhichPlaceQuestion,
+} from '@/types/quiz';
 
 /**
  * The area quiz: five questions about the ground you are standing on,
@@ -14,11 +22,20 @@ import { Quiz, QuizQuestion } from '@/types/quiz';
  * stories, existing in no source anywhere. Each question cites the story
  * it came from, so answering one is an invitation to go and read it.
  *
+ * v2 asks in four registers instead of one: the anchor (the concrete
+ * surprise), which-place (the fact given, the place asked — every
+ * option a real story we supplied), order (three places into the order
+ * they arrived), and true-or-myth. The mix tests understanding of the
+ * ground, not recall of an extract.
+ *
  * The trust contract is the tellings' contract, at stakes: a question
  * whose answer isn't in the source is worse than no question, because a
  * quiz asserts. So facts may come only from the source text, every
  * question must name a story we actually supplied, and anything that
- * fails validation is dropped rather than shown.
+ * fails validation is dropped rather than shown. v2 tightens it per
+ * kind: which-place options are OUR titles keyed by pageId (the model
+ * cannot misname a place), and an order item whose year is not literally
+ * in its own extract drops the whole question.
  */
 
 /** What we aim for, and the fewest that is still a quiz. Quiet corners
@@ -80,10 +97,14 @@ export type QuizSubject = { pageId: number; title: string; extract: string };
  * and the source digest means a fabricated POST can only ever poison
  * its own slot, never the one real clients — who all send the same
  * stories for the same ground — read for the next 30 days.
+ *
+ * The v2 prefix retires every v1 entry at once: the shape changed, and
+ * a cached quiz without `kind`s served to the new client would be a
+ * broken screen, not a stale one.
  */
 export async function quizKey(areaName: string, subjects: QuizSubject[]): Promise<string> {
   const material = subjects.map((s) => `${s.pageId}:${s.title}:${s.extract}`).join('\n');
-  return `${areaName.toLowerCase()}:${await extractKeyPart(material)}`;
+  return `v2:${areaName.toLowerCase()}:${await extractKeyPart(material)}`;
 }
 
 /** Pure and unit-tested: the contract the model must write to. */
@@ -91,14 +112,23 @@ export function quizPrompt(areaName: string, subjects: QuizSubject[]): string {
   return [
     `You set short local-history quizzes for a walking app. Set ${TargetQuestions} questions about ${areaName}, from the stories below.`,
     '',
-    'Rules:',
-    '- One question per story, each drawn from a DIFFERENT story. Never two questions about the same story.',
-    '- Ask about the surprising, concrete thing — a date, a number, a person, what a place used to be. Never ask "what is interesting about X".',
-    '- Exactly four options. One unambiguously correct. The wrong three must be plausible for the period and place, and clearly wrong to someone who has read the story — never a joke, never a near-synonym of the right answer.',
-    '- The answer MUST be stated in that story\'s source text. If a story does not support a clean question, skip it and set fewer questions rather than inventing anything.',
-    '- "because" is one sentence giving the fact, as a reader would want it after answering. Facts only from the source.',
-    '- "pageId" MUST be the id of the story the question came from, copied exactly from the list below.',
-    '- Return ONLY fenced JSON: {"questions": [{"pageId": 123, "question": "...", "options": ["...", "...", "...", "..."], "answerIndex": 0, "because": "..."}]}',
+    'The mix (fall back to an extra "anchor" whenever the material cannot support a kind — never invent):',
+    '- 2 of kind "anchor": the one surprising, concrete thing in a story — a date, a number, a person, what a place used to be. Never "what is interesting about X". Exactly four options, one unambiguously correct; the wrong three plausible for the period and place, never a joke, never a near-synonym of the right answer.',
+    '- 1 of kind "which-place": state a fact from one story, ask WHICH place it belongs to. Give "distractorPageIds": the ids of THREE OTHER stories from the list whose places make plausible wrong answers. Do not write place names yourself — the ids are the options.',
+    '- 1 of kind "order": three stories whose source text each states a year for the place\'s founding, building, or arrival. "items" lists them OLDEST FIRST with that year, copied exactly as the source states it. Only set this if three stories genuinely state years.',
+    '- 1 of kind "true-false": one statement about a story, answered true or false. A false statement must be a plausible misreading of the source, not a joke. Roughly half your true-false statements across quizzes should be false.',
+    '',
+    'Rules for every question:',
+    '- Each drawn from a DIFFERENT story ("order" spends three at once). Never two questions about the same story.',
+    '- Facts MUST be stated in the story\'s source text. If a story does not support a clean question, skip it and set fewer questions rather than inventing anything.',
+    '- "because" is one sentence giving the fact, as a reader would want it after answering — for a false statement, the correction. Facts only from the source.',
+    '- Every "pageId" MUST be copied exactly from the list below.',
+    '- Return ONLY fenced JSON: {"questions": [',
+    '  {"kind": "anchor", "pageId": 123, "question": "...", "options": ["...", "...", "...", "..."], "answerIndex": 0, "because": "..."},',
+    '  {"kind": "which-place", "pageId": 123, "question": "...", "distractorPageIds": [45, 67, 89], "because": "..."},',
+    '  {"kind": "order", "question": "...", "items": [{"pageId": 45, "year": 1616}, {"pageId": 67, "year": 1675}, {"pageId": 89, "year": 1869}], "because": "..."},',
+    '  {"kind": "true-false", "pageId": 123, "statement": "...", "answer": true, "because": "..."}',
+    ']}',
     '',
     'Stories:',
     ...subjects.map(
@@ -108,31 +138,27 @@ export function quizPrompt(areaName: string, subjects: QuizSubject[]): string {
   ].join('\n');
 }
 
-/**
- * Pure and unit-tested: one raw model question → a clean QuizQuestion,
- * or null when it isn't one. A quiz asserts things, so this is strict —
- * every drop here is a wrong answer a user never saw.
- */
-export function cleanQuizQuestion(
-  raw: unknown,
-  allowed: Map<number, string>
-): QuizQuestion | null {
-  if (typeof raw !== 'object' || raw === null) {
-    return null;
-  }
-  const { pageId, question, options, answerIndex, because } = raw as Record<string, unknown>;
+/** The two strings every kind must carry, trimmed, or null. */
+function cleanText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
 
-  // The citation must point at a story WE supplied: a pageId the model
-  // invented would send a tap to a screen that isn't there
-  if (typeof pageId !== 'number' || !allowed.has(pageId)) {
+/** A pageId is only a pageId if it names a story we supplied. */
+function cleanPageId(value: unknown, allowed: Map<number, QuizSubject>): number | null {
+  return typeof value === 'number' && allowed.has(value) ? value : null;
+}
+
+function cleanAnchor(
+  raw: Record<string, unknown>,
+  allowed: Map<number, QuizSubject>
+): AnchorQuestion | null {
+  const pageId = cleanPageId(raw.pageId, allowed);
+  const question = cleanText(raw.question);
+  const because = cleanText(raw.because);
+  if (pageId === null || !question || !because) {
     return null;
   }
-  if (typeof question !== 'string' || !question.trim()) {
-    return null;
-  }
-  if (typeof because !== 'string' || !because.trim()) {
-    return null;
-  }
+  const { options, answerIndex } = raw;
   if (!Array.isArray(options) || options.length !== 4) {
     return null;
   }
@@ -152,28 +178,176 @@ export function cleanQuizQuestion(
   ) {
     return null;
   }
-
   return {
+    kind: 'anchor',
     pageId,
     // Ours, not the model's — see the type
-    title: allowed.get(pageId) as string,
-    question: question.trim(),
+    title: (allowed.get(pageId) as QuizSubject).title,
+    question,
     options: cleanOptions,
     answerIndex,
-    because: because.trim(),
+    because,
   };
 }
 
 /**
- * Pure and unit-tested: the model's whole answer → a Quiz, or null when
- * too little of it survived to be one. One question per story, so a
- * model that asks three times about the same church yields one question.
+ * The model names distractors by pageId; the options are OUR titles.
+ * The right answer is always the cited story's title, first on the wire
+ * — the client deals the order, exactly as it does for anchors.
  */
-export function parseQuiz(
-  areaName: string,
-  text: string,
-  subjects: QuizSubject[]
-): Quiz | null {
+function cleanWhichPlace(
+  raw: Record<string, unknown>,
+  allowed: Map<number, QuizSubject>
+): WhichPlaceQuestion | null {
+  const pageId = cleanPageId(raw.pageId, allowed);
+  const question = cleanText(raw.question);
+  const because = cleanText(raw.because);
+  if (pageId === null || !question || !because) {
+    return null;
+  }
+  const { distractorPageIds } = raw;
+  if (!Array.isArray(distractorPageIds) || distractorPageIds.length !== 3) {
+    return null;
+  }
+  const distractors: number[] = [];
+  for (const rawId of distractorPageIds) {
+    const id = cleanPageId(rawId, allowed);
+    if (id === null || id === pageId || distractors.includes(id)) {
+      return null;
+    }
+    distractors.push(id);
+  }
+  const title = (allowed.get(pageId) as QuizSubject).title;
+  const options = [title, ...distractors.map((id) => (allowed.get(id) as QuizSubject).title)];
+  // Two stories can share a display title (twin plaques); as options
+  // they would be indistinguishable taps
+  if (new Set(options.map((option) => option.toLowerCase())).size !== 4) {
+    return null;
+  }
+  return {
+    kind: 'which-place',
+    pageId,
+    title,
+    question,
+    options,
+    answerIndex: 0,
+    because,
+  };
+}
+
+/**
+ * Order is the strictest kind because it is the most checkable: every
+ * item's year must appear, as written, in that story's own extract.
+ * A year the source never states drops the question whole — a timeline
+ * is an assertion three times over.
+ */
+function cleanOrder(
+  raw: Record<string, unknown>,
+  allowed: Map<number, QuizSubject>
+): OrderQuestion | null {
+  const question = cleanText(raw.question);
+  const because = cleanText(raw.because);
+  if (!question || !because) {
+    return null;
+  }
+  const { items } = raw;
+  if (!Array.isArray(items) || items.length !== 3) {
+    return null;
+  }
+  const cleanItems: OrderItem[] = [];
+  for (const rawItem of items) {
+    if (typeof rawItem !== 'object' || rawItem === null) {
+      return null;
+    }
+    const { pageId: rawId, year } = rawItem as Record<string, unknown>;
+    const pageId = cleanPageId(rawId, allowed);
+    if (pageId === null || cleanItems.some((item) => item.pageId === pageId)) {
+      return null;
+    }
+    if (typeof year !== 'number' || !Number.isInteger(year)) {
+      return null;
+    }
+    const subject = allowed.get(pageId) as QuizSubject;
+    if (!subject.extract.includes(String(year))) {
+      return null;
+    }
+    cleanItems.push({ pageId, title: subject.title, year });
+  }
+  // Oldest first on the wire, and strictly so — a tie cannot be ordered
+  const sorted = [...cleanItems].sort((a, b) => a.year - b.year);
+  if (sorted[0].year === sorted[1].year || sorted[1].year === sorted[2].year) {
+    return null;
+  }
+  return {
+    kind: 'order',
+    // The question cites its oldest item; the reveal links every item
+    pageId: sorted[0].pageId,
+    title: sorted[0].title,
+    question,
+    items: sorted,
+    because,
+  };
+}
+
+function cleanTrueFalse(
+  raw: Record<string, unknown>,
+  allowed: Map<number, QuizSubject>
+): TrueFalseQuestion | null {
+  const pageId = cleanPageId(raw.pageId, allowed);
+  const statement = cleanText(raw.statement);
+  const because = cleanText(raw.because);
+  if (pageId === null || !statement || !because || typeof raw.answer !== 'boolean') {
+    return null;
+  }
+  return {
+    kind: 'true-false',
+    pageId,
+    title: (allowed.get(pageId) as QuizSubject).title,
+    statement,
+    answer: raw.answer,
+    because,
+  };
+}
+
+/**
+ * Pure and unit-tested: one raw model question → a clean QuizQuestion,
+ * or null when it isn't one. A quiz asserts things, so this is strict —
+ * every drop here is a wrong answer a user never saw.
+ */
+export function cleanQuizQuestion(
+  raw: unknown,
+  allowed: Map<number, QuizSubject>
+): QuizQuestion | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  switch (record.kind) {
+    case 'anchor':
+      return cleanAnchor(record, allowed);
+    case 'which-place':
+      return cleanWhichPlace(record, allowed);
+    case 'order':
+      return cleanOrder(record, allowed);
+    case 'true-false':
+      return cleanTrueFalse(record, allowed);
+    default:
+      return null;
+  }
+}
+
+/** Every story a question spends — order spends its three items. */
+function pageIdsSpent(question: QuizQuestion): number[] {
+  return question.kind === 'order' ? question.items.map((item) => item.pageId) : [question.pageId];
+}
+
+/**
+ * Pure and unit-tested: the model's whole answer → a Quiz, or null when
+ * too little of it survived to be one. One question per story — order
+ * spends three stories at once, and a model that asks three times about
+ * the same church yields one question.
+ */
+export function parseQuiz(areaName: string, text: string, subjects: QuizSubject[]): Quiz | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -185,15 +359,17 @@ export function parseQuiz(
     return null;
   }
 
-  const allowed = new Map(subjects.map((subject) => [subject.pageId, subject.title]));
+  const allowed = new Map(subjects.map((subject) => [subject.pageId, subject]));
   const seen = new Set<number>();
   const questions: QuizQuestion[] = [];
   for (const raw of rawQuestions) {
     const question = cleanQuizQuestion(raw, allowed);
-    if (!question || seen.has(question.pageId)) {
+    if (!question || pageIdsSpent(question).some((pageId) => seen.has(pageId))) {
       continue;
     }
-    seen.add(question.pageId);
+    for (const pageId of pageIdsSpent(question)) {
+      seen.add(pageId);
+    }
     questions.push(question);
     if (questions.length === TargetQuestions) {
       break;
@@ -223,10 +399,7 @@ function peek(key: string): { quiz: Quiz | null } | undefined {
  * for this ground" — too few stories, or too little in them to ask
  * about honestly — and that verdict is cached too.
  */
-export async function getQuiz(
-  areaName: string,
-  subjects: QuizSubject[]
-): Promise<Quiz | null> {
+export async function getQuiz(areaName: string, subjects: QuizSubject[]): Promise<Quiz | null> {
   const usable = subjects
     .filter((subject) => subject.extract.trim().length > 0 && isNamedPlace(subject.title))
     .slice(0, MaxStories);
