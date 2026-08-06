@@ -2,13 +2,20 @@
 # text taps intermittently (verifier's observation, confirmed 2/3
 # local failures — PR #187), so the History tab is tapped by position.
 # With the Quiz trigger hidden the pill holds three tabs and History
-# is the rightmost: 80%, 94% is its measured centre on the simulator
-# sizes we run (was 61% in the four-tab pill). Let the frame settle
-# first — slow runners swallow taps that land mid-layout (run 8's
-# failure mode).
+# is the rightmost: 70%, 95% is its measured centre (verifier-simulator
+# skill, quiz-off-air-arrivals-disarm) on an iPhone 17 Pro Max
+# simulator (440x956pt) — `maestro hierarchy` gave the History button's
+# bounds as [259,877][353,931], centre (306,904)pt = (69.5%, 94.6%),
+# rounded to Maestro's integer-percent tap syntax. The prior 80%
+# figure was an unverified estimate that turned out to land at the
+# button's very edge on this device (1pt of margin) — a smaller
+# simulator would have missed it outright. Re-measure if the flows
+# start running against a materially different simulator size (was
+# 61% in the four-tab pill). Let the frame settle first — slow runners
+# swallow taps that land mid-layout (run 8's failure mode).
 appId: com.eddtb.landmarks
 ---
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn:
-    point: 80%, 94%
+    point: 70%, 95%
