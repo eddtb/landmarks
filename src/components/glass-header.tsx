@@ -1,0 +1,87 @@
+import { ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+
+import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+
+/**
+ * The glass island (Edd's pick from the mocked variants, 2026-08-06):
+ * the screen header as a floating liquid-glass capsule, pairing with
+ * the tab pill below — two glass objects framing a feed that scrolls
+ * under both.
+ *
+ * Real UIGlassEffect on iOS 26; anywhere else (older iOS, Android,
+ * jest) it degrades to a solid floating card in the theme's surface
+ * colour — still modern, never broken. Native module, so this ships
+ * in a BINARY: it rides the same build that strips background
+ * location, never an OTA.
+ *
+ * Geometry is the screen's business: the island floats at the top of
+ * whatever positioned ancestor it is mounted in (mount it inside your
+ * safe area, or offset it yourself), reports its own height through
+ * onHeight, and the screen decides its scroll content's paddingTop so
+ * the content starts below the island and slides beneath it.
+ */
+
+export const IslandTopGap = Spacing.two;
+export const IslandBreath = Spacing.three;
+
+export function GlassIslandHeader({
+  children,
+  onHeight,
+}: {
+  children: ReactNode;
+  /** The island's rendered height (gap above included, breath not). */
+  onHeight: (height: number) => void;
+}) {
+  const theme = useTheme();
+  const glass = isLiquidGlassAvailable();
+  const report = (height: number) => onHeight(IslandTopGap + height);
+
+  return (
+    // Touches beside the island fall through to the list — only the
+    // island itself catches
+    <View style={styles.anchor} pointerEvents="box-none">
+      {glass ? (
+        <GlassView
+          glassEffectStyle="regular"
+          style={styles.island}
+          onLayout={(event) => report(event.nativeEvent.layout.height)}>
+          {children}
+        </GlassView>
+      ) : (
+        <View
+          style={[styles.island, styles.solid, { backgroundColor: theme.backgroundElement }]}
+          onLayout={(event) => report(event.nativeEvent.layout.height)}>
+          {children}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  anchor: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingTop: IslandTopGap,
+    paddingHorizontal: Spacing.three - 4,
+  },
+  island: {
+    borderRadius: Spacing.four,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+  },
+  solid: {
+    // The fallback card needs its own edge; real glass draws its own
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+});
