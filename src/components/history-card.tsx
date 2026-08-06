@@ -21,10 +21,11 @@ type Props = {
 
 export function HistoryCard({ item, archive, saved }: Props) {
   const theme = useTheme();
-  // The quiet ledger (journal mock A): a story the reader has read or
-  // stood at stops shouting — the card dims, the hook goes, and the
-  // meta line says so in a grey word. State is words and dimming,
-  // never colour (the constitution's rule).
+  // The quiet ledger: a story the reader has read or stood at stops
+  // shouting — the hook goes, and a glass tick sits on the photo
+  // (Edd's pick from the mocked treatments, 2026-08-06; the original
+  // whole-card 0.62 dim made photos look washed-out and broken on his
+  // phone). Cards without a photo keep the grey meta word instead.
   const entry = useJournalEntry(item.pageId);
   const journaled = Boolean(entry?.readAt || entry?.visitedAt);
   const journalWord = entry?.visitedAt
@@ -48,7 +49,6 @@ export function HistoryCard({ item, archive, saved }: Props) {
         // Archive cards wear a lavender spine and an honest tag —
         // deliberate, not broken; a palace's painting may still show
         archive && [styles.archive, { borderLeftColor: theme.accentSoft }],
-        journaled && styles.journaled,
       ]}>
         {item.thumbnailUrl && (
           <Image
@@ -60,6 +60,15 @@ export function HistoryCard({ item, archive, saved }: Props) {
             // gallery precedent, #200)
             cachePolicy="memory-disk"
           />
+        )}
+        {item.thumbnailUrl && journalWord && (
+          // Translucent, not blurred: expo-blur isn't a dependency this
+          // chip earns, and 55% ink over a photo reads frosted anyway
+          <View style={styles.glassTick} testID="read-tick">
+            <ThemedText type="captionBold" style={styles.glassTickText}>
+              ✓&ensp;{journalWord}
+            </ThemedText>
+          </View>
         )}
         <View style={styles.body}>
           {archive && (item.pastTag || item.source.startsWith('Open Plaques')) && (
@@ -90,7 +99,9 @@ export function HistoryCard({ item, archive, saved }: Props) {
             {(saved
               ? item.source
               : `${formatWalkTime(Math.round(item.distanceMeters / 1.33))} · ${item.source}`) +
-              (journalWord ? ` · ${journalWord}` : '')}
+              // The tick on the photo says it; only photoless cards
+              // still say it in the meta line
+              (journalWord && !item.thumbnailUrl ? ` · ${journalWord}` : '')}
           </ThemedText>
         </View>
       </Pressable>
@@ -105,8 +116,19 @@ const styles = StyleSheet.create({
   archive: {
     borderLeftWidth: 3,
   },
-  journaled: {
-    opacity: 0.62,
+  glassTick: {
+    position: 'absolute',
+    top: Spacing.two + 2,
+    right: Spacing.two + 2,
+    backgroundColor: 'rgba(22, 22, 26, 0.55)',
+    borderRadius: 999,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three - 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  glassTickText: {
+    color: '#FFFFFF',
   },
   photo: {
     width: '100%',

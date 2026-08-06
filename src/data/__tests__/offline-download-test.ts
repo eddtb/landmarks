@@ -50,6 +50,7 @@ const retold: Retold = {
   parts: [{ heading: 'One', body: 'First.' }],
   minutes: 1,
   timeline: [],
+  brief: [],
 };
 
 beforeEach(() => {

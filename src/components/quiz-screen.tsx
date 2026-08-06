@@ -1,9 +1,8 @@
-import { router } from 'expo-router';
 import { Component, ReactNode, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { QuizDirection } from '@/components/quiz-direction';
+import { QuizRun } from '@/components/quiz-run';
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -15,11 +14,12 @@ import { useHistory } from '@/hooks/use-history';
 import { useTheme } from '@/hooks/use-theme';
 import { Quiz } from '@/types/quiz';
 import { Coordinates } from '@/utils/geo';
-import { DirectionQuestion, pointableStory } from '@/utils/quiz-direction';
+import { pointableStory } from '@/utils/quiz-direction';
 
 /**
- * The quiz tab: five questions about the ground you are standing on,
- * set by the app from the stories it found there.
+ * The quiz tab: questions about the ground you are standing on, set by
+ * the app from the stories it found there — four registers of question
+ * and the pointing finale (the run itself lives in quiz-run.tsx).
  *
  * A tab must never be empty, which is the whole design constraint here.
  * A quiet corner gets a shorter quiz (the server's floor is three), and
@@ -120,6 +120,10 @@ function QuizBody({
   const [phase, setPhase] = useState<Phase>('loading');
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Lifted from the run: while a run is up the screen header stands
+  // down, so a question and its options fit one screen (Edd's phone
+  // finding, 2026-08-06 — the largeTitle pushed the run into a scroll)
+  const [begun, setBegun] = useState(false);
 
   // The nearest dozen, and no more. The feed runs to ~100 stories in a
   // dense area and the server only ever reads twelve — sending all of
@@ -163,6 +167,8 @@ function QuizBody({
     setAskedFor(askKey);
     setPhase('loading');
     setQuiz(null);
+    // A new area's quiz opens on its start card, not mid-run
+    setBegun(false);
   }
 
   useEffect(() => {
@@ -208,6 +214,9 @@ function QuizBody({
   // name to quiz you on
   const resolved = areaSettled && !areaName ? 'none' : phase;
   const retry = () => setAttempt((previous) => previous + 1);
+  // The run carries its own compact header (area · count · progress);
+  // the screen's title would only push it into a scroll
+  const running = begun && !denied && resolved === 'ready' && Boolean(quiz);
 
   return (
     // ThemedView for the ground, SafeAreaView for the top edge — the
@@ -220,12 +229,16 @@ function QuizBody({
           contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}>
           {/* A pinned place is a mode the header must admit, exactly as
               Nearby's does: accent eyebrow, and the worded way home. */}
-          <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
-            {exploring ? 'Exploring · test yourself on' : 'Test yourself on'}
-          </ThemedText>
-          <ThemedText type="largeTitle">
-            {denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
-          </ThemedText>
+          {!running && (
+            <>
+              <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
+                {exploring ? 'Exploring · test yourself on' : 'Test yourself on'}
+              </ThemedText>
+              <ThemedText type="largeTitle">
+                {denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
+              </ThemedText>
+            </>
+          )}
 
           {denied && (
             <View style={styles.centered} testID="quiz-denied">
@@ -270,7 +283,7 @@ function QuizBody({
             </View>
           )}
 
-          {exploring && (
+          {exploring && !running && (
             <Pressable
               accessibilityRole="button"
               testID="quiz-back-to-near-me"
@@ -282,158 +295,19 @@ function QuizBody({
 
           {!denied && resolved === 'ready' && quiz && (
             <QuizGuard onRetry={retry}>
-              <QuizRun quiz={quiz} pointing={pointing} key={quiz.areaName} />
+              <QuizRun
+                quiz={quiz}
+                pointing={pointing}
+                areaLabel={denied ? null : areaLabel}
+                begun={begun}
+                onBegin={() => setBegun(true)}
+                key={quiz.areaName}
+              />
             </QuizGuard>
           )}
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
-  );
-}
-
-/**
- * The run itself: one question at a time, the fact after each answer.
- *
- * The written questions come first and the pointing one closes, because
- * it is the only question that asks anything of the room you are standing
- * in — a better last taste than a fourth multiple choice, and the one a
- * reviewer at a desk will remember having done rather than read.
- */
-function QuizRun({ quiz, pointing }: { quiz: Quiz; pointing: DirectionQuestion | null }) {
-  const theme = useTheme();
-  const [index, setIndex] = useState(0);
-  const [chosen, setChosen] = useState<number | null>(null);
-  const [score, setScore] = useState(0);
-
-  const written = quiz.questions.length;
-  const total = written + (pointing ? 1 : 0);
-  const question = quiz.questions[index];
-  const last = index === total - 1;
-  const answered = chosen !== null;
-
-  // Past the written questions, the pointing one closes the run
-  if (!question && pointing && index === written) {
-    return (
-      <View style={styles.run} testID="quiz-run">
-        <ThemedText type="small" themeColor="textSecondary">
-          Question {index + 1} of {total}
-        </ThemedText>
-        <QuizDirection
-          question={pointing}
-          last
-          onAnswered={(correct) => {
-            if (correct) {
-              setScore((previous) => previous + 1);
-            }
-            setIndex((previous) => previous + 1);
-          }}
-        />
-      </View>
-    );
-  }
-
-  if (!question) {
-    // Finished: the score, and the way round again
-    return (
-      <View style={styles.run} testID="quiz-done">
-        <ThemedText type="headline">
-          {score} out of {total}
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {score === total
-            ? 'Every one. You know this ground.'
-            : 'The stories behind these are all within a walk.'}
-        </ThemedText>
-        <Pressable
-          accessibilityRole="button"
-          testID="quiz-again"
-          onPress={() => {
-            setIndex(0);
-            setChosen(null);
-            setScore(0);
-          }}>
-          <ThemedText type="linkPrimary">Go again</ThemedText>
-        </Pressable>
-      </View>
-    );
-  }
-
-  const choose = (option: number) => {
-    if (answered) {
-      return;
-    }
-    setChosen(option);
-    if (option === question.answerIndex) {
-      setScore((previous) => previous + 1);
-    }
-  };
-
-  return (
-    <View style={styles.run} testID="quiz-run">
-      <ThemedText type="small" themeColor="textSecondary">
-        Question {index + 1} of {total}
-      </ThemedText>
-      <ThemedText type="subtitle">{question.question}</ThemedText>
-
-      {question.options.map((option, option_index) => {
-        const right = option_index === question.answerIndex;
-        // Only once answered does the sheet say anything about which is
-        // which — a colour before the tap would give it away
-        const tint = answered && right ? theme.accentSoft : theme.backgroundElement;
-        return (
-          <Pressable
-            key={option_index}
-            accessibilityRole="button"
-            // Words, not colour alone (PR #186): the state is spoken
-            accessibilityLabel={
-              answered
-                ? `${option}. ${right ? 'Correct answer' : option_index === chosen ? 'Your answer, wrong' : 'Not the answer'}`
-                : option
-            }
-            disabled={answered}
-            testID={`quiz-option-${option_index}`}
-            onPress={() => choose(option_index)}
-            style={({ pressed }) => [
-              styles.option,
-              { backgroundColor: tint },
-              answered && right && { borderColor: theme.accent, borderWidth: 2 },
-              pressed && { opacity: 0.85 },
-            ]}>
-            <ThemedText type={answered && right ? 'smallBold' : 'small'}>{option}</ThemedText>
-          </Pressable>
-        );
-      })}
-
-      {answered && (
-        <View style={styles.because} testID="quiz-because">
-          <ThemedText type="smallBold" themeColor={chosen === question.answerIndex ? 'accent' : 'textSecondary'}>
-            {chosen === question.answerIndex ? 'Right.' : 'Not this time.'}
-          </ThemedText>
-          <ThemedText type="small">{question.because}</ThemedText>
-          {/* The citation IS the invitation — go and read it */}
-          <Pressable
-            accessibilityRole="button"
-            testID="quiz-source"
-            onPress={() =>
-              router.push({
-                pathname: '/history/[pageId]',
-                params: { pageId: String(question.pageId) },
-              })
-            }>
-            <ThemedText type="linkPrimary">Read {question.title} ›</ThemedText>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            testID="quiz-next"
-            onPress={() => {
-              setIndex((previous) => previous + 1);
-              setChosen(null);
-            }}>
-            <ThemedText type="linkPrimary">{last ? 'See the score' : 'Next question'}</ThemedText>
-          </Pressable>
-        </View>
-      )}
-    </View>
   );
 }
 
@@ -454,21 +328,5 @@ const styles = StyleSheet.create({
   },
   emptyCopy: {
     textAlign: 'center',
-  },
-  run: {
-    gap: Spacing.three,
-    paddingTop: Spacing.three,
-  },
-  option: {
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
-    borderCurve: 'continuous',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  because: {
-    gap: Spacing.two,
-    paddingTop: Spacing.two,
   },
 });

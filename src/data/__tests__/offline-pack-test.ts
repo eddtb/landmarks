@@ -13,6 +13,7 @@ const retold: Retold = {
   parts: [{ heading: 'One', body: 'First.' }],
   minutes: 1,
   timeline: [],
+  brief: [],
 };
 
 // Seed "last session's" downloads BEFORE the module loads — hydration

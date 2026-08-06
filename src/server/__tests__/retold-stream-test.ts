@@ -141,7 +141,7 @@ describe('startRetoldStream (the cold path, streamed)', () => {
     expect(done.retold?.parts).toHaveLength(3);
     expect(done.retold?.timeline).toHaveLength(1);
     // Cache-on-complete: written once, as the 30-day verdict
-    expect(backing.get('v3:greenwich')).toMatchObject({ retold: { minutes: 1 } });
+    expect(backing.get('v4:greenwich')).toMatchObject({ retold: { minutes: 1 } });
     // …and the next open is a cache hit, no second call
     expect(retold.peekRetold('Greenwich')?.retold).toEqual(done.retold);
   });
@@ -191,7 +191,7 @@ describe('startRetoldStream (the cold path, streamed)', () => {
     }
     const events = (await collect(started.events)) as { kind: string; reason?: string }[];
     expect(events.at(-1)).toEqual({ kind: 'failed', reason: 'invalid' });
-    expect(backing.get('v3:greenwich')).toMatchObject({ retold: null });
+    expect(backing.get('v4:greenwich')).toMatchObject({ retold: null });
   });
 
   test('while one stream writes, a second ask JOINS it — never a second call', async () => {

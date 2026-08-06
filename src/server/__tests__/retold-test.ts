@@ -79,6 +79,43 @@ describe('parseRetold — pull-quotes and the timeline', () => {
   });
 });
 
+describe('parseRetold — the brief (the ten-second read above Part One)', () => {
+  const parts = [
+    { heading: 'A', body: 'One.' },
+    { heading: 'B', body: 'Two.' },
+    { heading: 'C', body: 'Three.' },
+  ];
+
+  test('two or three clean lines survive, trimmed', () => {
+    const retold = parseRetold(
+      JSON.stringify({
+        brief: ['  The last surviving tea clipper. ', 'Nearly lost to fire in 2007.'],
+        parts,
+      })
+    );
+    expect(retold?.brief).toEqual([
+      'The last surviving tea clipper.',
+      'Nearly lost to fire in 2007.',
+    ]);
+  });
+
+  test('a bad line drops; a fourth line is never kept', () => {
+    const retold = parseRetold(
+      JSON.stringify({
+        brief: ['Real line one.', '   ', 42, 'Real line two.', 'x'.repeat(200), 'Line three.', 'Line four.'],
+        parts,
+      })
+    );
+    expect(retold?.brief).toEqual(['Real line one.', 'Real line two.', 'Line three.']);
+  });
+
+  test('one line is not a brief — and no brief never costs the retelling', () => {
+    expect(parseRetold(JSON.stringify({ brief: ['Alone.'], parts }))?.brief).toEqual([]);
+    expect(parseRetold(JSON.stringify({ brief: 'not an array', parts }))?.brief).toEqual([]);
+    expect(parseRetold(JSON.stringify({ parts }))?.brief).toEqual([]);
+  });
+});
+
 describe('parseRetold', () => {
   test('validates and counts a good retelling', () => {
     const retold = parseRetold(

@@ -14,6 +14,7 @@ const relic = (pageId: number, title: string): HistoryItem => ({
 
 const retold: Retold = {
   minutes: 7,
+  brief: [],
   timeline: [
     { year: '1491', label: 'Henry VIII born here', part: 2 },
     { year: '1851', label: 'The Meridian established', part: 3 },
@@ -45,6 +46,31 @@ describe('buildGazetteerRows', () => {
       'source-link',
       'section',
       'relic',
+    ]);
+  });
+
+  test('a brief leads everything — and an empty one adds no row', () => {
+    // The ten-second read (Edd, 2026-08-06): purely additive, above the
+    // timeline and Part One; everything below keeps its exact order
+    const rows = buildGazetteerRows({
+      hasArticle: true,
+      retoldStatus: 'ready',
+      retold: { ...retold, brief: ['The last tea clipper.', 'Dry-docked here since 1954.'] },
+      relics: [],
+    });
+    expect(rows.map((row) => row.kind)).toEqual([
+      'brief',
+      'timeline',
+      'part',
+      'part',
+      'part',
+      'ai-label',
+      'source-link',
+    ]);
+    const briefRow = rows[0];
+    expect(briefRow.kind === 'brief' && briefRow.lines).toEqual([
+      'The last tea clipper.',
+      'Dry-docked here since 1954.',
     ]);
   });
 
@@ -149,7 +175,7 @@ describe('buildGazetteerRows', () => {
       const rows = buildGazetteerRows({
         hasArticle: true,
         retoldStatus,
-        retold: retoldStatus === 'ready' ? { parts: [], minutes: 1, timeline: [] } : null,
+        retold: retoldStatus === 'ready' ? { parts: [], minutes: 1, timeline: [], brief: [] } : null,
         relics: [],
         tellingLead: true,
       });

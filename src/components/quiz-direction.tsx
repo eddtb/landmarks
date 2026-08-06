@@ -86,7 +86,7 @@ export function QuizDirection({
 
   return (
     <View style={styles.block} testID="quiz-direction">
-      <ThemedText type="subtitle">Which way is {question.title}?</ThemedText>
+      <ThemedText type="title">Which way is {question.title}?</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         About {formatWalkTimeForMeters(question.distanceMeters)} away — turn until you’re facing it.
       </ThemedText>

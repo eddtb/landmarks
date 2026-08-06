@@ -31,10 +31,11 @@ const NoRetellTtlMs = 7 * 24 * 60 * 60 * 1000;
 export const MinSourceChars = 1500;
 // v3: the gate dropped from 3,000 — the durable no-retell verdicts
 // written under the old gate would otherwise block the newly-eligible
-// places' retellings for up to 7 days. One prefix, everything under the
-// old key regenerates once (30d cache, free tier).
-const retoldKey = (areaName: string) => `v3:${areaName.toLowerCase()}`;
-const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v3');
+// places' retellings for up to 7 days. v4: the brief joined the
+// contract (Edd, 2026-08-06) — everything regenerates once on next
+// open, arriving with its card. One prefix, lazy, free tier.
+const retoldKey = (areaName: string) => `v4:${areaName.toLowerCase()}`;
+const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v4');
 // What a joiner learns when the shared generation settles: a VERDICT
 // (told, or honestly untellable — 404 material) or an INTERRUPTION
 // (transport died, nothing cached — 502 material, retry welcome).
@@ -70,7 +71,8 @@ export function retoldPrompt(areaName: string, source: string): string {
     '- For each part you MAY include "pullQuote": ONE sentence copied EXACTLY, word for word, from that part\'s body — its most repeatable line. Omit it where nothing stands out.',
     `- Include a top-level "timeline": ${short ? '2 to 4' : '4 to 6'} pivotal dated moments,` +
       ' each {"year": "1491", "label": "Henry VIII born here", "part": 4} — label 3-6 words, facts only from the source, "part" = the 1-based number of the part where that moment is told.',
-    '- Return ONLY fenced JSON: {"parts": [{"heading": "...", "body": "paragraph\\n\\nparagraph", "pullQuote": "..."}], "timeline": [...]}',
+    '- Include a top-level "brief": the 2 or 3 lines a stranger standing at this place most needs, for a ten-second read. CHOOSE the questions this place calls for — a preserved ship wants what it is, what made it famous, why it sits here; a ruin wants what stood here, what happened to it, what remains; a plaque wants who, and what happened on this spot. One sentence per line, under 110 characters, facts only from the source. Not an introduction — the essentials.',
+    '- Return ONLY fenced JSON: {"brief": ["...", "..."], "parts": [{"heading": "...", "body": "paragraph\\n\\nparagraph", "pullQuote": "..."}], "timeline": [...]}',
     '',
     'Source:',
     source,
@@ -154,12 +156,28 @@ export function parseRetold(text: string): Retold | null {
     })
     .slice(0, 6);
 
+  // The brief is lenient like the timeline: a bad line drops, a bad
+  // brief drops whole — it must never cost a reader the retelling
+  const rawBrief = (parsed as { brief?: unknown }).brief;
+  const briefLines = (Array.isArray(rawBrief) ? rawBrief : [])
+    .flatMap((line) =>
+      typeof line === 'string' && line.trim() && line.trim().length <= 140 ? [line.trim()] : []
+    )
+    .slice(0, 3);
+  // One line is not a brief — it's a caption wearing the card
+  const brief = briefLines.length >= 2 ? briefLines : [];
+
   const words = clean
     .map((part) => part.body)
     .join(' ')
     .split(/\s+/)
     .filter(Boolean).length;
-  return { parts: clean, minutes: Math.max(1, Math.round(words / ReadingWordsPerMinute)), timeline };
+  return {
+    parts: clean,
+    minutes: Math.max(1, Math.round(words / ReadingWordsPerMinute)),
+    timeline,
+    brief,
+  };
 }
 
 /**

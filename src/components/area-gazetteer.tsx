@@ -10,9 +10,11 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  ViewToken,
 } from 'react-native';
 import Animated, {
   runOnJS,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -20,6 +22,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExternalLink } from '@/components/external-link';
+import { GlassIslandHeader } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { TellingLead } from '@/components/telling-section';
@@ -59,9 +62,18 @@ export type RetoldStatus = 'pending' | 'streaming' | 'ready' | 'halted' | 'none'
 // extractor and its rows can honour their memoization
 const keyExtractor = (row: GazetteerRow) => row.key;
 
+// The hero is a fixed 220pt frame with its title at the base — by this
+// offset the title has left the screen and the island takes over
+const HeroClearOffset = 200;
+// The gazetteer's island overlays; nothing below insets around it
+const noHeight = () => {};
+// Module-level: FlatList requires a stable viewability identity
+const partViewability = { itemVisiblePercentThreshold: 25 };
+
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
   | { kind: 'no-story'; key: string }
+  | { kind: 'brief'; key: string; lines: string[] }
   | { kind: 'timeline'; key: string; stops: TimelineStop[] }
   | { kind: 'part'; key: string; part: RetoldPart; index: number }
   | { kind: 'retelling-pending'; key: string }
@@ -124,6 +136,12 @@ export function buildGazetteerRows(options: {
 
   if (hasArticle) {
     if (retoldStatus === 'ready' && retold) {
+      // The ten-second read leads (Edd, 2026-08-06): the lines a
+      // stranger standing here most needs, before any part or timeline.
+      // Purely additive — everything below renders exactly as before.
+      if ((retold.brief ?? []).length > 0) {
+        rows.push({ kind: 'brief', key: 'brief', lines: retold.brief });
+      }
       if ((retold.timeline ?? []).length > 0) {
         rows.push({ kind: 'timeline', key: 'timeline', stops: retold.timeline });
       }
@@ -352,6 +370,20 @@ export function AreaGazetteer({
   const readMarked = useSharedValue(false);
   // The reading bar: recompute on every scroll tick, no re-render —
   // the whole exchange stays on the UI thread
+  // The island's arrival is a threshold, not a fade: animating opacity
+  // over a GlassView DISABLES the glass (vendor caveat), so the island
+  // mounts and unmounts on the crossing, one JS hop per change.
+  // Declared before the scroll handler that writes it.
+  const heroCleared = useSharedValue(0);
+  const [islandShown, setIslandShown] = useState(false);
+  useAnimatedReaction(
+    () => heroCleared.get(),
+    (cleared, previous) => {
+      if (cleared !== previous) {
+        runOnJS(setIslandShown)(cleared === 1);
+      }
+    }
+  );
   const onScroll = useAnimatedScrollHandler((event) => {
     const progress = readingProgress(
       event.contentOffset.y,
@@ -359,6 +391,9 @@ export function AreaGazetteer({
       event.layoutMeasurement.height
     );
     readProgress.set(progress);
+    // The arriving island (Edd, 2026-08-06): once the hero's title has
+    // cleared the top edge, the glass island carries it on
+    heroCleared.set(event.contentOffset.y > HeroClearOffset ? 1 : 0);
     if (onReadThreshold && progress >= ReadThreshold && !readMarked.get()) {
       readMarked.set(true);
       runOnJS(onReadThreshold)();
@@ -367,6 +402,18 @@ export function AreaGazetteer({
   const fillStyle = useAnimatedStyle(() => ({
     width: `${readProgress.get() * 100}%`,
   }));
+  // Which part the reader is in, for the island's counter — viewability
+  // granularity, and it never regresses to zero between rows
+  const [currentPart, setCurrentPart] = useState(1);
+  const onViewableRows = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const partsInView = viewableItems.filter(
+      (token) => (token.item as GazetteerRow).kind === 'part'
+    );
+    const last = partsInView.at(-1)?.item as (GazetteerRow & { kind: 'part' }) | undefined;
+    if (last) {
+      setCurrentPart(last.index + 1);
+    }
+  }, []);
   // The bar earns its place: the track shows only when the story is
   // taller than the screen — the same "nothing to read, no bar" rule
   // readingProgress enforces for the fill
@@ -400,6 +447,9 @@ export function AreaGazetteer({
     // during render trips the hooks rules, and the effect runs before
     // any new part could land
     setStreamedParts([]);
+    // The island belongs to the story that scrolled, not the next one
+    setIslandShown(false);
+    setCurrentPart(1);
   }
 
   // …and must not inherit its reading progress. An effect, not the
@@ -410,7 +460,8 @@ export function AreaGazetteer({
   useEffect(() => {
     readProgress.set(0);
     readMarked.set(false);
-  }, [areaName, readProgress, readMarked]);
+    heroCleared.set(0);
+  }, [areaName, readProgress, readMarked, heroCleared]);
 
   // Two INDEPENDENT fetches: the hero paints the moment the article
   // lands; the retelling streams in when ready (Edd: "loading too
@@ -594,7 +645,7 @@ export function AreaGazetteer({
             {/* Words, not glyphs (PR #186): no ✦ for VoiceOver to call
                 "four-pointed star", and Stop is a word — it's violet,
                 and violet already means tappable */}
-            <ThemedText type="small" themeColor="textSecondary" style={styles.aiLabelText}>
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.aiLabelText}>
               Retold by AI from Wikipedia — source below
             </ThemedText>
             {speechAvailable && retold && (
@@ -607,13 +658,15 @@ export function AreaGazetteer({
             )}
           </View>
           {spokeOnce && !speaking && !usingEnhancedVoice() && (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.voiceHint}>
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.voiceHint}>
               A nicer voice is one download away: Settings › Accessibility › Spoken Content ›
               Voices › English (UK)
             </ThemedText>
           )}
           </View>
         );
+      case 'brief':
+        return <BriefCard lines={row.lines} />;
       case 'timeline':
         return <TimelineStrip stops={row.stops} onStop={jumpToPart} />;
       case 'part':
@@ -698,6 +751,9 @@ export function AreaGazetteer({
       // 16, not 32: the events no longer cross the bridge, so every
       // frame can feed the bar for free
       scrollEventThrottle={16}
+      // The island's part counter reads the last part in view
+      onViewableItemsChanged={onViewableRows}
+      viewabilityConfig={partViewability}
       onContentSizeChange={(_, height) => {
         frame.current.content = height;
         remeasure();
@@ -750,9 +806,8 @@ export function AreaGazetteer({
                       cachePolicy="memory-disk"
                     />
                     <ThemedText
-                      type="small"
+                      type="caption"
                       themeColor="textSecondary"
-                      style={styles.galleryCredit}
                       numberOfLines={1}>
                       {image.credit}
                     </ThemedText>
@@ -788,7 +843,7 @@ export function AreaGazetteer({
         track is the fix for "hasn't been built": a bare fill is zero
         pixels before you scroll, and violet alone vanished into the
         hero's shade — the track says the bar exists from the start */}
-    {scrollable && (
+    {scrollable && !islandShown && (
       <View
         pointerEvents="none"
         style={[styles.progressTrack, { backgroundColor: theme.accentSoft }]}
@@ -797,6 +852,29 @@ export function AreaGazetteer({
           style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
         />
       </View>
+    )}
+    {/* The arriving island (Edd's mock pick): once the hero's title
+        clears, the glass carries it on — with your place in the parts
+        and the reading bar living along its base instead of the bare
+        screen-top track above */}
+    {islandShown && retold && (
+      <GlassIslandHeader onHeight={noHeight} passThrough topOffset={0}>
+        <View style={styles.islandInner} testID="gazetteer-island">
+          <View style={styles.islandRow}>
+            <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
+              The story of {areaLabel ?? areaName}
+            </ThemedText>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
+              {currentPart} / {retold.parts.length}
+            </ThemedText>
+          </View>
+          <View style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}>
+            <Animated.View
+              style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
+            />
+          </View>
+        </View>
+      </GlassIslandHeader>
     )}
     <ImageViewer
       images={article?.images ?? []}
@@ -848,6 +926,36 @@ function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boo
   );
 }
 
+/**
+ * The quiet card (Edd's pick from the three mocked treatments): the
+ * brief worn as furniture — a surface card, one fact per line, hairline
+ * separations. Scan it or skip it; everything below is untouched.
+ */
+function BriefCard({ lines }: { lines: string[] }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={[styles.briefCard, { backgroundColor: theme.backgroundElement }]}
+      testID="brief-card">
+      <ThemedText type="eyebrow" themeColor="accent">
+        In brief
+      </ThemedText>
+      {lines.map((line, index) => (
+        <View
+          key={index}
+          style={
+            index > 0 && [
+              styles.briefLine,
+              { borderTopWidth: 1, borderTopColor: theme.backgroundSelected },
+            ]
+          }>
+          <ThemedText type="small">{line}</ThemedText>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function TimelineStrip({
   stops,
   onStop,
@@ -877,7 +985,7 @@ function TimelineStrip({
           <ThemedText type="smallBold" themeColor="accent" style={styles.timelineYear}>
             {stop.year}
           </ThemedText>
-          <ThemedText type="small" style={styles.timelineLabel} numberOfLines={2}>
+          <ThemedText type="caption" numberOfLines={2}>
             {stop.label}
           </ThemedText>
         </Pressable>
@@ -912,14 +1020,14 @@ const PartRow = memo(function PartRow({
       <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.partNum} testID="part-eyebrow">
         Part {PartWords[index] ?? index + 1}
       </ThemedText>
-      <ThemedText type="headline" style={styles.partHead}>
+      <ThemedText type="title" style={styles.partHead}>
         {part.heading}
       </ThemedText>
       {paragraphs.map((paragraph, paragraphIndex) => (
         <View key={paragraphIndex}>
           <ThemedText
-            type="default"
-            style={[styles.para, index === 0 && paragraphIndex === 0 && styles.lede]}>
+            type={index === 0 && paragraphIndex === 0 ? 'lede' : 'default'}
+            style={styles.para}>
             {linkifyParagraph(paragraph, paragraphLinks[paragraphIndex] ?? []).map((segment, segmentIndex) =>
               segment.pageId !== undefined ? (
                 <ThemedText
@@ -943,7 +1051,7 @@ const PartRow = memo(function PartRow({
             <View style={[styles.pull, { borderLeftColor: theme.accent }]}>
               {/* The accent border is the flourish; the words stay ink —
                   violet text is reserved for things a finger can press */}
-              <ThemedText type="headline" style={styles.pullText}>
+              <ThemedText type="pullQuote">
                 {part.pullQuote}
               </ThemedText>
             </View>
@@ -957,6 +1065,37 @@ const PartRow = memo(function PartRow({
 const styles = StyleSheet.create({
   wrap: {
     flex: 1,
+  },
+  briefCard: {
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    borderCurve: 'continuous',
+    gap: Spacing.two,
+  },
+  briefLine: {
+    paddingTop: Spacing.two,
+  },
+  islandInner: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two + 2,
+    paddingBottom: Spacing.two,
+    gap: Spacing.two,
+  },
+  islandRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: Spacing.three,
+  },
+  islandTitle: {
+    flexShrink: 1,
+  },
+  islandTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
   },
   // 4px, not 3: thick enough to register at a glance, thin enough to
   // stay a bar and not a banner
@@ -996,7 +1135,6 @@ const styles = StyleSheet.create({
     right: Spacing.three,
     color: '#FFFFFF',
     opacity: 0.7,
-    fontSize: 10,
   },
   gallery: {
     marginTop: Spacing.three,
@@ -1013,9 +1151,7 @@ const styles = StyleSheet.create({
     height: 110,
     borderRadius: Spacing.three - 2,
   },
-  galleryCredit: {
-    fontSize: 9,
-  },
+
   noStory: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
@@ -1029,12 +1165,10 @@ const styles = StyleSheet.create({
   },
   aiLabelText: {
     flex: 1,
-    fontSize: 11,
   },
   voiceHint: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.one,
-    fontSize: 11,
   },
   pending: {
     paddingHorizontal: Spacing.four,
@@ -1070,27 +1204,17 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   partHead: {
-    fontSize: 21,
-    lineHeight: 26,
     marginBottom: Spacing.two,
   },
   para: {
     marginBottom: Spacing.three,
   },
-  lede: {
-    fontSize: 17.5,
-    lineHeight: 27,
-    fontWeight: '500',
-  },
+
   pull: {
     borderLeftWidth: 3,
     paddingLeft: Spacing.three,
     paddingVertical: 2,
     marginBottom: Spacing.three,
-  },
-  pullText: {
-    fontSize: 18,
-    lineHeight: 25,
   },
   timeline: {
     marginTop: Spacing.two,
@@ -1108,11 +1232,6 @@ const styles = StyleSheet.create({
     maxWidth: 150,
   },
   timelineYear: {
-    fontSize: 15,
-  },
-  timelineLabel: {
-    fontSize: 11,
-    lineHeight: 14,
   },
   linkRow: {
     flexDirection: 'row',

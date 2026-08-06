@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { FlatList, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GlassIslandHeader, IslandBreath } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -26,6 +28,9 @@ export function SavedScreen() {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
   const saved = useSavedList();
+  // The island reports its height; the shelf starts below it and
+  // slides beneath it on scroll. A sane guess until first layout.
+  const [islandHeight, setIslandHeight] = useState(44);
 
   if (saved === null) {
     return <ThemedView style={styles.screen} testID="saved-screen" />;
@@ -37,19 +42,10 @@ export function SavedScreen() {
         data={saved}
         keyExtractor={(place) => String(place.item.pageId)}
         contentContainerStyle={{
-          paddingTop: insets.top + Spacing.three,
+          paddingTop: insets.top + islandHeight + IslandBreath,
           paddingBottom: Spacing.four + insets.bottom,
         }}
-        ListHeaderComponent={
-          saved.length > 0 ? (
-            <View>
-              <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.head}>
-                Saved · {saved.length}
-              </ThemedText>
-              <KeepOfflineRow />
-            </View>
-          ) : null
-        }
+        ListHeaderComponent={saved.length > 0 ? <KeepOfflineRow /> : null}
         renderItem={({ item: place }) => (
           <View style={styles.cardWrap}>
             <HistoryCard item={place.item} saved />
@@ -66,6 +62,15 @@ export function SavedScreen() {
         }
         showsVerticalScrollIndicator={false}
       />
+      {/* After the list so it paints above; the shelf scrolls under it.
+          The island offsets itself below the notch. */}
+      <GlassIslandHeader onHeight={setIslandHeight}>
+        <View style={styles.islandWords}>
+          <ThemedText type="eyebrow" themeColor="textSecondary">
+            Saved{saved.length > 0 ? ` · ${saved.length}` : ''}
+          </ThemedText>
+        </View>
+      </GlassIslandHeader>
     </ThemedView>
   );
 }
@@ -114,7 +119,7 @@ function DownloadState({ pageId }: { pageId: number }) {
           ? 'Download failed — it will retry next time'
           : 'Waiting to download';
   return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.downloadState}>
+    <ThemedText type="caption" themeColor="textSecondary" style={styles.downloadState}>
       {words}
     </ThemedText>
   );
@@ -137,11 +142,10 @@ const styles = StyleSheet.create({
   },
   downloadState: {
     paddingTop: Spacing.half,
-    fontSize: 11,
   },
-  head: {
-    paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.two,
+  islandWords: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.three - 4,
   },
   cardWrap: {
     paddingHorizontal: Spacing.four,

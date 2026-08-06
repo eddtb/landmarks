@@ -128,7 +128,7 @@ export function OneDoor({ onEnable, onNotNow }: Props) {
         <ThemedText type="eyebrow" style={styles.brandmark}>
           VENTURE
         </ThemedText>
-        <ThemedText accessibilityRole="header" style={styles.title}>
+        <ThemedText accessibilityRole="header" type="display" style={styles.title}>
           The history within a walk of you
         </ThemedText>
         <ThemedText type="small" style={styles.body}>
@@ -270,10 +270,6 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 34,
-    lineHeight: 38,
-    fontWeight: 800,
-    letterSpacing: -0.5,
   },
   body: {
     color: 'rgba(255, 255, 255, 0.82)',

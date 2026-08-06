@@ -32,6 +32,7 @@ const normalise = (retold: Retold): Retold => ({
   parts: retold.parts ?? [],
   minutes: retold.minutes ?? 1,
   timeline: retold.timeline ?? [],
+  brief: retold.brief ?? [],
 });
 
 export async function fetchRetold(

@@ -9,22 +9,23 @@ const AccentTint: ColorValue =
     : Colors.light.accent;
 
 /**
- * Three questions, three tabs: what can I go see (Nearby —
+ * Four questions, four tabs: what can I go see (Nearby —
  * subject-photo stories, findable on arrival), what did I keep
  * (Saved — the shelf the user fills, place-agnostic where the others
- * follow the feet), and what happened here (History — the archive,
- * photo optional). The fourth question — how much of it do I actually
- * know — is off the air: the Quiz trigger below is `hidden` (not
- * navigable, not even by deep link) while its question design is
- * rebuilt. All quiz code, tests, and the API route stay; it returns
- * by deleting one word.
+ * follow the feet), what happened here (History — the archive,
+ * photo optional), and how much of it do I actually know (Quiz — the
+ * app asking, rather than telling, about the ground underfoot;
+ * rebuilt v1, see quiz-run.tsx).
  */
 export default function TabsLayout() {
   return (
     <NativeTabs tintColor={AccentTint} minimizeBehavior="onScrollDown">
+      {/* Edd's picks from the rendered mocks (round 2, 2026-08-06):
+          the compass to go, the mark to keep, the open record, the
+          game. Base SF names — iOS fills the selected tab itself. */}
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Nearby</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="sparkles" md="auto_awesome" />
+        <NativeTabs.Trigger.Icon sf="safari" md="explore" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="saved">
         <NativeTabs.Trigger.Label>Saved</NativeTabs.Trigger.Label>
@@ -32,11 +33,11 @@ export default function TabsLayout() {
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
         <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="building.columns" md="account_balance" />
+        <NativeTabs.Trigger.Icon sf="book" md="menu_book" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="quiz" hidden>
+      <NativeTabs.Trigger name="quiz">
         <NativeTabs.Trigger.Label>Quiz</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="questionmark.circle" md="quiz" />
+        <NativeTabs.Trigger.Icon sf="die.face.5" md="casino" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );
