@@ -10,9 +10,11 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  ViewToken,
 } from 'react-native';
 import Animated, {
   runOnJS,
+  useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -20,12 +22,13 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExternalLink } from '@/components/external-link';
+import { GlassIslandHeader } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { TellingLead } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
-import { Spacing } from '@/constants/theme';
+import { Fonts, Spacing } from '@/constants/theme';
 import { fetchArticle, fetchArticleLight } from '@/data/article-client';
 import { ApiError } from '@/data/cached-get';
 import { fetchRetold } from '@/data/retold-client';
@@ -58,6 +61,14 @@ export type RetoldStatus = 'pending' | 'streaming' | 'ready' | 'halted' | 'none'
 // Module-level: a stable identity, so the FlatList never sees a new
 // extractor and its rows can honour their memoization
 const keyExtractor = (row: GazetteerRow) => row.key;
+
+// The hero is a fixed 220pt frame with its title at the base — by this
+// offset the title has left the screen and the island takes over
+const HeroClearOffset = 200;
+// The gazetteer's island overlays; nothing below insets around it
+const noHeight = () => {};
+// Module-level: FlatList requires a stable viewability identity
+const partViewability = { itemVisiblePercentThreshold: 25 };
 
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
@@ -359,6 +370,20 @@ export function AreaGazetteer({
   const readMarked = useSharedValue(false);
   // The reading bar: recompute on every scroll tick, no re-render —
   // the whole exchange stays on the UI thread
+  // The island's arrival is a threshold, not a fade: animating opacity
+  // over a GlassView DISABLES the glass (vendor caveat), so the island
+  // mounts and unmounts on the crossing, one JS hop per change.
+  // Declared before the scroll handler that writes it.
+  const heroCleared = useSharedValue(0);
+  const [islandShown, setIslandShown] = useState(false);
+  useAnimatedReaction(
+    () => heroCleared.get(),
+    (cleared, previous) => {
+      if (cleared !== previous) {
+        runOnJS(setIslandShown)(cleared === 1);
+      }
+    }
+  );
   const onScroll = useAnimatedScrollHandler((event) => {
     const progress = readingProgress(
       event.contentOffset.y,
@@ -366,6 +391,9 @@ export function AreaGazetteer({
       event.layoutMeasurement.height
     );
     readProgress.set(progress);
+    // The arriving island (Edd, 2026-08-06): once the hero's title has
+    // cleared the top edge, the glass island carries it on
+    heroCleared.set(event.contentOffset.y > HeroClearOffset ? 1 : 0);
     if (onReadThreshold && progress >= ReadThreshold && !readMarked.get()) {
       readMarked.set(true);
       runOnJS(onReadThreshold)();
@@ -374,6 +402,18 @@ export function AreaGazetteer({
   const fillStyle = useAnimatedStyle(() => ({
     width: `${readProgress.get() * 100}%`,
   }));
+  // Which part the reader is in, for the island's counter — viewability
+  // granularity, and it never regresses to zero between rows
+  const [currentPart, setCurrentPart] = useState(1);
+  const onViewableRows = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    const partsInView = viewableItems.filter(
+      (token) => (token.item as GazetteerRow).kind === 'part'
+    );
+    const last = partsInView.at(-1)?.item as (GazetteerRow & { kind: 'part' }) | undefined;
+    if (last) {
+      setCurrentPart(last.index + 1);
+    }
+  }, []);
   // The bar earns its place: the track shows only when the story is
   // taller than the screen — the same "nothing to read, no bar" rule
   // readingProgress enforces for the fill
@@ -407,6 +447,9 @@ export function AreaGazetteer({
     // during render trips the hooks rules, and the effect runs before
     // any new part could land
     setStreamedParts([]);
+    // The island belongs to the story that scrolled, not the next one
+    setIslandShown(false);
+    setCurrentPart(1);
   }
 
   // …and must not inherit its reading progress. An effect, not the
@@ -417,7 +460,8 @@ export function AreaGazetteer({
   useEffect(() => {
     readProgress.set(0);
     readMarked.set(false);
-  }, [areaName, readProgress, readMarked]);
+    heroCleared.set(0);
+  }, [areaName, readProgress, readMarked, heroCleared]);
 
   // Two INDEPENDENT fetches: the hero paints the moment the article
   // lands; the retelling streams in when ready (Edd: "loading too
@@ -707,6 +751,9 @@ export function AreaGazetteer({
       // 16, not 32: the events no longer cross the bridge, so every
       // frame can feed the bar for free
       scrollEventThrottle={16}
+      // The island's part counter reads the last part in view
+      onViewableItemsChanged={onViewableRows}
+      viewabilityConfig={partViewability}
       onContentSizeChange={(_, height) => {
         frame.current.content = height;
         remeasure();
@@ -797,7 +844,7 @@ export function AreaGazetteer({
         track is the fix for "hasn't been built": a bare fill is zero
         pixels before you scroll, and violet alone vanished into the
         hero's shade — the track says the bar exists from the start */}
-    {scrollable && (
+    {scrollable && !islandShown && (
       <View
         pointerEvents="none"
         style={[styles.progressTrack, { backgroundColor: theme.accentSoft }]}
@@ -805,6 +852,31 @@ export function AreaGazetteer({
         <Animated.View
           style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
         />
+      </View>
+    )}
+    {/* The arriving island (Edd's mock pick): once the hero's title
+        clears, the glass carries it on — with your place in the parts
+        and the reading bar living along its base instead of the bare
+        screen-top track above */}
+    {islandShown && retold && (
+      <View pointerEvents="none" testID="gazetteer-island">
+        <GlassIslandHeader onHeight={noHeight}>
+          <View style={styles.islandInner}>
+            <View style={styles.islandRow}>
+              <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
+                The story of {areaLabel ?? areaName}
+              </ThemedText>
+              <ThemedText type="eyebrow" themeColor="textSecondary">
+                {currentPart} / {retold.parts.length}
+              </ThemedText>
+            </View>
+            <View style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}>
+              <Animated.View
+                style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
+              />
+            </View>
+          </View>
+        </GlassIslandHeader>
       </View>
     )}
     <ImageViewer
@@ -1007,6 +1079,29 @@ const styles = StyleSheet.create({
   },
   briefLine: {
     paddingTop: Spacing.two,
+  },
+  islandInner: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two + 2,
+    paddingBottom: Spacing.two,
+    gap: Spacing.two,
+  },
+  islandRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: Spacing.three,
+  },
+  islandTitle: {
+    // The hero's serif register, carried on at island size
+    fontFamily: Fonts?.serif,
+    fontSize: 15,
+    flexShrink: 1,
+  },
+  islandTrack: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
   },
   // 4px, not 3: thick enough to register at a glance, thin enough to
   // stay a bar and not a banner
