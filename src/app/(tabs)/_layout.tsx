@@ -20,25 +20,21 @@ const AccentTint: ColorValue =
 export default function TabsLayout() {
   return (
     <NativeTabs tintColor={AccentTint} minimizeBehavior="onScrollDown">
-      {/* The field kit (Edd's pick, 2026-08-06): the tools of someone
-          out reading the ground — binoculars to find it, the shelf to
-          keep it, the scroll for its record, the head that learns it.
-          Base SF names, never .fill — iOS fills the selected tab. */}
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Nearby</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="binoculars" md="explore" />
+        <NativeTabs.Trigger.Icon sf="sparkles" md="auto_awesome" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="saved">
         <NativeTabs.Trigger.Label>Saved</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="books.vertical" md="collections_bookmark" />
+        <NativeTabs.Trigger.Icon sf="bookmark" md="bookmark" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
         <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="scroll" md="history_edu" />
+        <NativeTabs.Trigger.Icon sf="building.columns" md="account_balance" />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="quiz">
         <NativeTabs.Trigger.Label>Quiz</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="brain.head.profile" md="psychology" />
+        <NativeTabs.Trigger.Icon sf="questionmark.circle" md="quiz" />
       </NativeTabs.Trigger>
     </NativeTabs>
   );
