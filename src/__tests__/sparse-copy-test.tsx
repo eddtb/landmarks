@@ -4,7 +4,7 @@
  */
 import { render } from '@testing-library/react-native';
 
-import { HistoryBody } from '@/components/section-screen';
+import { FeedCountLine, HistoryBody } from '@/components/section-screen';
 import { HistoryItem } from '@/types/history';
 
 const mockUseHistory = jest.fn();
@@ -33,7 +33,7 @@ describe('HistoryBody count line', () => {
       state: { status: 'ready', items, sparse: true, horizon: 3000 },
       refresh: jest.fn(),
     });
-    const { getByText } = await render(<HistoryBody center={center} />);
+    const { getByText } = await render(<><HistoryBody center={center} /><FeedCountLine center={center} /></>);
     expect(
       getByText('3 stories — a quieter corner, so we looked further (up to ~38 min walk)')
     ).toBeOnTheScreen();
@@ -46,7 +46,7 @@ describe('HistoryBody count line', () => {
       state: { status: 'ready', items, sparse: true, horizon: 1500 },
       refresh: jest.fn(),
     });
-    const { getByText } = await render(<HistoryBody center={center} />);
+    const { getByText } = await render(<><HistoryBody center={center} /><FeedCountLine center={center} /></>);
     expect(
       getByText('3 stories — a quieter corner, so we looked further (up to ~19 min walk)')
     ).toBeOnTheScreen();
@@ -57,7 +57,7 @@ describe('HistoryBody count line', () => {
       state: { status: 'ready', items, sparse: true },
       refresh: jest.fn(),
     });
-    const { getByText } = await render(<HistoryBody center={center} />);
+    const { getByText } = await render(<><HistoryBody center={center} /><FeedCountLine center={center} /></>);
     expect(getByText(/up to ~38 min walk/)).toBeOnTheScreen();
   });
 
@@ -66,7 +66,7 @@ describe('HistoryBody count line', () => {
       state: { status: 'ready', items },
       refresh: jest.fn(),
     });
-    const { getByText, queryByText } = await render(<HistoryBody center={center} />);
+    const { getByText, queryByText } = await render(<><HistoryBody center={center} /><FeedCountLine center={center} /></>);
     expect(getByText('3 stories within a walk')).toBeOnTheScreen();
     expect(queryByText(/quieter corner/)).toBeNull();
   });

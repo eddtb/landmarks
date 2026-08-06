@@ -8,7 +8,7 @@
  */
 import { render, waitFor } from '@testing-library/react-native';
 
-import { HistoryArchiveScreen, HistoryBody } from '@/components/section-screen';
+import { FeedCountLine, HistoryArchiveScreen, HistoryBody } from '@/components/section-screen';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
@@ -79,7 +79,7 @@ beforeEach(() => {
 
 describe('the Nearby feed', () => {
   test('a flagged event never lists as a walkable story — photo or no photo', async () => {
-    const screen = await render(<HistoryBody center={lewisham} />);
+    const screen = await render(<><HistoryBody center={lewisham} /><FeedCountLine center={lewisham} /></>);
     expect(screen.getByText('1 story within a walk')).toBeOnTheScreen();
     expect(screen.queryByText('Lewisham rail crash')).toBeNull();
     expect(screen.queryByText('Lewisham')).toBeNull();

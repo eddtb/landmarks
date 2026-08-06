@@ -17,6 +17,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
+import { GlassIslandHeader, IslandBreath } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { StoriesMap } from '@/components/stories-map';
 import { useOneDoorDismissed } from '@/components/one-door';
@@ -291,21 +292,67 @@ function SectionHeader({
 }
 
 export function StoriesScreen() {
+  // The glass island (Edd, 2026-08-06): the header AND the count line
+  // float together in glass — the pinned-count redline survives,
+  // modernised — and the whole feed scrolls beneath them.
+  const [islandHeight, setIslandHeight] = useState(120);
   return (
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            <SectionHeader {...gate} eyebrow="Nearby" overflow />
             <HistoryBody
               center={gate.center}
               exploring={gate.exploring}
               locationDenied={gate.locationDenied}
+              topInset={islandHeight + IslandBreath}
             />
+            {/* After the body so it paints above; the feed slides under */}
+            <GlassIslandHeader onHeight={setIslandHeight}>
+              <SectionHeader {...gate} eyebrow="Nearby" overflow />
+              <FeedCountLine center={gate.center} locationDenied={gate.locationDenied} />
+            </GlassIslandHeader>
           </SafeAreaView>
         </ThemedView>
       )}
     </LocationGate>
+  );
+}
+
+/**
+ * The count line, now living in the island's lower deck. Its own
+ * useHistory subscription — the hook shares state per center, so this
+ * costs a lookup, not a second fetch. Exported for its tests: the
+ * copy's honesty rules (sparse mode, the derived horizon) are fenced
+ * there.
+ */
+export function FeedCountLine({
+  center,
+  locationDenied,
+}: {
+  center: Coordinates;
+  locationDenied?: boolean;
+}) {
+  const { state } = useHistory(center);
+  if (locationDenied || state.status !== 'ready') {
+    return null;
+  }
+  const items = walkableStories(state.items);
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <View style={styles.countLine}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {/* Honest in quiet corners: the server widened its search
+            (sparse-area mode) and the count line says so — with a
+            walk time derived from the horizon the server actually
+            searched, so a radius change can't make this copy lie */}
+        {state.sparse
+          ? `${items.length} ${items.length === 1 ? 'story' : 'stories'} — a quieter corner, so we looked further (up to ~${formatWalkTimeForMeters(state.horizon ?? LegacySparseHorizonMeters)})`
+          : `${items.length} ${items.length === 1 ? 'story' : 'stories'} within a walk`}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -487,11 +534,15 @@ export function HistoryBody({
   center,
   exploring,
   locationDenied,
+  topInset = 0,
 }: {
   center: Coordinates;
   exploring?: boolean;
   /** No real fix — the center is the fallback, not the user. */
   locationDenied?: boolean;
+  /** Height of the floating glass island above — the scroll content
+   *  starts below it and slides beneath it. */
+  topInset?: number;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -522,12 +573,16 @@ export function HistoryBody({
   }, [refresh]);
 
   if (state.status === 'loading') {
-    return <ColdLoad areaLabel={areaLabel} />;
+    return (
+      <View style={[styles.container, { paddingTop: topInset }]}>
+        <ColdLoad areaLabel={areaLabel} />
+      </View>
+    );
   }
 
   if (state.status === 'error') {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { paddingTop: topInset }]}>
         <ThemedText type="small" themeColor="textSecondary">
           Couldn&apos;t load stories right now.
         </ThemedText>
@@ -551,29 +606,6 @@ export function HistoryBody({
 
   return (
     <>
-      {standing && <StandingOnIt item={standing} center={center} />}
-      {state.stale && (
-        <View style={styles.controlLine}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Showing saved stories — you&apos;re offline
-          </ThemedText>
-        </View>
-      )}
-      {/* The count stays pinned — Edd asked for the FEATURED items to
-          scroll away, nothing else */}
-      {items.length > 0 && (
-        <View style={[styles.countLine, { borderBottomColor: theme.backgroundElement }]}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {/* Honest in quiet corners: the server widened its search
-                (sparse-area mode) and the count line says so — with a
-                walk time derived from the horizon the server actually
-                searched, so a radius change can't make this copy lie */}
-            {state.sparse
-              ? `${items.length} ${items.length === 1 ? 'story' : 'stories'} — a quieter corner, so we looked further (up to ~${formatWalkTimeForMeters(state.horizon ?? LegacySparseHorizonMeters)})`
-              : `${items.length} ${items.length === 1 ? 'story' : 'stories'} within a walk`}
-          </ThemedText>
-        </View>
-      )}
       <FlatList
         data={items}
         keyExtractor={(item) => String(item.pageId)}
@@ -584,8 +616,19 @@ export function HistoryBody({
         // The map leads it, on the same terms: visible without a scroll
         // or a tap (App Review saw none of the native surfaces), and it
         // scrolls away when you have chosen where to walk.
+        // The standing banner and the offline line lead the list now —
+        // the count moved up into the glass island (FeedCountLine), and
+        // everything else scrolls beneath it.
         ListHeaderComponent={
           <View style={styles.listHeader}>
+            {standing && <StandingOnIt item={standing} center={center} />}
+            {state.stale && (
+              <View style={styles.controlLine}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Showing saved stories — you&apos;re offline
+                </ThemedText>
+              </View>
+            )}
             {/* Not with location denied: the center is the fallback, and
                 a map of Charing Cross under a NEARBY eyebrow claims a
                 place the user is not (simulator-caught). Exploring keeps
@@ -603,8 +646,8 @@ export function HistoryBody({
         initialNumToRender={8}
         contentContainerStyle={[
           styles.list,
-          // Clear the tab bar
-          { paddingBottom: Spacing.four + insets.bottom },
+          // Below the island, clear of the tab bar
+          { paddingTop: topInset, paddingBottom: Spacing.four + insets.bottom },
         ]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
