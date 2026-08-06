@@ -156,9 +156,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
+  // 0.75, not the tick's 0.55: a 40pt chip must hold its own against
+  // a bright sky (Edd, 22:31 — at 0.55 the chip washed out and the
+  // white chevron drowned); the tick's larger white label survives
+  // the lighter scrim, a lone glyph doesn't
   scrim: {
-    backgroundColor: 'rgba(22, 22, 26, 0.55)',
+    backgroundColor: 'rgba(20, 20, 24, 0.75)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
+    borderColor: 'rgba(255, 255, 255, 0.30)',
   },
 });
