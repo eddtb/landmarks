@@ -120,6 +120,10 @@ function QuizBody({
   const [phase, setPhase] = useState<Phase>('loading');
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // Lifted from the run: while a run is up the screen header stands
+  // down, so a question and its options fit one screen (Edd's phone
+  // finding, 2026-08-06 — the largeTitle pushed the run into a scroll)
+  const [begun, setBegun] = useState(false);
 
   // The nearest dozen, and no more. The feed runs to ~100 stories in a
   // dense area and the server only ever reads twelve — sending all of
@@ -163,6 +167,8 @@ function QuizBody({
     setAskedFor(askKey);
     setPhase('loading');
     setQuiz(null);
+    // A new area's quiz opens on its start card, not mid-run
+    setBegun(false);
   }
 
   useEffect(() => {
@@ -208,6 +214,9 @@ function QuizBody({
   // name to quiz you on
   const resolved = areaSettled && !areaName ? 'none' : phase;
   const retry = () => setAttempt((previous) => previous + 1);
+  // The run carries its own compact header (area · count · progress);
+  // the screen's title would only push it into a scroll
+  const running = begun && !denied && resolved === 'ready' && Boolean(quiz);
 
   return (
     // ThemedView for the ground, SafeAreaView for the top edge — the
@@ -220,12 +229,16 @@ function QuizBody({
           contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}>
           {/* A pinned place is a mode the header must admit, exactly as
               Nearby's does: accent eyebrow, and the worded way home. */}
-          <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
-            {exploring ? 'Exploring · test yourself on' : 'Test yourself on'}
-          </ThemedText>
-          <ThemedText type="largeTitle">
-            {denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
-          </ThemedText>
+          {!running && (
+            <>
+              <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
+                {exploring ? 'Exploring · test yourself on' : 'Test yourself on'}
+              </ThemedText>
+              <ThemedText type="largeTitle">
+                {denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
+              </ThemedText>
+            </>
+          )}
 
           {denied && (
             <View style={styles.centered} testID="quiz-denied">
@@ -270,7 +283,7 @@ function QuizBody({
             </View>
           )}
 
-          {exploring && (
+          {exploring && !running && (
             <Pressable
               accessibilityRole="button"
               testID="quiz-back-to-near-me"
@@ -282,7 +295,14 @@ function QuizBody({
 
           {!denied && resolved === 'ready' && quiz && (
             <QuizGuard onRetry={retry}>
-              <QuizRun quiz={quiz} pointing={pointing} key={quiz.areaName} />
+              <QuizRun
+                quiz={quiz}
+                pointing={pointing}
+                areaLabel={denied ? null : areaLabel}
+                begun={begun}
+                onBegin={() => setBegun(true)}
+                key={quiz.areaName}
+              />
             </QuizGuard>
           )}
         </ScrollView>

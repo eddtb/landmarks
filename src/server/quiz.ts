@@ -98,13 +98,16 @@ export type QuizSubject = { pageId: number; title: string; extract: string };
  * its own slot, never the one real clients — who all send the same
  * stories for the same ground — read for the next 30 days.
  *
- * The v2 prefix retires every v1 entry at once: the shape changed, and
- * a cached quiz without `kind`s served to the new client would be a
- * broken screen, not a stale one.
+ * The version prefix retires every older entry at once when the
+ * CONTRACT changes, not just the material: v2 added kinds (a cached
+ * quiz without them is a broken screen); v3 changed the question
+ * register after the first on-phone run served "how many men are on
+ * the memorial" — a recorded quiz in the trivia register would keep
+ * serving poor questions for 30 days under its old key.
  */
 export async function quizKey(areaName: string, subjects: QuizSubject[]): Promise<string> {
   const material = subjects.map((s) => `${s.pageId}:${s.title}:${s.extract}`).join('\n');
-  return `v2:${areaName.toLowerCase()}:${await extractKeyPart(material)}`;
+  return `v3:${areaName.toLowerCase()}:${await extractKeyPart(material)}`;
 }
 
 /** Pure and unit-tested: the contract the model must write to. */
@@ -113,12 +116,13 @@ export function quizPrompt(areaName: string, subjects: QuizSubject[]): string {
     `You set short local-history quizzes for a walking app. Set ${TargetQuestions} questions about ${areaName}, from the stories below.`,
     '',
     'The mix (fall back to an extra "anchor" whenever the material cannot support a kind — never invent):',
-    '- 2 of kind "anchor": the one surprising, concrete thing in a story — a date, a number, a person, what a place used to be. Never "what is interesting about X". Exactly four options, one unambiguously correct; the wrong three plausible for the period and place, never a joke, never a near-synonym of the right answer.',
+    '- 2 of kind "anchor": the fun fact — the thing about the place you would tell a friend walking past it. What it was, what happened there, who turned up, what is odd about it. A stranger should have a fighting chance of REASONING out the answer from common sense, and feel clever when right. NEVER ask for a count, a measurement, or a bare year — a memorised figure is trivia, not knowledge of the ground. Exactly four options, one unambiguously correct; the wrong three plausible and entertaining, never a joke, never a near-synonym of the right answer.',
     '- 1 of kind "which-place": state a fact from one story, ask WHICH place it belongs to. Give "distractorPageIds": the ids of THREE OTHER stories from the list whose places make plausible wrong answers. Do not write place names yourself — the ids are the options.',
     '- 1 of kind "order": three stories whose source text each states a year for the place\'s founding, building, or arrival. "items" lists them OLDEST FIRST with that year, copied exactly as the source states it. Only set this if three stories genuinely state years.',
     '- 1 of kind "true-false": one statement about a story, answered true or false. A false statement must be a plausible misreading of the source, not a joke. Roughly half your true-false statements across quizzes should be false.',
     '',
     'Rules for every question:',
+    '- Keep the question under 100 characters — it shares one phone screen with its options.',
     '- Each drawn from a DIFFERENT story ("order" spends three at once). Never two questions about the same story.',
     '- Facts MUST be stated in the story\'s source text. If a story does not support a clean question, skip it and set fewer questions rather than inventing anything.',
     '- "because" is one sentence giving the fact, as a reader would want it after answering — for a false statement, the correction. Facts only from the source.',

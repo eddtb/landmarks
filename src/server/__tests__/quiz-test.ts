@@ -121,6 +121,19 @@ describe('quizPrompt', () => {
     expect(prompt).toContain('fall back to an extra "anchor"');
   });
 
+  test('asks for fun facts a stranger can reason out — never memorised figures', () => {
+    // The first on-phone run asked "how many men are commemorated on
+    // the memorial" — obedient to a prompt that requested "a number".
+    // The register is the product: guessable, delightful, short.
+    const prompt = quizPrompt('Crystal Palace', subjects);
+
+    expect(prompt).toContain('tell a friend');
+    expect(prompt).toContain('REASONING out the answer');
+    expect(prompt).toContain('NEVER ask for a count, a measurement, or a bare year');
+    expect(prompt).toContain('under 100 characters');
+    expect(prompt).not.toContain('a date, a number, a person');
+  });
+
   test('caps each story so a deep feed cannot make the model read everything', () => {
     const long = [subject(1, 'A', 'x'.repeat(50_000)), subject(2, 'B'), subject(3, 'C')];
 
@@ -499,16 +512,17 @@ describe('getQuiz', () => {
     expect(mockResearch).not.toHaveBeenCalled();
   });
 
-  test('the key binds the area AND its material — and wears the v2 prefix', async () => {
+  test('the key binds the area AND its material — and wears the version prefix', async () => {
     const keyA = await quizKey('Crystal Palace', subjects);
     const keyB = await quizKey('Crystal Palace', [...subjects.slice(1), subject(6, 'A new find')]);
     const keyC = await quizKey('Greenwich', subjects);
 
     expect(keyA).not.toBe(keyB);
     expect(keyA).not.toBe(keyC);
-    // v2 retired every v1 slot at once: the shape changed, and a cached
-    // quiz without kinds would be a broken screen, not a stale one.
+    // The prefix retires every older slot when the CONTRACT changes:
+    // v2 added kinds; v3 changed the question register (the trivia-
+    // register quizzes must not serve for 30 days under old keys).
     // The area names the bucket, so movement always busts it.
-    expect(keyA.startsWith('v2:crystal palace:')).toBe(true);
+    expect(keyA.startsWith('v3:crystal palace:')).toBe(true);
   });
 });

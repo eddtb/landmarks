@@ -178,6 +178,19 @@ describe('<QuizScreen />', () => {
     expect(sent).toHaveLength(12);
   });
 
+  test('the screen title stands down while a run is up — one screen, no scroll', async () => {
+    // Edd's phone finding: largeTitle + serif question + four options
+    // pushed the run into a scroll. During a run the header is the
+    // run's own compact eyebrow (area · count · progress).
+    await render(<QuizScreen />);
+    await begin();
+
+    expect(screen.queryByText('Test yourself on')).toBeNull();
+    // The area still names the run, in the compact eyebrow
+    expect(screen.getByText('Greenwich')).toBeOnTheScreen();
+    expect(screen.getByText('1 of 2')).toBeOnTheScreen();
+  });
+
   test('the answer stays hidden until you lock one in', async () => {
     await render(<QuizScreen />);
     await begin();

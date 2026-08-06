@@ -39,11 +39,18 @@ const WrongChosen = 'Your answer';
 export function QuizRun({
   quiz,
   pointing,
+  areaLabel,
+  begun,
+  onBegin,
 }: {
   quiz: Quiz;
   pointing: DirectionQuestion | null;
+  /** The spoken form for the run's compact eyebrow — the big screen
+   *  header leaves when the run begins, so everything fits one screen. */
+  areaLabel: string | null;
+  begun: boolean;
+  onBegin: () => void;
 }) {
-  const [begun, setBegun] = useState(false);
   const [index, setIndex] = useState(0);
   const [results, setResults] = useState<RunResult[]>([]);
 
@@ -57,13 +64,13 @@ export function QuizRun({
   };
 
   if (!begun) {
-    return <StartCard quiz={quiz} total={total} onBegin={() => setBegun(true)} />;
+    return <StartCard quiz={quiz} total={total} onBegin={onBegin} />;
   }
 
   if (question) {
     return (
       <View style={styles.run} testID="quiz-run">
-        <Progress index={index} total={total} />
+        <Progress label={areaLabel} index={index} total={total} />
         {question.kind === 'order' ? (
           <OrderBody key={index} question={question} onDone={advance} />
         ) : (
@@ -76,7 +83,7 @@ export function QuizRun({
   if (pointing && index === written) {
     return (
       <View style={styles.run} testID="quiz-run">
-        <Progress index={index} total={total} />
+        <Progress label={areaLabel} index={index} total={total} />
         <QuizDirection
           question={pointing}
           last
@@ -154,14 +161,30 @@ function spelt(count: number): string {
   return words[count] ?? String(count);
 }
 
-/** The counted eyebrow and the segmented bar, filled once passed. */
-function Progress({ index, total }: { index: number; total: number }) {
+/** The run's whole header: area, count, and the segmented bar — the
+ *  compact stand-in for the screen title while a run is up. */
+function Progress({
+  label,
+  index,
+  total,
+}: {
+  label: string | null;
+  index: number;
+  total: number;
+}) {
   const theme = useTheme();
   return (
     <View style={styles.progressBlock}>
-      <ThemedText type="eyebrow" themeColor="textSecondary">
-        {index + 1} of {total}
-      </ThemedText>
+      <View style={styles.progressWords}>
+        {label && (
+          <ThemedText type="eyebrow" themeColor="accent">
+            {label}
+          </ThemedText>
+        )}
+        <ThemedText type="eyebrow" themeColor="textSecondary">
+          {index + 1} of {total}
+        </ThemedText>
+      </View>
       <View style={styles.progress} testID="quiz-progress">
         {Array.from({ length: total }, (_, segment) => (
           <View
@@ -556,8 +579,12 @@ const styles = StyleSheet.create({
   },
   question: {
     // The serif carries the questions as it would the stories — the
-    // face the mocks were set in (iOS "New York" via ui-serif)
+    // face the mocks were set in (iOS "New York" via ui-serif). Sized
+    // well below `subtitle`'s 32: the run must fit one screen with its
+    // options and button (Edd's phone finding, 2026-08-06).
     fontFamily: Fonts?.serif,
+    fontSize: 21,
+    lineHeight: 27,
   },
   startCard: {
     gap: Spacing.two,
@@ -579,6 +606,11 @@ const styles = StyleSheet.create({
   },
   progressBlock: {
     gap: Spacing.two,
+  },
+  progressWords: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    alignItems: 'baseline',
   },
   progress: {
     flexDirection: 'row',
