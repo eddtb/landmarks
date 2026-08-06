@@ -32,12 +32,16 @@ const MenuView: ComponentType<MenuViewProps> | null = (() => {
 export function OverflowMenu({
   actions,
   onAction,
+  tint,
 }: {
   actions: OverflowAction[];
   onAction: (id: string) => void;
+  /** Overrides the trigger's colour — the glass chips over photos are
+   *  a fixed dark scrim whatever the scheme, so their glyph is white. */
+  tint?: string;
 }) {
   const trigger = (
-    <ThemedText type="headline" accessibilityLabel="More actions">
+    <ThemedText type="headline" accessibilityLabel="More actions" style={tint ? { color: tint } : undefined}>
       ⋯
     </ThemedText>
   );

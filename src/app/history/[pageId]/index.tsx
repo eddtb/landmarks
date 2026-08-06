@@ -28,14 +28,17 @@ function FloatingBack() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.floatingBack, { top: insets.top + Spacing.two }]}>
-      <GlassChip>
+      <GlassChip circle>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Back to Stories"
           testID="story-back"
           onPress={() => router.back()}
           hitSlop={Spacing.two}
           style={styles.floatingBackPress}>
-          <ThemedText type="smallBold">‹ Stories</ThemedText>
+          <ThemedText type="title" style={styles.floatingBackGlyph}>
+            ‹
+          </ThemedText>
         </Pressable>
       </GlassChip>
     </View>
@@ -280,33 +283,35 @@ export default function HistoryDetailScreen() {
   // the compiler with a fresh identity per render.
   const others = getStoriesAround(item.pageId).filter((story) => story.pageId !== item.pageId);
 
+  const overflowActions = [
+    { id: 'share', title: 'Share' },
+    { id: 'maps', title: 'Open in Maps' },
+  ];
+  const onOverflow = (id: string) => {
+    if (id === 'share') {
+      // Recipients with Venture jump straight to this story; the source
+      // URL on the second line keeps the share useful without the app.
+      // Synthetic heritage ids (plaques, register entries) can't
+      // deep-link — they keep the plain source URL.
+      const message = isWikiPageId(item.pageId)
+        ? `${item.title} — walk to it with Venture: landmarks://history/${item.pageId}\n${item.url}`
+        : `${item.title} — ${item.url}`;
+      Share.share({ message });
+    }
+    if (id === 'maps') Linking.openURL(mapsWalkingUrl(item.coordinates));
+  };
+
   return (
     <ThemedView style={styles.container} testID="story-screen">
       <AreaGazetteer
         chrome={{
           backLabel: 'Stories',
           onBack: () => router.back(),
-          menu: (
-            <OverflowMenu
-              actions={[
-                { id: 'share', title: 'Share' },
-                { id: 'maps', title: 'Open in Maps' },
-              ]}
-              onAction={(id) => {
-                if (id === 'share') {
-                  // Recipients with Venture jump straight to this story;
-                  // the source URL on the second line keeps the share
-                  // useful without the app. Synthetic heritage ids
-                  // (plaques, register entries) can't deep-link — they
-                  // keep the plain source URL.
-                  const message = isWikiPageId(item.pageId)
-                    ? `${item.title} — walk to it with Venture: landmarks://history/${item.pageId}\n${item.url}`
-                    : `${item.title} — ${item.url}`;
-                  Share.share({ message });
-                }
-                if (id === 'maps') Linking.openURL(mapsWalkingUrl(item.coordinates));
-              }}
-            />
+          // Two renderings of ONE menu: theme glyph on the island's own
+          // surface, white glyph for the photo-scrim chip at rest
+          menu: <OverflowMenu actions={overflowActions} onAction={onOverflow} />,
+          menuOnPhoto: (
+            <OverflowMenu actions={overflowActions} onAction={onOverflow} tint="#FFFFFF" />
           ),
         }}
         areaName={item.subject ?? item.title}
@@ -350,8 +355,13 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   floatingBackPress: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingBackGlyph: {
+    color: '#FFFFFF',
   },
   container: {
     flex: 1,

@@ -381,7 +381,10 @@ export function AreaGazetteer({
   chrome?: {
     backLabel: string;
     onBack: () => void;
+    /** The ⋯ as rendered ON the island's own surface (theme glyph). */
     menu?: ReactNode;
+    /** The same ⋯ tinted white for the photo-scrim chip at rest. */
+    menuOnPhoto?: ReactNode;
   };
 }) {
   const insets = useSafeAreaInsets();
@@ -902,17 +905,20 @@ export function AreaGazetteer({
       <View
         style={[styles.chipRow, { top: insets.top + Spacing.two }]}
         pointerEvents="box-none">
-        <GlassChip>
+        <GlassChip circle>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={`Back to ${chrome.backLabel}`}
             testID="story-back"
             onPress={chrome.onBack}
             hitSlop={Spacing.two}
-            style={styles.chipPress}>
-            <ThemedText type="smallBold">‹ {chrome.backLabel}</ThemedText>
+            style={styles.circlePress}>
+            <ThemedText type="title" style={[styles.chevron, styles.chipGlyph]}>
+              ‹
+            </ThemedText>
           </Pressable>
         </GlassChip>
-        {chrome.menu && <GlassChip style={styles.chipMenu}>{chrome.menu}</GlassChip>}
+        {chrome.menuOnPhoto && <GlassChip circle>{chrome.menuOnPhoto}</GlassChip>}
       </View>
     )}
     {islandShown && retold && (
@@ -921,25 +927,28 @@ export function AreaGazetteer({
         passThrough={!chrome}
         topOffset={chrome ? undefined : 0}>
         <View style={styles.islandInner} testID="gazetteer-island">
-          {chrome && (
-            <View style={styles.islandNavRow}>
+          {/* One professional row (Edd, 22:25): chevron · title · count
+              · menu, with the reading bar along the base */}
+          <View style={styles.islandRow}>
+            {chrome && (
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={`Back to ${chrome.backLabel}`}
                 testID="story-back"
                 onPress={chrome.onBack}
                 hitSlop={Spacing.two}>
-                <ThemedText type="smallBold">‹ {chrome.backLabel}</ThemedText>
+                <ThemedText type="title" style={styles.chevron}>
+                  ‹
+                </ThemedText>
               </Pressable>
-              {chrome.menu}
-            </View>
-          )}
-          <View style={styles.islandRow} pointerEvents="none">
+            )}
             <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
               The story of {areaLabel ?? areaName}
             </ThemedText>
             <ThemedText type="eyebrow" themeColor="textSecondary">
               {currentPart} / {retold.parts.length}
             </ThemedText>
+            {chrome?.menu}
           </View>
           <View
             style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}
@@ -1161,18 +1170,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  chipPress: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-  },
-  chipMenu: {
-    paddingHorizontal: Spacing.two + 2,
-    paddingVertical: Spacing.one,
-  },
-  islandNavRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  circlePress: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Sized to read as an icon, nudged up — the glyph's baseline sits low
+  chevron: {
+    lineHeight: 24,
+    marginTop: -2,
+  },
+  // Over the photo scrim the glyph is always white, whatever the scheme
+  chipGlyph: {
+    color: '#FFFFFF',
   },
   islandInner: {
     paddingHorizontal: Spacing.three,
@@ -1182,12 +1193,11 @@ const styles = StyleSheet.create({
   },
   islandRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    gap: Spacing.three,
+    alignItems: 'center',
+    gap: Spacing.two + 2,
   },
   islandTitle: {
-    flexShrink: 1,
+    flex: 1,
   },
   islandTrack: {
     height: 4,

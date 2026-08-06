@@ -1,16 +1,10 @@
 import { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-// OTA CUT (glassless): expo-glass-effect is a NATIVE module the live
-// binaries don't carry, and this cut's fingerprint must match them —
-// so the islands ship as their solid-card fallback everywhere. The
-// integration branch keeps the real GlassView; the next binary
-// upgrades these same islands to true liquid glass with no further
-// JS change.
-
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 /**
  * The glass island (Edd's pick from the mocked variants, 2026-08-06):
@@ -18,21 +12,35 @@ import { useTheme } from '@/hooks/use-theme';
  * the tab pill below — two glass objects framing a feed that scrolls
  * under both.
  *
- * Real UIGlassEffect on iOS 26; anywhere else (older iOS, Android,
- * jest) it degrades to a solid floating card in the theme's surface
- * colour — still modern, never broken. Native module, so this ships
- * in a BINARY: it rides the same build that strips background
- * location, never an OTA.
+ * Real UIGlassEffect on iOS 26. Everywhere else — older iOS, Android,
+ * jest, and every binary built before the module joined — the
+ * fallback is a TRANSLUCENT card (Edd, 22:25: the opaque card read as
+ * a slab next to the real thing): no blur without native help, but
+ * the alpha lets the feed ghost through and the material reads as
+ * glass. Native module, so true glass ships in a BINARY — this
+ * component is why the OTA cut strips the import.
  *
  * Geometry is the screen's business: the island floats at the top of
- * whatever positioned ancestor it is mounted in (mount it inside your
- * safe area, or offset it yourself), reports its own height through
- * onHeight, and the screen decides its scroll content's paddingTop so
- * the content starts below the island and slides beneath it.
+ * whatever positioned ancestor it is mounted in, reports its height
+ * through onHeight, and the screen decides its scroll content's
+ * paddingTop. MOUNT AS A DIRECT CHILD of the screen surface: wrapping
+ * it in a plain View collapses the positioning context to zero height
+ * at the bottom of the flow and the island renders nowhere
+ * (sentinel-bisected the hard way).
  */
 
 export const IslandTopGap = Spacing.two;
 export const IslandBreath = Spacing.three;
+
+/** The fallback material: translucent, per scheme. */
+function useGlassFallback() {
+  const dark = useColorScheme() === 'dark';
+  return {
+    backgroundColor: dark ? 'rgba(30, 30, 34, 0.86)' : 'rgba(245, 245, 247, 0.88)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: dark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(23, 24, 26, 0.10)',
+  };
+}
 
 export function GlassIslandHeader({
   children,
@@ -43,62 +51,75 @@ export function GlassIslandHeader({
   children: ReactNode;
   /** The island's rendered height (gap above included, breath not). */
   onHeight: (height: number) => void;
-  /** An info-only island (the gazetteer's) lets every touch through —
-   *  a reader must be able to scroll by dragging across it. */
+  /** An info-only island lets every touch through — a reader must be
+   *  able to scroll by dragging across it. */
   passThrough?: boolean;
   /** Distance from the mount parent's top. Defaults to the safe-area
    *  inset — right when the parent starts at the screen's true top
    *  (Yoga anchors absolute children to the border box, ignoring a
    *  SafeAreaView parent's padding). A parent that already sits below
-   *  the notch (the gazetteer's wrap, a padded-down flow child) passes
-   *  0, or the island double-insets — sim-caught. */
+   *  the notch passes 0, or the island double-insets — sim-caught. */
   topOffset?: number;
 }) {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const fallback = useGlassFallback();
+  const glass = isLiquidGlassAvailable();
   const report = (height: number) => onHeight(IslandTopGap + height);
 
   return (
-    // Self-offset below the notch: SafeAreaView insets with PADDING,
-    // and absolute children anchor to the outer box — top: 0 here is
-    // the screen's true top, clock and all (Edd's phone, 21:01 on
-    // "Greenwich"). MOUNT AS A DIRECT CHILD of the screen surface:
-    // wrapping this in a plain View collapses the positioning context
-    // to zero height at the bottom of the flow and the island renders
-    // nowhere (the gazetteer's first attempt, sentinel-bisected).
-    // Touches beside the island fall through to the list — only the
-    // island itself catches, unless passThrough lets everything by.
     <View
       style={[styles.anchor, { top: topOffset ?? insets.top }]}
       pointerEvents={passThrough ? 'none' : 'box-none'}
       testID="glass-island">
-      <View
-        style={[styles.island, styles.solid, { backgroundColor: theme.backgroundElement }]}
-        onLayout={(event) => report(event.nativeEvent.layout.height)}>
-        {children}
-      </View>
+      {glass ? (
+        <GlassView
+          glassEffectStyle="regular"
+          style={styles.island}
+          onLayout={(event) => report(event.nativeEvent.layout.height)}>
+          {children}
+        </GlassView>
+      ) : (
+        <View
+          style={[styles.island, styles.solid, fallback]}
+          onLayout={(event) => report(event.nativeEvent.layout.height)}>
+          {children}
+        </View>
+      )}
     </View>
   );
 }
 
 /**
- * A small floating glass capsule — the story screen's back button and
- * ⋯ menu wear this over the full-bleed hero, where the native header
- * used to be. Same material rules as the island: real glass on iOS 26,
- * a solid card everywhere else.
+ * A small floating glass capsule or circle — the story screen's back
+ * chevron and ⋯ menu wear these over the full-bleed hero, where the
+ * native header used to be. Same material rules as the island.
  */
 export function GlassChip({
   children,
   style,
+  circle,
 }: {
   children: ReactNode;
   style?: object;
+  /** A 40pt round chip — the chevron and the ⋯ (Edd, 22:25: the
+   *  simplified chrome). */
+  circle?: boolean;
 }) {
-  const theme = useTheme();
+  const glass = isLiquidGlassAvailable();
+  if (glass) {
+    return (
+      <GlassView glassEffectStyle="regular" style={[styles.chip, circle && styles.circle, style]}>
+        {children}
+      </GlassView>
+    );
+  }
+  // Chips live over PHOTOS, so the fallback is a photo-scrim — fixed
+  // dark ink with white glyphs whatever the scheme (Edd, 22:27: the
+  // scheme surface went navy over a bright sky). The read tick proved
+  // this material; the island keeps scheme translucency, it sits over
+  // text, not imagery.
   return (
-    <View style={[styles.chip, styles.solid, { backgroundColor: theme.backgroundElement }, style]}>
-      {children}
-    </View>
+    <View style={[styles.chip, styles.scrim, circle && styles.circle, style]}>{children}</View>
   );
 }
 
@@ -116,6 +137,12 @@ const styles = StyleSheet.create({
     borderCurve: 'continuous',
     overflow: 'hidden',
   },
+  circle: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   island: {
     borderRadius: Spacing.four,
     borderCurve: 'continuous',
@@ -124,9 +151,14 @@ const styles = StyleSheet.create({
   solid: {
     // The fallback card needs its own edge; real glass draws its own
     shadowColor: '#000',
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
+  },
+  scrim: {
+    backgroundColor: 'rgba(22, 22, 26, 0.55)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
 });
