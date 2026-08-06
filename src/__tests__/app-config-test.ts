@@ -40,12 +40,14 @@ describe('app.json survives the tooling', () => {
     }
   });
 
-  test('no duplicate iOS background modes', () => {
-    const modes = config.ios.infoPlist.UIBackgroundModes;
-    expect(duplicates(modes)).toEqual([]);
+  test('no background modes at all — arrivals left with 1.1.0', () => {
     // Only what the app actually does — 1.0(3) was rejected under 2.5.4
-    // for a background mode it never used (see with-honest-capabilities)
-    expect(modes).toEqual(['location']);
+    // for a background mode it never used (see with-honest-capabilities),
+    // and since the arrivals removal NOTHING here runs in the background.
+    // A mode reappearing means a written-back config or a new feature
+    // that must argue its case here first.
+    expect('UIBackgroundModes' in config.ios.infoPlist).toBe(false);
+    expect('NSLocationAlwaysUsageDescription' in config.ios.infoPlist).toBe(false);
   });
 
   test('no duplicate Android permissions', () => {
@@ -57,11 +59,11 @@ describe('app.json survives the tooling', () => {
     // FOREGROUND_SERVICE_LOCATION and MODIFY_AUDIO_SETTINGS from plugin
     // defaults. Plugins may add them at prebuild; the committed config
     // must not claim them.
+    // Foreground location only since the arrivals removal: no
+    // background grant, no notifications
     expect(config.android.permissions).toEqual([
       'android.permission.ACCESS_COARSE_LOCATION',
       'android.permission.ACCESS_FINE_LOCATION',
-      'android.permission.ACCESS_BACKGROUND_LOCATION',
-      'android.permission.POST_NOTIFICATIONS',
     ]);
   });
 

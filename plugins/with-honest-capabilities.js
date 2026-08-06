@@ -26,7 +26,7 @@ const { withInfoPlist } = require('expo/config-plugins');
  */
 
 /** Modes the app genuinely uses. Anything else gets stripped. */
-const UsedBackgroundModes = new Set(['location']);
+const UsedBackgroundModes = new Set([]);
 
 module.exports = function withHonestCapabilities(config) {
   return withInfoPlist(config, (modConfig) => {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Venture",
     "slug": "landmarks",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "landmarks",
@@ -11,11 +11,7 @@
       "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.eddtb.landmarks",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": [
-          "location"
-        ],
-        "NSLocationAlwaysUsageDescription": "Turn on Arrivals and Venture will tell you when you walk up to somewhere historic, even with the app closed. Off until you ask for it."
+        "ITSAppUsesNonExemptEncryption": false
       },
       "runtimeVersion": {
         "policy": "fingerprint"
@@ -30,9 +26,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_BACKGROUND_LOCATION",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "runtimeVersion": {
         "policy": "fingerprint"
@@ -49,12 +43,9 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Venture uses your location to find the stories within a walk of you.",
-          "locationAlwaysAndWhenInUsePermission": "Turn on Arrivals and Venture will tell you when you walk up to somewhere historic, even with the app closed. Off until you ask for it.",
-          "isAndroidBackgroundLocationEnabled": true
+          "locationWhenInUsePermission": "Venture uses your location to find the stories within a walk of you."
         }
       ],
-      "expo-notifications",
       [
         "expo-splash-screen",
         {
