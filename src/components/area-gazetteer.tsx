@@ -210,14 +210,20 @@ function Hero({
   areaName,
   article,
   retold,
+  topInset,
 }: {
   areaName: string;
   article: Article;
   retold: Retold | null;
+  /** Full-bleed screens (glass chrome) grow the hero by the status
+   *  inset so the visible frame stays 220pt, and the credit drops
+   *  below the clock instead of colliding with it (Edd's phone,
+   *  22:10 — the credit ran behind the status bar and the island). */
+  topInset?: number;
 }) {
   const lead: ArticleImage | undefined = (article.images ?? [])[0];
   return (
-    <View style={styles.hero} testID="gazetteer-hero">
+    <View style={[styles.hero, { height: 220 + (topInset ?? 0) }]} testID="gazetteer-hero">
       {lead && (
         <Image
           source={{ uri: lead.imageUrl }}
@@ -228,7 +234,11 @@ function Hero({
       )}
       <View style={[StyleSheet.absoluteFill, styles.heroShade]} />
       {lead && (
-        <ThemedText type="small" style={styles.heroCredit} numberOfLines={1} maxFontSizeMultiplier={1.4}>
+        <ThemedText
+          type="caption"
+          style={[styles.heroCredit, { top: (topInset ?? 0) + Spacing.two }]}
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.4}>
           {lead.credit}
         </ThemedText>
       )}
@@ -390,6 +400,7 @@ export function AreaGazetteer({
   // mounts and unmounts on the crossing, one JS hop per change.
   // Declared before the scroll handler that writes it.
   const heroCleared = useSharedValue(0);
+  const heroClearAt = HeroClearOffset + (chrome ? insets.top : 0);
   const [islandShown, setIslandShown] = useState(false);
   useAnimatedReaction(
     () => heroCleared.get(),
@@ -407,8 +418,10 @@ export function AreaGazetteer({
     );
     readProgress.set(progress);
     // The arriving island (Edd, 2026-08-06): once the hero's title has
-    // cleared the top edge, the glass island carries it on
-    heroCleared.set(event.contentOffset.y > HeroClearOffset ? 1 : 0);
+    // cleared the top edge, the glass island carries it on. Full-bleed
+    // screens grew the hero by the status inset, so the title clears
+    // that much later.
+    heroCleared.set(event.contentOffset.y > heroClearAt ? 1 : 0);
     if (onReadThreshold && progress >= ReadThreshold && !readMarked.get()) {
       readMarked.set(true);
       runOnJS(onReadThreshold)();
@@ -798,7 +811,12 @@ export function AreaGazetteer({
               accessibilityRole="imagebutton"
               accessibilityLabel="Open the cover photo"
               onPress={() => (article.images ?? []).length > 0 && setViewerIndex(0)}>
-              <Hero areaName={areaLabel ?? areaName} article={article} retold={retold} />
+              <Hero
+                areaName={areaLabel ?? areaName}
+                article={article}
+                retold={retold}
+                topInset={chrome ? insets.top : 0}
+              />
             </Pressable>
             {(article.images ?? []).length > 1 && (
               <ScrollView
@@ -1185,7 +1203,6 @@ const styles = StyleSheet.create({
     height: 4,
   },
   hero: {
-    height: 220,
     justifyContent: 'flex-end',
     backgroundColor: '#31406B',
   },
@@ -1206,7 +1223,6 @@ const styles = StyleSheet.create({
   },
   heroCredit: {
     position: 'absolute',
-    top: Spacing.two,
     right: Spacing.three,
     color: '#FFFFFF',
     opacity: 0.7,
