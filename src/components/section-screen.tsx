@@ -757,11 +757,13 @@ const styles = StyleSheet.create({
   // on the header block above: the count line is a pinned sibling of
   // the list, and a border on the header lands one element too early
   // (caught in a screenshot, after the first attempt shipped).
+  // No bottom border since the move into the island (Edd's screenshot,
+  // 21:02): the card's own edge separates; the orphaned hairline read
+  // as a stray rule under the count
   countLine: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
     paddingBottom: Spacing.two,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   controlLine: {
     flexDirection: 'row',
