@@ -859,25 +859,23 @@ export function AreaGazetteer({
         and the reading bar living along its base instead of the bare
         screen-top track above */}
     {islandShown && retold && (
-      <View pointerEvents="none" testID="gazetteer-island">
-        <GlassIslandHeader onHeight={noHeight}>
-          <View style={styles.islandInner}>
-            <View style={styles.islandRow}>
-              <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
-                The story of {areaLabel ?? areaName}
-              </ThemedText>
-              <ThemedText type="eyebrow" themeColor="textSecondary">
-                {currentPart} / {retold.parts.length}
-              </ThemedText>
-            </View>
-            <View style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}>
-              <Animated.View
-                style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
-              />
-            </View>
+      <GlassIslandHeader onHeight={noHeight} passThrough topOffset={0}>
+        <View style={styles.islandInner} testID="gazetteer-island">
+          <View style={styles.islandRow}>
+            <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
+              The story of {areaLabel ?? areaName}
+            </ThemedText>
+            <ThemedText type="eyebrow" themeColor="textSecondary">
+              {currentPart} / {retold.parts.length}
+            </ThemedText>
           </View>
-        </GlassIslandHeader>
-      </View>
+          <View style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}>
+            <Animated.View
+              style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
+            />
+          </View>
+        </View>
+      </GlassIslandHeader>
     )}
     <ImageViewer
       images={article?.images ?? []}

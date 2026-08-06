@@ -31,10 +31,22 @@ export const IslandBreath = Spacing.three;
 export function GlassIslandHeader({
   children,
   onHeight,
+  passThrough,
+  topOffset,
 }: {
   children: ReactNode;
   /** The island's rendered height (gap above included, breath not). */
   onHeight: (height: number) => void;
+  /** An info-only island (the gazetteer's) lets every touch through —
+   *  a reader must be able to scroll by dragging across it. */
+  passThrough?: boolean;
+  /** Distance from the mount parent's top. Defaults to the safe-area
+   *  inset — right when the parent starts at the screen's true top
+   *  (Yoga anchors absolute children to the border box, ignoring a
+   *  SafeAreaView parent's padding). A parent that already sits below
+   *  the notch (the gazetteer's wrap, a padded-down flow child) passes
+   *  0, or the island double-insets — sim-caught. */
+  topOffset?: number;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -45,9 +57,15 @@ export function GlassIslandHeader({
     // Self-offset below the notch: SafeAreaView insets with PADDING,
     // and absolute children anchor to the outer box — top: 0 here is
     // the screen's true top, clock and all (Edd's phone, 21:01 on
-    // "Greenwich"). Touches beside the island fall through to the
-    // list — only the island itself catches.
-    <View style={[styles.anchor, { top: insets.top }]} pointerEvents="box-none">
+    // "Greenwich"). MOUNT AS A DIRECT CHILD of the screen surface:
+    // wrapping this in a plain View collapses the positioning context
+    // to zero height at the bottom of the flow and the island renders
+    // nowhere (the gazetteer's first attempt, sentinel-bisected).
+    // Touches beside the island fall through to the list — only the
+    // island itself catches, unless passThrough lets everything by.
+    <View
+      style={[styles.anchor, { top: topOffset ?? insets.top }]}
+      pointerEvents={passThrough ? 'none' : 'box-none'}>
       {glass ? (
         <GlassView
           glassEffectStyle="regular"
