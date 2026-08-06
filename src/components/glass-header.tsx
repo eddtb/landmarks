@@ -119,6 +119,11 @@ export function GlassChip({
       <GlassView
         glassEffectStyle="regular"
         colorScheme="dark"
+        // Glass is transmissive: a white photo scrolling beneath lifted
+        // the whole chip out from under its glyphs (Edd, 22:56). The
+        // tint inks the material itself, so the chip stays dark over
+        // ANY backdrop and still reads as glass.
+        tintColor="rgba(20, 20, 24, 0.65)"
         style={[styles.chip, circle && styles.circle, style]}>
         {children}
       </GlassView>
