@@ -62,16 +62,15 @@ export function SavedScreen() {
         }
         showsVerticalScrollIndicator={false}
       />
-      {/* After the list so it paints above; the shelf scrolls under it */}
-      <View style={{ position: 'absolute', top: insets.top, left: 0, right: 0 }} pointerEvents="box-none">
-        <GlassIslandHeader onHeight={setIslandHeight}>
-          <View style={styles.islandWords}>
-            <ThemedText type="eyebrow" themeColor="textSecondary">
-              Saved{saved.length > 0 ? ` · ${saved.length}` : ''}
-            </ThemedText>
-          </View>
-        </GlassIslandHeader>
-      </View>
+      {/* After the list so it paints above; the shelf scrolls under it.
+          The island offsets itself below the notch. */}
+      <GlassIslandHeader onHeight={setIslandHeight}>
+        <View style={styles.islandWords}>
+          <ThemedText type="eyebrow" themeColor="textSecondary">
+            Saved{saved.length > 0 ? ` · ${saved.length}` : ''}
+          </ThemedText>
+        </View>
+      </GlassIslandHeader>
     </ThemedView>
   );
 }

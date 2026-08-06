@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 
 import { Spacing } from '@/constants/theme';
@@ -36,13 +37,17 @@ export function GlassIslandHeader({
   onHeight: (height: number) => void;
 }) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const glass = isLiquidGlassAvailable();
   const report = (height: number) => onHeight(IslandTopGap + height);
 
   return (
-    // Touches beside the island fall through to the list — only the
-    // island itself catches
-    <View style={styles.anchor} pointerEvents="box-none">
+    // Self-offset below the notch: SafeAreaView insets with PADDING,
+    // and absolute children anchor to the outer box — top: 0 here is
+    // the screen's true top, clock and all (Edd's phone, 21:01 on
+    // "Greenwich"). Touches beside the island fall through to the
+    // list — only the island itself catches.
+    <View style={[styles.anchor, { top: insets.top }]} pointerEvents="box-none">
       {glass ? (
         <GlassView
           glassEffectStyle="regular"
@@ -64,7 +69,6 @@ export function GlassIslandHeader({
 const styles = StyleSheet.create({
   anchor: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     zIndex: 10,
