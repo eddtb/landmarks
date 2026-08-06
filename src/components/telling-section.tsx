@@ -220,7 +220,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
         </View>
       )}
       {storyParagraphs(telling).map((paragraph, index) => (
-        <ThemedText key={index} type="default" style={index === 0 && styles.leadLede}>
+        <ThemedText key={index} type={index === 0 ? 'lede' : 'default'}>
           {paragraph}
         </ThemedText>
       ))}
@@ -229,7 +229,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
           reader (or an App Review reviewer looking for aggregation) met
           was the app announcing itself as AI output over a web page. The
           disclosure is unchanged and deliberate; only its place is. */}
-      <ThemedText type="small" themeColor="textSecondary" style={styles.leadAttribution}>
+      <ThemedText type="caption" themeColor="textSecondary" style={styles.leadAttribution}>
         Told by AI from {item.source} — source below
       </ThemedText>
     </View>
@@ -258,14 +258,6 @@ const styles = StyleSheet.create({
   },
   // A byline, under the piece
   leadAttribution: {
-    fontSize: 11,
     paddingTop: Spacing.one,
-  },
-  // The same lede treatment a retold part's opening gets — the telling
-  // IS the story's opening here
-  leadLede: {
-    fontSize: 17.5,
-    lineHeight: 27,
-    fontWeight: '500',
   },
 });

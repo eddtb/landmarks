@@ -65,7 +65,7 @@ export function HistoryCard({ item, archive, saved }: Props) {
           // Translucent, not blurred: expo-blur isn't a dependency this
           // chip earns, and 55% ink over a photo reads frosted anyway
           <View style={styles.glassTick} testID="read-tick">
-            <ThemedText type="small" style={styles.glassTickText}>
+            <ThemedText type="captionBold" style={styles.glassTickText}>
               ✓&ensp;{journalWord}
             </ThemedText>
           </View>
@@ -129,9 +129,6 @@ const styles = StyleSheet.create({
   },
   glassTickText: {
     color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 12,
-    lineHeight: 16,
   },
   photo: {
     width: '100%',

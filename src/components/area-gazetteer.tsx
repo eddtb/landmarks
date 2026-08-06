@@ -28,7 +28,7 @@ import { ImageViewer } from '@/components/image-viewer';
 import { TellingLead } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
-import { Fonts, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { fetchArticle, fetchArticleLight } from '@/data/article-client';
 import { ApiError } from '@/data/cached-get';
 import { fetchRetold } from '@/data/retold-client';
@@ -645,7 +645,7 @@ export function AreaGazetteer({
             {/* Words, not glyphs (PR #186): no ✦ for VoiceOver to call
                 "four-pointed star", and Stop is a word — it's violet,
                 and violet already means tappable */}
-            <ThemedText type="small" themeColor="textSecondary" style={styles.aiLabelText}>
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.aiLabelText}>
               Retold by AI from Wikipedia — source below
             </ThemedText>
             {speechAvailable && retold && (
@@ -658,7 +658,7 @@ export function AreaGazetteer({
             )}
           </View>
           {spokeOnce && !speaking && !usingEnhancedVoice() && (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.voiceHint}>
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.voiceHint}>
               A nicer voice is one download away: Settings › Accessibility › Spoken Content ›
               Voices › English (UK)
             </ThemedText>
@@ -806,9 +806,8 @@ export function AreaGazetteer({
                       cachePolicy="memory-disk"
                     />
                     <ThemedText
-                      type="small"
+                      type="caption"
                       themeColor="textSecondary"
-                      style={styles.galleryCredit}
                       numberOfLines={1}>
                       {image.credit}
                     </ThemedText>
@@ -986,7 +985,7 @@ function TimelineStrip({
           <ThemedText type="smallBold" themeColor="accent" style={styles.timelineYear}>
             {stop.year}
           </ThemedText>
-          <ThemedText type="small" style={styles.timelineLabel} numberOfLines={2}>
+          <ThemedText type="caption" numberOfLines={2}>
             {stop.label}
           </ThemedText>
         </Pressable>
@@ -1021,14 +1020,14 @@ const PartRow = memo(function PartRow({
       <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.partNum} testID="part-eyebrow">
         Part {PartWords[index] ?? index + 1}
       </ThemedText>
-      <ThemedText type="headline" style={styles.partHead}>
+      <ThemedText type="title" style={styles.partHead}>
         {part.heading}
       </ThemedText>
       {paragraphs.map((paragraph, paragraphIndex) => (
         <View key={paragraphIndex}>
           <ThemedText
-            type="default"
-            style={[styles.para, index === 0 && paragraphIndex === 0 && styles.lede]}>
+            type={index === 0 && paragraphIndex === 0 ? 'lede' : 'default'}
+            style={styles.para}>
             {linkifyParagraph(paragraph, paragraphLinks[paragraphIndex] ?? []).map((segment, segmentIndex) =>
               segment.pageId !== undefined ? (
                 <ThemedText
@@ -1052,7 +1051,7 @@ const PartRow = memo(function PartRow({
             <View style={[styles.pull, { borderLeftColor: theme.accent }]}>
               {/* The accent border is the flourish; the words stay ink —
                   violet text is reserved for things a finger can press */}
-              <ThemedText type="headline" style={styles.pullText}>
+              <ThemedText type="pullQuote">
                 {part.pullQuote}
               </ThemedText>
             </View>
@@ -1091,9 +1090,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   islandTitle: {
-    // The hero's serif register, carried on at island size
-    fontFamily: Fonts?.serif,
-    fontSize: 15,
     flexShrink: 1,
   },
   islandTrack: {
@@ -1139,7 +1135,6 @@ const styles = StyleSheet.create({
     right: Spacing.three,
     color: '#FFFFFF',
     opacity: 0.7,
-    fontSize: 10,
   },
   gallery: {
     marginTop: Spacing.three,
@@ -1156,9 +1151,7 @@ const styles = StyleSheet.create({
     height: 110,
     borderRadius: Spacing.three - 2,
   },
-  galleryCredit: {
-    fontSize: 9,
-  },
+
   noStory: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
@@ -1172,12 +1165,10 @@ const styles = StyleSheet.create({
   },
   aiLabelText: {
     flex: 1,
-    fontSize: 11,
   },
   voiceHint: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.one,
-    fontSize: 11,
   },
   pending: {
     paddingHorizontal: Spacing.four,
@@ -1213,27 +1204,17 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   partHead: {
-    fontSize: 21,
-    lineHeight: 26,
     marginBottom: Spacing.two,
   },
   para: {
     marginBottom: Spacing.three,
   },
-  lede: {
-    fontSize: 17.5,
-    lineHeight: 27,
-    fontWeight: '500',
-  },
+
   pull: {
     borderLeftWidth: 3,
     paddingLeft: Spacing.three,
     paddingVertical: 2,
     marginBottom: Spacing.three,
-  },
-  pullText: {
-    fontSize: 18,
-    lineHeight: 25,
   },
   timeline: {
     marginTop: Spacing.two,
@@ -1251,11 +1232,6 @@ const styles = StyleSheet.create({
     maxWidth: 150,
   },
   timelineYear: {
-    fontSize: 15,
-  },
-  timelineLabel: {
-    fontSize: 11,
-    lineHeight: 14,
   },
   linkRow: {
     flexDirection: 'row',

@@ -144,7 +144,7 @@ export function ImageViewer({
                     />
                   </ScrollView>
                   <ThemedText
-                    type="small"
+                    type="caption"
                     style={[styles.credit, { bottom: insets.bottom + Spacing.four }]}
                     numberOfLines={2}>
                     {image.credit}
@@ -192,7 +192,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     opacity: 0.75,
     textAlign: 'center',
-    fontSize: 11,
   },
   // A pill now the label is a word; hitSlop 16 keeps the 36pt chip's
   // effective target over 44pt

@@ -119,7 +119,7 @@ function DownloadState({ pageId }: { pageId: number }) {
           ? 'Download failed — it will retry next time'
           : 'Waiting to download';
   return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.downloadState}>
+    <ThemedText type="caption" themeColor="textSecondary" style={styles.downloadState}>
       {words}
     </ThemedText>
   );
@@ -142,7 +142,6 @@ const styles = StyleSheet.create({
   },
   downloadState: {
     paddingTop: Spacing.half,
-    fontSize: 11,
   },
   islandWords: {
     paddingHorizontal: Spacing.three,

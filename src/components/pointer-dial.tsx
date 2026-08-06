@@ -208,7 +208,7 @@ export function PointerDial({
           </ThemedText>
         ) : (
           <>
-            <ThemedText type="subtitle" style={styles.primary}>
+            <ThemedText style={[styles.primary, styles.dialNumber]} maxFontSizeMultiplier={1.4}>
               {primary}
             </ThemedText>
             {secondary !== undefined && (
@@ -292,6 +292,13 @@ const styles = StyleSheet.create({
   primary: {
     textAlign: 'center',
     paddingHorizontal: Spacing.four,
+  },
+  // Bespoke by geometry: the dial's fixed ring sizes its own number —
+  // these two glyphs live outside the ramp, capped like all chrome
+  dialNumber: {
+    fontSize: 32,
+    lineHeight: 44,
+    fontWeight: 600,
   },
   compactPrimary: {
     fontSize: 10,

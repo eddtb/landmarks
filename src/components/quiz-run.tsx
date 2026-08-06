@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { QuizDirection } from '@/components/quiz-direction';
 import { ThemedText } from '@/components/themed-text';
-import { BrandWarmInk, Colors, Fonts, Spacing } from '@/constants/theme';
+import { BrandWarmInk, Colors, Spacing } from '@/constants/theme';
 import { orderedByYear } from '@/data/quiz-client';
 import { Ranks, rankFor, recordRun, useAreaProgress } from '@/data/quiz-progress';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -223,7 +223,7 @@ function OptionsBody({
 
   return (
     <>
-      <ThemedText type="subtitle" style={styles.question}>
+      <ThemedText type="title">
         {text}
       </ThemedText>
       {options.map((option, optionIndex) => {
@@ -319,7 +319,7 @@ function OrderBody({
 
   return (
     <>
-      <ThemedText type="subtitle" style={styles.question}>
+      <ThemedText type="title">
         {question.question}
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
@@ -465,7 +465,7 @@ function Results({
   return (
     <View style={styles.run} testID="quiz-done">
       <View style={styles.scoreHero}>
-        <ThemedText type="largeTitle" style={styles.scoreNumber} maxFontSizeMultiplier={1.4}>
+        <ThemedText type="largeTitle" maxFontSizeMultiplier={1.4}>
           {score} of {total}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
@@ -577,15 +577,9 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingTop: Spacing.three,
   },
-  question: {
-    // The serif carries the questions as it would the stories — the
-    // face the mocks were set in (iOS "New York" via ui-serif). Sized
-    // well below `subtitle`'s 32: the run must fit one screen with its
-    // options and button (Edd's phone finding, 2026-08-06).
-    fontFamily: Fonts?.serif,
-    fontSize: 21,
-    lineHeight: 27,
-  },
+  // The question wears the `title` tier bare — the run must fit one
+  // screen with its options and button (Edd's phone finding), and the
+  // voice is the app's one sans (type policy, mocked and decided)
   startCard: {
     gap: Spacing.two,
     padding: Spacing.three,
@@ -655,9 +649,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.one,
     paddingTop: Spacing.two,
-  },
-  scoreNumber: {
-    fontFamily: Fonts?.serif,
   },
   warmBanner: {
     padding: Spacing.three,

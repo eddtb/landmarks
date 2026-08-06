@@ -510,7 +510,7 @@ export function FeaturedRail({
               {item.title}
             </ThemedText>
             <ThemedText
-              type="small"
+              type="caption"
               themeColor="textSecondary"
               style={styles.featuredMeta}
               maxFontSizeMultiplier={1.4}>
@@ -741,13 +741,11 @@ const styles = StyleSheet.create({
     height: 82,
     borderRadius: Spacing.three - 4,
   },
+  // smallBold's 14 replaces a bespoke 13 — the ramp has no 13
   featuredTitle: {
-    fontSize: 13,
-    lineHeight: 16,
     paddingHorizontal: 2,
   },
   featuredMeta: {
-    fontSize: 11,
     paddingHorizontal: 2,
     paddingBottom: 2,
   },
@@ -790,6 +788,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     marginTop: Spacing.two,
+    // TextInput lives outside ThemedText's ramp — the one sanctioned
+    // inline size, between `small` and `default` for a comfy field
     fontSize: 15,
   },
 });

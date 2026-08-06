@@ -44,24 +44,32 @@ scale, never from a second face.
 
 | Type | Spec | Job |
 |---|---|---|
-| `largeTitle` | 28/34 · 800 · -0.5 tracking | Story names on their own screen; the walk's title |
-| `subtitle` | 32/44 · 600 | The compass dial's big number |
+| `display` | 34/38 · 800 · -0.5 tracking | The one-door gate's brand moment — the largest text anywhere |
+| `largeTitle` | 28/34 · 800 · -0.5 tracking | Story names on their own screen; the quiz score |
+| `title` | 21/27 · 700 | Reading headings: a part's title, a quiz question |
+| `pullQuote` | 18/25 · 500 | The repeatable line, lifted out of its part |
+| `lede` | 17.5/27 · 500 | A story's opening paragraph |
 | `headline` | 16/22 · 700 | Card names |
 | `default` | 16/24 · 500 | Longer body text: the story paragraphs |
 | `small` | 14/20 · 500 | Meta lines, hooks, tellings |
 | `smallBold` | 14/20 · 700 | Buttons, emphasis within small |
-| `eyebrow` | 11/14 · 800 · +1.4 tracking · uppercase | Section labels: NEARBY · STORY · AFTER THIS? · WALKS |
+| `eyebrow` | 11/14 · 800 · +1.4 tracking · uppercase | Section labels: NEARBY · STORY · IN BRIEF |
+| `caption` | 11/14 · 500 | Credits, bylines, hints, download states — the finest print |
+| `captionBold` | 11/14 · 700 | Fine print that must carry: the read tick |
 | `linkPrimary` | 14 · accent colour | Inline links |
 
 Unused styles get deleted from `ThemedText`, not abandoned — dead tokens
-are how drift starts.
+are how drift starts (`subtitle` died 2026-08-06 when the quiz question
+moved to `title`). Two sanctioned inline sizes remain, each commented at
+the site: the search `TextInput` (15 — inputs live outside ThemedText)
+and the compact dial's geometry-bound 10.
 
-**Dynamic type: reading scales freely, chrome is capped.** `default`
-and `small` — the story paragraphs, the tellings — follow the user's
-text size without limit: long-form history readers are exactly the
-large-type audience. The chrome types (`eyebrow`, `smallBold`,
-`subtitle`, `largeTitle`) and any raw-fontSize text inside a fixed
-frame (the compact dial, the featured cards, the hero) cap at 1.4× so
+**Dynamic type: reading scales freely, chrome is capped.** `default`,
+`small`, `lede`, `pullQuote`, `title` — the story voice — follow the
+user's text size without limit: long-form history readers are exactly
+the large-type audience. The chrome types (`eyebrow`, `smallBold`,
+`largeTitle`, `display`) and any sanctioned fixed-frame text (the
+compact dial, the featured cards, the hero) cap at 1.4× so
 accessibility sizes never clip a fixed-height surface.
 
 **Controls are words, not glyphs.** A tappable label is a word VoiceOver
