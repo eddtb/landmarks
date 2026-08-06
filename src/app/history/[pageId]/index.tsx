@@ -1,9 +1,11 @@
 import * as Linking from 'expo-linking';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
+import { GlassChip } from '@/components/glass-header';
 import { ExternalLink } from '@/components/external-link';
 import { OverflowMenu } from '@/components/overflow-menu';
 import { TellingSection } from '@/components/telling-section';
@@ -18,6 +20,27 @@ import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem, isWikiPageId } from '@/types/history';
 import { formatWalkTimeForMeters, storyParagraphs } from '@/utils/format';
 import { Coordinates, distanceMeters } from '@/utils/geo';
+
+/** The story screen owns its navigation now the native header is
+ * gone: a floating glass back chip, present in every state — a screen
+ * a reader cannot leave is a trap, whatever else failed. */
+function FloatingBack() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.floatingBack, { top: insets.top + Spacing.two }]}>
+      <GlassChip>
+        <Pressable
+          accessibilityRole="button"
+          testID="story-back"
+          onPress={() => router.back()}
+          hitSlop={Spacing.two}
+          style={styles.floatingBackPress}>
+          <ThemedText type="smallBold">‹ Stories</ThemedText>
+        </Pressable>
+      </GlassChip>
+    </View>
+  );
+}
 
 function mapsWalkingUrl(coordinates: Coordinates): string {
   const at = `${coordinates.latitude},${coordinates.longitude}`;
@@ -216,7 +239,7 @@ export default function HistoryDetailScreen() {
   if (!item && loadFailed) {
     return (
       <ThemedView style={styles.notFound}>
-        <Stack.Screen options={{ title: '' }} />
+        <FloatingBack />
         <ThemedText themeColor="textSecondary">Couldn’t load this story right now.</ThemedText>
         <Pressable
           accessibilityRole="button"
@@ -233,7 +256,7 @@ export default function HistoryDetailScreen() {
   if (!item && missingPageId !== numericPageId) {
     return (
       <ThemedView style={styles.notFound} testID="story-loading">
-        <Stack.Screen options={{ title: '' }} />
+        <FloatingBack />
         <ActivityIndicator />
       </ThemedView>
     );
@@ -242,7 +265,7 @@ export default function HistoryDetailScreen() {
   if (!item) {
     return (
       <ThemedView style={styles.notFound}>
-        <Stack.Screen options={{ title: 'Not found' }} />
+        <FloatingBack />
         <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
       </ThemedView>
     );
@@ -259,10 +282,11 @@ export default function HistoryDetailScreen() {
 
   return (
     <ThemedView style={styles.container} testID="story-screen">
-      <Stack.Screen
-        options={{
-          title: item.title,
-          headerRight: () => (
+      <AreaGazetteer
+        chrome={{
+          backLabel: 'Stories',
+          onBack: () => router.back(),
+          menu: (
             <OverflowMenu
               actions={[
                 { id: 'share', title: 'Share' },
@@ -285,8 +309,6 @@ export default function HistoryDetailScreen() {
             />
           ),
         }}
-      />
-      <AreaGazetteer
         areaName={item.subject ?? item.title}
         relics={[]}
         allStories={others}
@@ -322,6 +344,15 @@ export default function HistoryDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  floatingBack: {
+    position: 'absolute',
+    left: Spacing.three - 4,
+    zIndex: 10,
+  },
+  floatingBackPress: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
   container: {
     flex: 1,
   },

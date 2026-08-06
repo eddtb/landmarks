@@ -22,7 +22,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExternalLink } from '@/components/external-link';
-import { GlassIslandHeader } from '@/components/glass-header';
+import { GlassChip, GlassIslandHeader } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { TellingLead } from '@/components/telling-section';
@@ -321,6 +321,7 @@ export function AreaGazetteer({
   sourceUrl,
   tellingItem,
   onReadThreshold,
+  chrome,
 }: {
   /** The ARTICLE TITLE — every fetch and filter below keys off it. */
   areaName: string | null;
@@ -358,6 +359,20 @@ export function AreaGazetteer({
    * journal's definition of "read" (an open is not a read). Place
    * screens pass the journal mark; areas pass none. */
   onReadThreshold?: () => void;
+  /**
+   * A story SCREEN's navigation, worn as glass (Edd, 2026-08-06 —
+   * "replace the default header with the liquid glass header"): the
+   * native Stack header is hidden, the hero runs full-bleed to the
+   * screen top, and this renders the back chip and the ⋯ menu as
+   * floating glass over it. When the island arrives on scroll, the
+   * back button docks into it. The History TAB passes none — the tab
+   * pill is its navigation, and its island stays informational.
+   */
+  chrome?: {
+    backLabel: string;
+    onBack: () => void;
+    menu?: ReactNode;
+  };
 }) {
   const insets = useSafeAreaInsets();
   const theme = useTheme();
@@ -857,10 +872,46 @@ export function AreaGazetteer({
         clears, the glass carries it on — with your place in the parts
         and the reading bar living along its base instead of the bare
         screen-top track above */}
+    {/* A story screen's standing chrome: back and the ⋯, floating as
+        glass chips over the full-bleed hero — the native header's job,
+        rehoused (Edd's ask). They stand down when the island arrives
+        and carries the back button itself. */}
+    {chrome && !(islandShown && retold) && (
+      <View
+        style={[styles.chipRow, { top: insets.top + Spacing.two }]}
+        pointerEvents="box-none">
+        <GlassChip>
+          <Pressable
+            accessibilityRole="button"
+            testID="story-back"
+            onPress={chrome.onBack}
+            hitSlop={Spacing.two}
+            style={styles.chipPress}>
+            <ThemedText type="smallBold">‹ {chrome.backLabel}</ThemedText>
+          </Pressable>
+        </GlassChip>
+        {chrome.menu && <GlassChip style={styles.chipMenu}>{chrome.menu}</GlassChip>}
+      </View>
+    )}
     {islandShown && retold && (
-      <GlassIslandHeader onHeight={noHeight} passThrough topOffset={0}>
+      <GlassIslandHeader
+        onHeight={noHeight}
+        passThrough={!chrome}
+        topOffset={chrome ? undefined : 0}>
         <View style={styles.islandInner} testID="gazetteer-island">
-          <View style={styles.islandRow}>
+          {chrome && (
+            <View style={styles.islandNavRow}>
+              <Pressable
+                accessibilityRole="button"
+                testID="story-back"
+                onPress={chrome.onBack}
+                hitSlop={Spacing.two}>
+                <ThemedText type="smallBold">‹ {chrome.backLabel}</ThemedText>
+              </Pressable>
+              {chrome.menu}
+            </View>
+          )}
+          <View style={styles.islandRow} pointerEvents="none">
             <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
               The story of {areaLabel ?? areaName}
             </ThemedText>
@@ -868,7 +919,9 @@ export function AreaGazetteer({
               {currentPart} / {retold.parts.length}
             </ThemedText>
           </View>
-          <View style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}>
+          <View
+            style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}
+            pointerEvents="none">
             <Animated.View
               style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
             />
@@ -1076,6 +1129,28 @@ const styles = StyleSheet.create({
   },
   briefLine: {
     paddingTop: Spacing.two,
+  },
+  chipRow: {
+    position: 'absolute',
+    left: Spacing.three - 4,
+    right: Spacing.three - 4,
+    zIndex: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  chipPress: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  chipMenu: {
+    paddingHorizontal: Spacing.two + 2,
+    paddingVertical: Spacing.one,
+  },
+  islandNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   islandInner: {
     paddingHorizontal: Spacing.three,

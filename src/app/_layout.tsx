@@ -38,7 +38,10 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="history/[pageId]/index"
-          options={{ title: '', headerBackTitle: 'Stories' }}
+          // No native header: the story screen wears glass chrome — a
+          // floating back chip over the full-bleed hero, docking into
+          // the arriving island on scroll (Edd, 2026-08-06)
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="history/[pageId]/go"

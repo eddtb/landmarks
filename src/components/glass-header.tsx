@@ -65,7 +65,8 @@ export function GlassIslandHeader({
     // island itself catches, unless passThrough lets everything by.
     <View
       style={[styles.anchor, { top: topOffset ?? insets.top }]}
-      pointerEvents={passThrough ? 'none' : 'box-none'}>
+      pointerEvents={passThrough ? 'none' : 'box-none'}
+      testID="glass-island">
       {glass ? (
         <GlassView
           glassEffectStyle="regular"
@@ -84,6 +85,35 @@ export function GlassIslandHeader({
   );
 }
 
+/**
+ * A small floating glass capsule — the story screen's back button and
+ * ⋯ menu wear this over the full-bleed hero, where the native header
+ * used to be. Same material rules as the island: real glass on iOS 26,
+ * a solid card everywhere else.
+ */
+export function GlassChip({
+  children,
+  style,
+}: {
+  children: ReactNode;
+  style?: object;
+}) {
+  const theme = useTheme();
+  const glass = isLiquidGlassAvailable();
+  if (glass) {
+    return (
+      <GlassView glassEffectStyle="regular" style={[styles.chip, style]}>
+        {children}
+      </GlassView>
+    );
+  }
+  return (
+    <View style={[styles.chip, styles.solid, { backgroundColor: theme.backgroundElement }, style]}>
+      {children}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   anchor: {
     position: 'absolute',
@@ -92,6 +122,11 @@ const styles = StyleSheet.create({
     zIndex: 10,
     paddingTop: IslandTopGap,
     paddingHorizontal: Spacing.three - 4,
+  },
+  chip: {
+    borderRadius: 999,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
   },
   island: {
     borderRadius: Spacing.four,
