@@ -236,7 +236,7 @@ function Hero({
       {lead && (
         <ThemedText
           type="caption"
-          style={[styles.heroCredit, { top: (topInset ?? 0) + Spacing.two }]}
+          style={styles.heroCredit}
           numberOfLines={1}
           maxFontSizeMultiplier={1.4}>
           {lead.credit}
@@ -876,7 +876,11 @@ export function AreaGazetteer({
         track is the fix for "hasn't been built": a bare fill is zero
         pixels before you scroll, and violet alone vanished into the
         hero's shade — the track says the bar exists from the start */}
-    {scrollable && !islandShown && (
+    {/* Not on chrome screens: full-bleed put this track at the literal
+        screen top, where it read as a stray bar above the hero (Edd's
+        phone, 22:18, pixel-measured accentSoft) — there the island
+        carries the reading bar instead. The History tab keeps it. */}
+    {scrollable && !islandShown && !chrome && (
       <View
         pointerEvents="none"
         style={[styles.progressTrack, { backgroundColor: theme.accentSoft }]}
@@ -1221,9 +1225,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     opacity: 0.85,
   },
+  // Bottom-right, where photo credits live — the top edge belongs to
+  // the clock, the chips and the notch (Edd's phone, 22:10 and 22:18:
+  // the credit fought all three and lost twice)
   heroCredit: {
     position: 'absolute',
+    bottom: Spacing.two,
     right: Spacing.three,
+    maxWidth: '55%',
     color: '#FFFFFF',
     opacity: 0.7,
   },

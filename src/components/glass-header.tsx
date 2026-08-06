@@ -1,7 +1,13 @@
 import { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+// OTA CUT (glassless): expo-glass-effect is a NATIVE module the live
+// binaries don't carry, and this cut's fingerprint must match them —
+// so the islands ship as their solid-card fallback everywhere. The
+// integration branch keeps the real GlassView; the next binary
+// upgrades these same islands to true liquid glass with no further
+// JS change.
+
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -50,7 +56,6 @@ export function GlassIslandHeader({
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const glass = isLiquidGlassAvailable();
   const report = (height: number) => onHeight(IslandTopGap + height);
 
   return (
@@ -67,20 +72,11 @@ export function GlassIslandHeader({
       style={[styles.anchor, { top: topOffset ?? insets.top }]}
       pointerEvents={passThrough ? 'none' : 'box-none'}
       testID="glass-island">
-      {glass ? (
-        <GlassView
-          glassEffectStyle="regular"
-          style={styles.island}
-          onLayout={(event) => report(event.nativeEvent.layout.height)}>
-          {children}
-        </GlassView>
-      ) : (
-        <View
-          style={[styles.island, styles.solid, { backgroundColor: theme.backgroundElement }]}
-          onLayout={(event) => report(event.nativeEvent.layout.height)}>
-          {children}
-        </View>
-      )}
+      <View
+        style={[styles.island, styles.solid, { backgroundColor: theme.backgroundElement }]}
+        onLayout={(event) => report(event.nativeEvent.layout.height)}>
+        {children}
+      </View>
     </View>
   );
 }
@@ -99,14 +95,6 @@ export function GlassChip({
   style?: object;
 }) {
   const theme = useTheme();
-  const glass = isLiquidGlassAvailable();
-  if (glass) {
-    return (
-      <GlassView glassEffectStyle="regular" style={[styles.chip, style]}>
-        {children}
-      </GlassView>
-    );
-  }
   return (
     <View style={[styles.chip, styles.solid, { backgroundColor: theme.backgroundElement }, style]}>
       {children}

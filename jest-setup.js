@@ -20,14 +20,19 @@ jest.mock('react-native-safe-area-context', () =>
 // Screens render outside a navigator in tests — always "focused"
 jest.mock('expo-router/build/useIsFocused', () => ({ useIsFocused: () => true }));
 
-jest.mock('expo-glass-effect', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return {
-    GlassView: (props) => React.createElement(View, props),
-    isLiquidGlassAvailable: () => false,
-  };
-});
+jest.mock(
+  'expo-glass-effect',
+  () => {
+    const React = require('react');
+    const { View } = require('react-native');
+    return {
+      GlassView: (props) => React.createElement(View, props),
+      isLiquidGlassAvailable: () => false,
+    };
+  },
+  // virtual: the OTA cut removes the package; the full branch has it
+  { virtual: true }
+);
 
 // @expo/ui is native (SwiftUI/Compose hosts) — a plain View that keeps
 // its props lets tests fire onPressAction directly
