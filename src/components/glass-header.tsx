@@ -102,40 +102,69 @@ export function GlassChip({
   children,
   style,
   circle,
+  over = 'photo',
+  testID,
 }: {
   children: ReactNode;
   style?: object;
+  testID?: string;
   /** A 40pt round chip — the chevron and the ⋯ (Edd, 22:25: the
    *  simplified chrome). */
   circle?: boolean;
+  /**
+   * What the chip sits ON, which is the whole of what decides its
+   * material (DESIGN.md, Glass). Over a photograph it pins dark and
+   * inks itself; over the page it is an island in miniature and follows
+   * the app's scheme. One control, two renderings — pass the tint,
+   * don't fork the component. A story screen with no hero has no
+   * photograph, and a dark disc under a white chevron floating on a
+   * white page is that rule read backwards (#292).
+   */
+  over?: 'photo' | 'page';
 }) {
+  const dark = useColorScheme() === 'dark';
+  const fallback = useGlassFallback();
   const glass = isLiquidGlassAvailable();
+  const onPhoto = over === 'photo';
   if (glass) {
     return (
-      // colorScheme pinned DARK: real glass ADAPTS to its backdrop, and
-      // over a bright sky it turned light under our white glyphs —
-      // "sometimes right, sometimes not" (Edd, 22:51). Photo chrome is
-      // dark by design; the material must agree every time.
+      // On a photo the colorScheme is pinned DARK: real glass ADAPTS to
+      // its backdrop, and over a bright sky it turned light under our
+      // white glyphs — "sometimes right, sometimes not" (Edd, 22:51).
+      // Photo chrome is dark by design; the material must agree every
+      // time. On the page there is nothing to adapt to but the app.
       <GlassView
         glassEffectStyle="regular"
-        colorScheme="dark"
+        colorScheme={onPhoto || dark ? 'dark' : 'light'}
         // Glass is transmissive: a white photo scrolling beneath lifted
         // the whole chip out from under its glyphs (Edd, 22:56). The
         // tint inks the material itself, so the chip stays dark over
-        // ANY backdrop and still reads as glass.
-        tintColor="rgba(20, 20, 24, 0.65)"
-        style={[styles.chip, circle && styles.circle, style]}>
+        // ANY backdrop and still reads as glass. Over the page the
+        // backdrop is already the app's own colour — inking it would
+        // paint a dark disc on a white screen, the very complaint.
+        tintColor={onPhoto ? 'rgba(20, 20, 24, 0.65)' : undefined}
+        style={[styles.chip, circle && styles.circle, style]}
+        testID={testID}>
         {children}
       </GlassView>
     );
   }
-  // Chips live over PHOTOS, so the fallback is a photo-scrim — fixed
-  // dark ink with white glyphs whatever the scheme (Edd, 22:27: the
-  // scheme surface went navy over a bright sky). The read tick proved
-  // this material; the island keeps scheme translucency, it sits over
-  // text, not imagery.
+  // No glass: a chip over a PHOTO takes the photo-scrim — fixed dark
+  // ink with white glyphs whatever the scheme (Edd, 22:27: the scheme
+  // surface went navy over a bright sky). Over the page it takes the
+  // island's translucency instead, for the same reason the island does:
+  // it sits over text, not imagery.
   return (
-    <View style={[styles.chip, styles.scrim, circle && styles.circle, style]}>{children}</View>
+    <View
+      testID={testID}
+      style={[
+        styles.chip,
+        circle && styles.circle,
+        onPhoto ? styles.scrim : [styles.solid, fallback],
+        style,
+      ]}>
+      {children}
+    </View>
   );
 }
 

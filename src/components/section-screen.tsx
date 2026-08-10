@@ -422,8 +422,8 @@ export function FeedCountLine({ center }: { center: Coordinates | null }) {
 
 /**
  * The Gazetteer (Edd's pick): the place's own illustrated story with
- * the relics of its ground beneath. The denied-location header keeps
- * the manual search available; otherwise the hero IS the header.
+ * the relics of its ground beneath, under a header that always says
+ * which ground it is.
  */
 export function HistoryArchiveScreen() {
   return (
@@ -431,12 +431,18 @@ export function HistoryArchiveScreen() {
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            {/* No centre keeps the tab's identity and its one sentence;
-                exploring must show the header too — the mode lives
-                there, hero or no hero */}
-            {(gate.center === null || gate.exploring) && (
-              <SectionHeader {...gate} eyebrow="History" refusedCopy={HistoryRefusedCopy} />
-            )}
+            {/* The header stands, always (#292). It mounted only with no
+                centre or a held pin — no centre keeps the tab's identity
+                and its one sentence, exploring owns the mode, and
+                otherwise "the hero IS the header". That last clause is
+                true right up until no article resolves, and then a
+                LOCATED reader gets a screen that never says where they
+                are, above a row calling it "this area". Naming the place
+                is not the hero's favour to grant.
+
+                The two earlier cases are unchanged, because always
+                includes them. */}
+            <SectionHeader {...gate} eyebrow="History" refusedCopy={HistoryRefusedCopy} />
             <GazetteerBody
               center={gate.center}
               standing={gate.standing}

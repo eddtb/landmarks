@@ -25,7 +25,7 @@ import { ExternalLink } from '@/components/external-link';
 import { GlassChip, GlassIslandHeader } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
-import { TellingLead } from '@/components/telling-section';
+import { TellingLead, TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
@@ -34,7 +34,7 @@ import { ApiError } from '@/data/cached-get';
 import { fetchRetold } from '@/data/retold-client';
 import { Article, ArticleImage } from '@/types/article';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
-import { stripEmphasis } from '@/utils/format';
+import { storyParagraphs, stripEmphasis } from '@/utils/format';
 import { LinkCandidate, linkifyParagraph, planStoryLinks } from '@/utils/linkify';
 import { withoutPullQuote } from '@/utils/pull-quote';
 import { readingProgress } from '@/utils/reading-progress';
@@ -65,6 +65,9 @@ const keyExtractor = (row: GazetteerRow) => row.key;
 // The hero is a fixed 220pt frame with its title at the base — by this
 // offset the title has left the screen and the island takes over
 const HeroClearOffset = 200;
+// The floating chips are 40pt circles; a title block below them clears
+// their row, not just the notch
+const ChipRowHeight = 40;
 // The gazetteer's island overlays; nothing below insets around it
 const noHeight = () => {};
 // Module-level: FlatList requires a stable viewability identity
@@ -72,7 +75,8 @@ const partViewability = { itemVisiblePercentThreshold: 25 };
 
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
-  | { kind: 'no-story'; key: string }
+  | { kind: 'no-story'; key: string; copy: string }
+  | { kind: 'record-story'; key: string }
   | { kind: 'brief'; key: string; lines: string[] }
   | { kind: 'timeline'; key: string; stops: TimelineStop[] }
   | { kind: 'part'; key: string; part: RetoldPart; index: number }
@@ -82,6 +86,70 @@ export type GazetteerRow =
   | { kind: 'source-link'; key: string }
   | { kind: 'section'; key: string; title: string }
   | { kind: 'relic'; key: string; item: HistoryItem };
+
+/**
+ * How much the records actually hold, measured in one grey line and
+ * said once. Not an apology — Direction C's whole claim is that a thin
+ * screen states its thinness and then moves the reader on ("Thin
+ * ground, and where it thickens", #292).
+ */
+export function recordLine(record: HistoryItem, thickensNearby: boolean): string | null {
+  if (record.source.startsWith('Open Plaques')) {
+    return 'The plaque is the whole record — no article stands behind it.';
+  }
+  if (record.source.startsWith('Historic England')) {
+    return 'Historic England holds the grade and the position. Nobody has written the rest down.';
+  }
+  if (!record.extract?.trim()) {
+    // The second sentence is a claim about the neighbourhood, so it is
+    // only made when there is a neighbourhood to make it about
+    return thickensNearby
+      ? 'A name and a pin, and nothing written under either. The ground around it is better recorded.'
+      : 'A name and a pin, and nothing written under either.';
+  }
+  // The record has its own words and they are on this screen. A missing
+  // article here is equally a fetch that failed, and "nobody wrote this
+  // down" would then be a lie — an empty section is a correct answer,
+  // an invented one is not.
+  return null;
+}
+
+/**
+ * What the list shows when it holds no rows — a verdict, never an
+ * element.
+ *
+ * This branch used to consult a ReactNode the caller handed in
+ * (`empty`), and because a React element is truthy even when it renders
+ * null, the default copy below it could not be reached from the one
+ * route that needed it — for ANY caller passing a component that can
+ * render nothing, not just the place screen (#255, #292). Nothing a
+ * caller can pass reaches this decision now, and this signature is what
+ * keeps it that way: there is no parameter here to hide the default
+ * behind.
+ */
+export function emptyVerdict(
+  articleStatus: 'pending' | 'ready' | 'none',
+  hasArticle: boolean
+): 'nothing' | 'waiting' | 'default' {
+  if (hasArticle) {
+    // The header carries the screen; an empty list under a hero is not
+    // an empty screen
+    return 'nothing';
+  }
+  return articleStatus === 'pending' ? 'waiting' : 'default';
+}
+
+/** The list's own last word, reached when nothing else is. */
+export function emptyGazetteerCopy(name?: string | null): string {
+  // An invitation that names the control it points at: the area title
+  // above IS the search affordance (section-screen's SectionHeader).
+  return name
+    ? `Nothing is written down within a walk of ${name}. Walk on, or tap the name above to look somewhere else.`
+    : 'Nothing is written down within a walk. Walk on, or tap the name above to look somewhere else.';
+}
+
+/** How many neighbours a dead end is worth: three, and the walk decides. */
+const NearbyOffered = 3;
 
 /** Pure and unit-tested: the whole scroll as data. */
 export function buildGazetteerRows(options: {
@@ -97,9 +165,21 @@ export function buildGazetteerRows(options: {
   /** A place screen with a telling to hand: wherever the original
    * article would stand alone as the story, the telling opens it. */
   tellingLead?: boolean;
+  /** The place as a reader would say it — the name the copy uses. */
+  name?: string | null;
+  /** A PLACE screen's OWN record: the plaque, the list entry, the bare
+   * Wikipedia pin. Areas pass none — an area simply is its article.
+   * This is what used to arrive as the `empty` element (#255): the
+   * record now has rows like everything else, so one renderer draws
+   * every story screen. */
+  record?: HistoryItem;
+  /** Where the ground thickens: the stories within a walk, offered when
+   * this one's record runs out. The dead end becomes a junction. */
+  nearby?: HistoryItem[];
 }): GazetteerRow[] {
-  const { hasArticle, storyMissing, retoldStatus, retold, relics } = options;
+  const { hasArticle, storyMissing, retoldStatus, retold, relics, record } = options;
   const streamedParts = options.streamedParts ?? [];
+  const nearby = (options.nearby ?? []).slice(0, NearbyOffered);
   const rows: GazetteerRow[] = [];
 
   /**
@@ -126,12 +206,50 @@ export function buildGazetteerRows(options: {
     rows.push({ kind: 'source-link', key: 'source-link' });
   };
 
-  if (!hasArticle && storyMissing && relics.length > 0) {
-    // The wordless miss gets words: a named area whose article simply
+  if (!hasArticle && record) {
+    /**
+     * A PLACE with no article of its own — the case #292 was filed for.
+     * The record speaks first (its own words, and Venture's telling of
+     * them), then one measured line about how much the records hold,
+     * then the ground that is better recorded, then the citation.
+     *
+     * This used to be an `empty` element handed in by the caller, which
+     * is why the whole screen could come out blank: an element that
+     * renders null is still truthy, so the list's own empty state was
+     * unreachable behind it (#255). Rows can be counted.
+     */
+    if (record.extract?.trim()) {
+      rows.push({ kind: 'record-story', key: 'record-story' });
+    }
+    const line = recordLine(record, nearby.length > 0);
+    if (line) {
+      rows.push({ kind: 'no-story', key: 'no-story', copy: line });
+    }
+    if (nearby.length > 0) {
+      rows.push({
+        kind: 'section',
+        key: 's-nearby',
+        title: `Also within a walk · ${nearby.length}`,
+      });
+      rows.push(
+        ...nearby.map((item): GazetteerRow => ({ kind: 'relic', key: String(item.pageId), item }))
+      );
+    }
+    rows.push({ kind: 'source-link', key: 'source-link' });
+  } else if (!hasArticle && storyMissing && relics.length > 0) {
+    // The wordless miss gets words: a named AREA whose article simply
     // doesn't exist must say so — bare relics with no explanation read
     // as broken (device-triaged, pre-cascade Dorking). With no relics
-    // either, the list's own empty state already speaks.
-    rows.push({ kind: 'no-story', key: 'no-story' });
+    // either the row is withheld on purpose: the list's own empty state
+    // is the fuller answer, and it can only be reached if nothing else
+    // claims the list.
+    rows.push({
+      kind: 'no-story',
+      key: 'no-story',
+      copy: options.name
+        ? `No story of ${options.name} is written down yet — but its ground is not empty.`
+        : 'No recorded story for this area yet — its relics are below.',
+    });
   }
 
   if (hasArticle) {
@@ -327,7 +445,7 @@ export function AreaGazetteer({
   refreshing,
   onRefresh,
   lead,
-  empty,
+  record,
   sourceUrl,
   tellingItem,
   onReadThreshold,
@@ -352,14 +470,22 @@ export function AreaGazetteer({
   onRefresh: () => void;
   /** Rendered in the header under the hero — a place screen's Go row. */
   lead?: ReactNode;
-  /** Rendered when NO article exists (never while loading) — a place
-   * screen's fallback story. Areas keep the default empty text. */
-  empty?: ReactNode;
-  /** The original article's URL. When an unretold place shows the
-   * article in full, this adds a "Read more on Wikipedia" link out to
-   * the source (Wikipedia has more than we parse — the reference
-   * apparatus, every image). Areas don't carry one, so it's optional;
-   * the retold screen's link derives one from the area name instead. */
+  /**
+   * A PLACE screen's own record — the plaque, the list entry, the bare
+   * Wikipedia pin. It names the screen when no article does, it decides
+   * the measured line, and it is what the citation cites. Areas pass
+   * none.
+   *
+   * It replaces the old `empty` element (#255, #292). That prop handed
+   * this component a ReactNode which could render nothing, and because
+   * an element is truthy either way the list's own empty copy sat
+   * behind a branch no caller could stop taking. There is no such
+   * branch now: the record has rows, and rows can be counted.
+   */
+  record?: HistoryItem;
+  /** Where the citation points. A place passes the URL of the thing it
+   * actually showed — its own article, or (unresolved) its record.
+   * Areas pass none and the link derives from the area name instead. */
   sourceUrl?: string;
   /** When a place has a story to tell (its own extract, no separate
    * subject), the fallback article gets a telling lead: the AI-told
@@ -595,6 +721,21 @@ export function AreaGazetteer({
     () => relics.filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase()),
     [relics, areaName]
   );
+  // The name as a reader would say it — the hero's, the copy's, and
+  // (with no article) the screen's own title
+  const spokenName = areaLabel ?? areaName;
+  // Whether the hero paints: the one fact the floating chips need,
+  // because their material follows what they sit on and nothing else
+  const onPhoto = article !== null && areaName !== null;
+  const emptyState = emptyVerdict(resolvedArticleStatus, article !== null);
+  // Where the ground thickens: the neighbourhood the feed already
+  // handed us, minus this place itself. Only ever offered on a dead
+  // end, so a healthy screen is untouched by #292.
+  const nearby = useMemo(
+    () =>
+      allStories.filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase()),
+    [allStories, areaName]
+  );
   const rows = useMemo(
     () =>
       buildGazetteerRows({
@@ -605,16 +746,31 @@ export function AreaGazetteer({
         streamedParts,
         relics: listRelics,
         tellingLead: tellingItem !== undefined,
+        name: spokenName,
+        // Never while the article is still in flight: a record line
+        // that says "nobody wrote this down" during a fetch is a lie
+        // with a half-second lifetime
+        record: resolvedArticleStatus === 'none' ? record : undefined,
+        nearby,
       }),
-    [article, resolvedArticleStatus, areaName, resolvedRetoldStatus, retold, streamedParts, listRelics, tellingItem]
+    [
+      article,
+      resolvedArticleStatus,
+      areaName,
+      resolvedRetoldStatus,
+      retold,
+      streamedParts,
+      listRelics,
+      tellingItem,
+      spokenName,
+      record,
+      nearby,
+    ]
   );
 
   const linkCandidates: LinkCandidate[] = useMemo(
-    () =>
-      allStories
-        .filter((item) => item.title.toLowerCase() !== (areaName ?? '').toLowerCase())
-        .map((item) => ({ title: item.title, pageId: item.pageId })),
-    [allStories, areaName]
+    () => nearby.map((item) => ({ title: item.title, pageId: item.pageId })),
+    [nearby]
   );
 
   // The parts on screen: the finished telling once ready, the live
@@ -658,17 +814,31 @@ export function AreaGazetteer({
     (areaName
       ? `https://en.wikipedia.org/wiki/${encodeURIComponent(areaName.replace(/ /g, '_'))}`
       : undefined);
+  // …and what it is a source OF. With an article the story came from
+  // Wikipedia whatever the record is badged; with none, the link goes
+  // to the record itself and must say so — "Source: Wikipedia" over a
+  // link to openplaques.org was a small lie nobody could see until the
+  // record got a screen of its own. The grade rides in the meta line,
+  // not in a citation label ("Historic England · Grade II" → the name).
+  const linkSource = article ? 'Wikipedia' : (record?.source.split(' · ')[0] ?? 'Wikipedia');
 
   const renderItem = useCallback(
     ({ item: row }: ListRenderItemInfo<GazetteerRow>) => {
     switch (row.kind) {
       case 'no-story':
-        // Honest, in the house voice — where the hero would have stood
+        // One measured grey line, in the house voice — a measurement,
+        // not an apology. Grey because it is neither interactive nor a
+        // name, which is the whole of DESIGN.md's rule of use.
         return (
           <ThemedText type="small" themeColor="textSecondary" style={styles.noStory}>
-            No recorded story for this area yet — its relics are below.
+            {row.copy}
           </ThemedText>
         );
+      case 'record-story':
+        // The record's own words, and Venture's telling of them. This
+        // is ExtractStory, folded in from the place screen (#255) — the
+        // last of the three story-rendering regimes to become a row.
+        return record ? <RecordStory record={record} /> : null;
       case 'ai-label':
         return (
           <View>
@@ -742,7 +912,7 @@ export function AreaGazetteer({
       case 'source-link':
         // The telling read, the source one tap away — in the browser,
         // not behind an inline door (Edd's ruling)
-        return articleUrl ? <WikipediaLinkRow href={articleUrl} standalone /> : null;
+        return articleUrl ? <SourceLinkRow href={articleUrl} source={linkSource} /> : null;
       case 'section':
         return (
           <ThemedText type="eyebrow" themeColor="textSecondary" style={styles.sectionHead}>
@@ -768,6 +938,8 @@ export function AreaGazetteer({
       linkPlan,
       tellingItem,
       articleUrl,
+      linkSource,
+      record,
     ]
   );
 
@@ -853,22 +1025,37 @@ export function AreaGazetteer({
             )}
             {lead}
           </View>
+        ) : record && spokenName ? (
+          // The name renders whether or not an article does (#292). The
+          // hero is the PHOTOGRAPHIC treatment of a title block that
+          // always exists; with no photograph the block stands on the
+          // page in the same ramp and the same 24pt padding. Areas pass
+          // no record — the History tab's own section header already
+          // says where you are, and two largeTitles naming one place is
+          // worse than none.
+          <View>
+            <RecordTitle
+              name={spokenName}
+              source={record.source}
+              topPad={chrome ? insets.top + ChipRowHeight + Spacing.three : Spacing.three}
+            />
+            {lead}
+          </View>
         ) : lead ? (
           <View>{lead}</View>
         ) : null
       }
       ListEmptyComponent={
-        article ? null : resolvedArticleStatus === 'pending' ? (
+        // A verdict decides this, and nothing a caller passes reaches
+        // the verdict (#255). Mock 1: the same quiet accent wander line
+        // as the feed's — static, above the words.
+        emptyState === 'nothing' ? null : emptyState === 'waiting' ? (
           <ActivityIndicator style={styles.empty} />
-        ) : empty ? (
-          <>{empty}</>
         ) : (
-          // Mock 1: the History-tab empty gets the same quiet accent
-          // wander line as the feed's — static, above the words
-          <View style={styles.empty}>
+          <View style={styles.empty} testID="gazetteer-empty">
             <WanderLine arcSpan={52} stroke={6} count={4} color={theme.accent} />
             <ThemedText type="small" themeColor="textSecondary" style={styles.emptyCopy}>
-              Nothing hidden here that the records know of.
+              {emptyGazetteerCopy(spokenName)}
             </ThemedText>
           </View>
         )
@@ -900,12 +1087,19 @@ export function AreaGazetteer({
     {/* A story screen's standing chrome: back and the ⋯, floating as
         glass chips over the full-bleed hero — the native header's job,
         rehoused (Edd's ask). They stand down when the island arrives
-        and carries the back button itself. */}
+        and carries the back button itself.
+
+        The material follows what it sits ON (DESIGN.md, Glass). With a
+        hero the chips sit on a photograph and pin dark under white
+        glyphs; with no article there is no photograph, and a dark disc
+        with a white chevron floating on a white page is the rule read
+        backwards. On the page they take the island's rendering: theme
+        glass, theme ink, and the ⋯ drawn for a theme surface. */}
     {chrome && !(islandShown && retold) && (
       <View
         style={[styles.chipRow, { top: insets.top + Spacing.two }]}
         pointerEvents="box-none">
-        <GlassChip circle>
+        <GlassChip circle over={onPhoto ? 'photo' : 'page'} testID="back-chip">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Back to ${chrome.backLabel}`}
@@ -913,12 +1107,16 @@ export function AreaGazetteer({
             onPress={chrome.onBack}
             hitSlop={Spacing.two}
             style={styles.circlePress}>
-            <ThemedText type="title" style={[styles.chevron, styles.chipGlyph]}>
+            <ThemedText type="title" style={[styles.chevron, onPhoto && styles.chipGlyph]}>
               ‹
             </ThemedText>
           </Pressable>
         </GlassChip>
-        {chrome.menuOnPhoto && <GlassChip circle>{chrome.menuOnPhoto}</GlassChip>}
+        {(onPhoto ? chrome.menuOnPhoto : chrome.menu) && (
+          <GlassChip circle over={onPhoto ? 'photo' : 'page'}>
+            {onPhoto ? chrome.menuOnPhoto : chrome.menu}
+          </GlassChip>
+        )}
       </View>
     )}
     {islandShown && retold && (
@@ -970,10 +1168,65 @@ export function AreaGazetteer({
 }
 
 
-/** The one way out to the source, wherever it stands: opens the Wikipedia
- * page in the browser. `standalone` carries its own side margins for
- * use as a bare list row (inside ArticleBody the article pads it). */
-function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boolean }) {
+/**
+ * The name, on the page instead of on a photograph — the hero's title
+ * block with the photograph subtracted. Same ramp, same 24pt padding,
+ * and the meta line does what the hero's does: names the source, which
+ * for a record with no article is the whole of what we know about it
+ * ("Open Plaques", "Historic England · Grade II").
+ */
+function RecordTitle({
+  name,
+  source,
+  topPad,
+}: {
+  name: string;
+  source: string;
+  /** Clears the floating chips on a chrome screen; a breath otherwise. */
+  topPad: number;
+}) {
+  return (
+    <View style={[styles.recordTitle, { paddingTop: topPad }]} testID="gazetteer-title">
+      <ThemedText type="largeTitle">{name}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        {source}
+      </ThemedText>
+    </View>
+  );
+}
+
+/**
+ * A record's own story: Venture's telling of it behind a press, and the
+ * record's words beneath. Lifted verbatim out of the place screen's
+ * `ExtractStory` (#255) so one renderer draws every story screen — the
+ * only change is that its citation is now the list's own source-link
+ * row, where every other path already put it.
+ */
+function RecordStory({ record }: { record: HistoryItem }) {
+  // A plaque's extract IS its inscription, and the lead's "The plaque
+  // reads" block already shows it — saying it twice reads as broken
+  const inscriptionShownAbove = record.source.startsWith('Open Plaques');
+  return (
+    <View style={styles.recordStory}>
+      <ThemedText type="eyebrow" themeColor="textSecondary">
+        Story
+      </ThemedText>
+      <TellingSection item={record} />
+      {/* Reading type (16/24), real paragraphs — an extract is a
+          story body, not a meta line */}
+      {!inscriptionShownAbove &&
+        storyParagraphs(record.extract ?? '').map((paragraph, index) => (
+          <ThemedText key={index} type="default">
+            {paragraph}
+          </ThemedText>
+        ))}
+    </View>
+  );
+}
+
+/** The one way out to the source, wherever it stands: opens the record
+ * in the browser, naming what it is a source of. */
+function SourceLinkRow({ href, source }: { href: string; source: string }) {
   const theme = useTheme();
   return (
     // asChild, because ExternalLink renders expo-router's Link, which
@@ -984,14 +1237,14 @@ function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boo
     <ExternalLink href={href as `https://${string}`} asChild>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel="Read more on Wikipedia"
+        accessibilityLabel={`Read the record on ${source}`}
         testID="wikipedia-link"
         // Flattened: expo-router's Slot warns on style arrays reaching
         // an asChild child, and the warning is a real one — it cannot
         // merge them for you
         style={StyleSheet.flatten([
           styles.linkRow,
-          standalone ? styles.linkRowStandalone : styles.sourceLink,
+          styles.linkRowStandalone,
           { backgroundColor: theme.accentSoft },
         ])}>
         {/* ONE label, and it reads as attribution rather than an
@@ -1003,7 +1256,7 @@ function WikipediaLinkRow({ href, standalone }: { href: string; standalone?: boo
             the opposite of what is true now that our own writing is the
             story. */}
         <ThemedText type="smallBold" themeColor="accent">
-          Source: Wikipedia ›
+          Source: {source} ›
         </ThemedText>
       </Pressable>
     </ExternalLink>
@@ -1262,6 +1515,15 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three - 2,
   },
 
+  // The hero's own text padding, with the photograph subtracted
+  recordTitle: {
+    paddingHorizontal: Spacing.four,
+    gap: 2,
+  },
+  recordStory: {
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
   noStory: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
