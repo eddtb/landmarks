@@ -49,7 +49,7 @@ jest.mock('@/server/wikipedia', () => ({ findNearbyHistory: jest.fn() }));
 jest.mock('@/server/telling-store', () => ({
   storeGet: jest.fn(async () => undefined),
   storePut: jest.fn(async () => undefined),
-  lastStoreError: jest.fn(() => null),
+  storeHealthHeaders: jest.fn(() => ({ 'x-feed-store': 'ok' })),
 }));
 jest.mock('@/server/heritage', () => {
   const actual = jest.requireActual('@/server/heritage');

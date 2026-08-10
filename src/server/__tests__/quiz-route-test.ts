@@ -97,4 +97,16 @@ describe('POST /api/quiz', () => {
 
     expect(response.status).toBe(502);
   });
+
+  test('every answer says what the durable store is doing', async () => {
+    delete process.env.TURSO_DATABASE_URL;
+    const asked = quizRequest({ area: 'Deptford', stories: feed(12) });
+
+    // Quizzes cache in the same table, so a curl at this route is as
+    // good a post-deploy probe as a curl at the feed
+    expect((await POST(asked)).headers.get('x-feed-store')).toBe('off');
+
+    const thin = await POST(quizRequest({ area: 'Nowhere', stories: feed(2) }));
+    expect(thin.headers.get('x-feed-store')).toBe('off');
+  });
 });

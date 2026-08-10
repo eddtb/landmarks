@@ -67,6 +67,8 @@ beforeEach(() => {
   mockPeek.mockReturnValue(undefined);
   mockInFlight.mockReturnValue(false);
   delete process.env.E2E_FIXTURES;
+  // The store is off in CI, so 'off' is the health these answers report
+  delete process.env.TURSO_DATABASE_URL;
 });
 
 describe('GET /api/retold — content negotiation', () => {
@@ -150,6 +152,68 @@ describe('GET /api/retold — content negotiation', () => {
     const frames = wire.split('\n\n').filter(Boolean);
     expect(frames[0]).toContain('event: part');
     expect(frames[1]).toBe('event: failed\ndata: {"reason":"interrupted"}');
+  });
+});
+
+/**
+ * The area is the whole cache key and the whole prompt, and nothing
+ * upstream bounds it: alone among the three Gemini call-sites this
+ * route's key is whatever the caller typed, because the source is
+ * fetched here rather than sent. ~300 crafted GETs drain the SHARED
+ * daily ledger and refuse every real reader on retold, telling AND
+ * quiz until midnight.
+ */
+describe('GET /api/retold — what counts as an area', () => {
+  function askFor(area: string): Request {
+    return new Request(`http://localhost/api/retold?area=${encodeURIComponent(area)}`);
+  }
+
+  test('an area past the 300-char cap is refused before a single fetch', async () => {
+    const response = await GET(askFor('a'.repeat(301)));
+
+    expect(response.status).toBe(400);
+    expect(mockGetRetold).not.toHaveBeenCalled();
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  test('a name with no letter in it is not a place', async () => {
+    expect((await GET(askFor('12345'))).status).toBe(400);
+    expect((await GET(askFor('---'))).status).toBe(400);
+    expect(mockGetRetold).not.toHaveBeenCalled();
+  });
+
+  test('a control character is not part of any place name', async () => {
+    expect((await GET(askFor('Green\u0000wich'))).status).toBe(400);
+    expect((await GET(askFor('Greenwich\nMaritime'))).status).toBe(400);
+    expect(mockGetRetold).not.toHaveBeenCalled();
+  });
+
+  test('a real area name in any script still gets its retelling', async () => {
+    mockGetRetold.mockResolvedValue(telling);
+
+    expect((await GET(askFor('Greenwich, London'))).status).toBe(200);
+    expect((await GET(askFor('東京'))).status).toBe(200);
+    expect((await GET(askFor('a'.repeat(300)))).status).toBe(200);
+  });
+
+  test('surrounding whitespace never buys a second cache row', async () => {
+    mockGetRetold.mockResolvedValue(telling);
+
+    await GET(askFor('  Greenwich  '));
+
+    // The key we accept is the key we write, in Turso and in the map
+    expect(mockGetRetold).toHaveBeenCalledWith('Greenwich');
+  });
+
+  test('every answer carries the store health, hit or miss', async () => {
+    mockGetRetold.mockResolvedValue(telling);
+    const hit = await GET(askFor('Greenwich'));
+    expect(hit.headers.get('x-feed-store')).toBe('off');
+
+    mockGetRetold.mockResolvedValue(null);
+    const miss = await GET(askFor('Greenwich'));
+    expect(miss.status).toBe(404);
+    expect(miss.headers.get('x-feed-store')).toBe('off');
   });
 });
 

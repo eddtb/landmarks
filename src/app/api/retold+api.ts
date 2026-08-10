@@ -6,6 +6,7 @@ import {
   RetoldStreamEvent,
   startRetoldStream,
 } from '@/server/retold';
+import { storeHealthHeaders } from '@/server/telling-store';
 
 /**
  * GET /api/retold?area=Greenwich
@@ -21,10 +22,45 @@ import {
  * land as SSE events while the model writes, the finished telling is
  * cached only when it parses valid, and the next open is a JSON hit.
  */
+
+/**
+ * The same 300 the telling and quiz routes cap their titles at, for
+ * the same reason and a sharper one. This is the most expensive call
+ * in the app — ~4,500 tokens over up to 24,000 source chars — and
+ * alone among the three its cache key is whatever the caller typed:
+ * no source digest binds it, because the source is fetched here
+ * rather than sent. Uncapped, ~300 crafted GETs drain the SHARED
+ * daily Gemini ledger and refuse every real reader on retold, telling
+ * AND quiz for the rest of the day, each one writing an unbounded key
+ * into Turso and the per-isolate map on its way past.
+ */
+const MaxAreaChars = 300;
+
+/**
+ * A real area name is a Wikipedia article title the app got from
+ * /api/area — the only way the client ever produces one. Control
+ * characters are nobody's neighbourhood and a name with no letter in
+ * it is not a place; both are refused here, before they cost a
+ * Wikipedia fetch, let alone a generation.
+ */
+function plausibleArea(area: string): boolean {
+  if (area.length > MaxAreaChars) {
+    return false;
+  }
+  // At least one letter in any script — Wikipedia titles are not all
+  // Latin — and no control characters anywhere in it.
+  return /\p{L}/u.test(area) && !/[\u0000-\u001f\u007f]/.test(area);
+}
+
 export async function GET(request: Request) {
-  const area = new URL(request.url).searchParams.get('area');
+  // Trimmed before anything else reads it: the key we accept is the
+  // key we write, and " Greenwich " must not buy a second Turso row
+  const area = (new URL(request.url).searchParams.get('area') ?? '').trim();
   if (!area) {
     return Response.json({ error: 'Expected area' }, { status: 400 });
+  }
+  if (!plausibleArea(area)) {
+    return Response.json({ error: 'Not an area name' }, { status: 400 });
   }
 
   // Hermetic E2E: recorded retelling; missing keeps today's 404
@@ -43,7 +79,10 @@ export async function GET(request: Request) {
     try {
       const started = await startRetoldStream(area);
       if (started.kind === 'unavailable') {
-        return Response.json({ error: 'No retelling available' }, { status: 404 });
+        return Response.json(
+          { error: 'No retelling available' },
+          { status: 404, headers: storeHealthHeaders() }
+        );
       }
       if (started.kind === 'stream') {
         return sseResponse(started.events);
@@ -53,19 +92,28 @@ export async function GET(request: Request) {
     } catch (error) {
       // The breaker (or REPLAY_ONLY) refused before the stream opened
       console.error('Retold failed:', error);
-      return Response.json({ error: 'Retold failed' }, { status: 502 });
+      return Response.json(
+        { error: 'Retold failed' },
+        { status: 502, headers: storeHealthHeaders() }
+      );
     }
   }
 
   try {
     const retold = await getRetold(area);
     if (!retold) {
-      return Response.json({ error: 'No retelling available' }, { status: 404 });
+      return Response.json(
+        { error: 'No retelling available' },
+        { status: 404, headers: storeHealthHeaders() }
+      );
     }
-    return Response.json({ retold });
+    return Response.json({ retold }, { headers: storeHealthHeaders() });
   } catch (error) {
     console.error('Retold failed:', error);
-    return Response.json({ error: 'Retold failed' }, { status: 502 });
+    return Response.json(
+      { error: 'Retold failed' },
+      { status: 502, headers: storeHealthHeaders() }
+    );
   }
 }
 
@@ -105,6 +153,9 @@ function sseResponse(events: AsyncGenerator<RetoldStreamEvent, void, void>): Res
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
+      // Read at open, which is the only moment headers exist — a cold
+      // generation is exactly the request that will try to WRITE
+      ...storeHealthHeaders(),
     },
   });
 }

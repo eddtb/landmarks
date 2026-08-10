@@ -82,4 +82,16 @@ describe('POST /api/telling', () => {
     getTelling.mockResolvedValueOnce('');
     expect((await POST(tellingRequest(goodBody))).status).toBe(502);
   });
+
+  test('every answer says what the durable store is doing', async () => {
+    delete process.env.TURSO_DATABASE_URL;
+
+    // Tellings ride the same table as the feed, and the day-ledger
+    // rides it too — a dead store quietly turns 300 calls a day into
+    // 300 per isolate lifetime, and only /api/history used to say so
+    expect((await POST(tellingRequest(goodBody))).headers.get('x-feed-store')).toBe('off');
+
+    getTelling.mockRejectedValueOnce(new Error('upstream down'));
+    expect((await POST(tellingRequest(goodBody))).headers.get('x-feed-store')).toBe('off');
+  });
 });
