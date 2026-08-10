@@ -55,10 +55,23 @@ jest.mock('@/components/one-door', () => ({
   useOneDoorDismissed: () => true,
 }));
 
-// The Gazetteer hero is its own tested surface
+// The Gazetteer hero is its own tested surface. The stub speaks the
+// REAL empty copy as well as its marker, so "the gazetteer never mounts
+// with a null centre" can be asserted in the words a reader would see:
+// that copy says the records are thin and points at the area title as a
+// control, and with no centre both halves are false (#292 × #307).
 jest.mock('@/components/area-gazetteer', () => {
   const { Text: RNText } = jest.requireActual('react-native');
-  return { AreaGazetteer: () => <RNText>gazetteer body</RNText> };
+  const actual = jest.requireActual('@/components/area-gazetteer');
+  return {
+    ...actual,
+    AreaGazetteer: () => (
+      <>
+        <RNText>gazetteer body</RNText>
+        <RNText>{actual.emptyGazetteerCopy(null)}</RNText>
+      </>
+    ),
+  };
 });
 
 // The quiz tab rides the same gate, so it rides the same fences. Its
@@ -372,5 +385,37 @@ describe('the Gazetteer is written about a place', () => {
     ).toBeOnTheScreen();
     expect(screen.getByText('The Gazetteer is written about a place')).toBeOnTheScreen();
     expect(screen.queryByTestId('ask-for-location')).toBeNull();
+  });
+
+  /**
+   * Where #292 meets #289. The Gazetteer's empty copy — "Nothing is
+   * written down within a walk… tap the name above to look somewhere
+   * else" — became reachable in #292, and both of its halves are FALSE
+   * with no centre: the records are not thin, we simply have not asked
+   * where the reader is; and the title above is a name rather than a
+   * control in that state, so it points at nothing.
+   *
+   * It is kept off this screen structurally — GazetteerBody answers the
+   * invitation before the Gazetteer is ever mounted — and both facts
+   * are asserted together here so that moving one cannot quietly
+   * unpick the other.
+   */
+  test.each([
+    { what: 'never asked', arrange: neverAsked },
+    { what: 'refused', arrange: refused },
+  ])('$what: no thin-records claim, and no control for it to point at', async ({ arrange }) => {
+    arrange();
+    const screen = await render(<HistoryArchiveScreen />);
+
+    // The header stands and keeps the tab's identity (#292)…
+    expect(await screen.findByText('History')).toBeOnTheScreen();
+    // …but the thin-records claim is never made, because the Gazetteer
+    // that would make it never mounts
+    expect(screen.queryByText(/^Nothing is written down within a walk/)).toBeNull();
+    expect(screen.queryByText('gazetteer body')).toBeNull();
+    // …and the name above is not a control, which is what that copy
+    // would have been pointing at
+    expect(screen.queryByTestId('area-title')).toBeNull();
+    expect(screen.getByText('Near you')).toBeOnTheScreen();
   });
 });
