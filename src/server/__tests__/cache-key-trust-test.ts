@@ -52,7 +52,13 @@ function mockStoreGet(): Promise<undefined> {
 }
 
 function mockStorePut(kind: string, key: string, value: unknown): Promise<void> {
-  mockWrites.push({ kind, key, value: JSON.stringify(value) });
+  mockWrites.push({
+    kind,
+    key,
+    // The `at` stamp is the server's clock, not the client's content —
+    // two runs a millisecond apart differ there and it means nothing.
+    value: JSON.stringify(value).replace(/"at":\d+/g, '"at":0'),
+  });
   return Promise.resolve();
 }
 
@@ -248,13 +254,25 @@ function hostileQuery(identity: string, content: string): string {
   return params.toString();
 }
 
+// Unique per RUN and per jest invocation: a fixed name would let one
+// invocation's files hydrate the next one's first run. Swept up after.
+const CacheDirRoot = '.ai-cache-test/cache-key-trust';
+const cacheDirStem = `${CacheDirRoot}/${process.pid}-${Date.now()}`;
+let runs = 0;
+
 /**
  * One run of one route, from a clean module registry — otherwise the
- * second run would answer from the first run's in-process cache and
- * this test would assert nothing at all. The disk-backed maps hang off
- * globalThis and survive resetModules, so they go too.
+ * second run would answer from the first run's cache and this test
+ * would assert nothing at all. Three layers have to go, and the third
+ * cost this fence a silent false pass while it was being written: the
+ * module registry, the disk-backed maps hanging off globalThis, and
+ * the JSON FILES those maps hydrate themselves from. A second run that
+ * quietly reads the first run's answer off disk writes nothing, finds
+ * no collision, and passes — which is why every run gets a cache
+ * directory of its own and why the caller insists both runs wrote.
  */
 async function writesOf(probe: (typeof probes)[number], content: string): Promise<Write[]> {
+  process.env.AI_CACHE_DIR = `${cacheDirStem}-${runs++}`;
   jest.resetModules();
   delete (globalThis as { aiDiskMaps?: unknown }).aiDiskMaps;
   mockWrites.length = 0;
@@ -264,15 +282,18 @@ async function writesOf(probe: (typeof probes)[number], content: string): Promis
   expect(handler).toBeDefined();
 
   await handler!(
-    new Request(`http://localhost/api/probe?${probe.identity}&${hostileQuery(probe.identity, content)}`, {
-      // A body on every probe, even where the route has no POST: a
-      // route that starts reading one is exactly what this fences.
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(probe.body(content)),
-    })
+    new Request(
+      `http://localhost/api/probe?${probe.identity}&${hostileQuery(probe.identity, content)}`,
+      {
+        // A body on every probe, even where the route has no POST: a
+        // route that starts reading one is exactly what this fences.
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(probe.body(content)),
+      }
+    )
   );
-  return mockWrites;
+  return [...mockWrites];
 }
 
 describe('no durable cache key may be shared across client-supplied content', () => {
@@ -281,13 +302,24 @@ describe('no durable cache key may be shared across client-supplied content', ()
     process.env.AI_PROVIDER = '';
   });
 
+  afterAll(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    (require('fs') as typeof import('fs')).rmSync(CacheDirRoot, {
+      recursive: true,
+      force: true,
+    });
+  });
+
   for (const probe of probes) {
     test(`${probe.what} — two strangers asking about the same thing cannot overwrite each other`, async () => {
       const alpha = await writesOf(probe, 'ALPHACONTENT');
       const omega = await writesOf(probe, 'OMEGACONTENT');
 
-      // The probe is worthless if neither run wrote anything
-      expect(alpha.length + omega.length).toBeGreaterThan(0);
+      // A run that wrote nothing proved nothing — it means the route
+      // answered from a cache this probe failed to clear, and the
+      // comparison below would pass by having no material to compare.
+      expect(alpha.length).toBeGreaterThan(0);
+      expect(omega.length).toBeGreaterThan(0);
 
       for (const first of alpha) {
         const collision = omega.find(

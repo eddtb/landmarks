@@ -160,7 +160,14 @@ describe('GET /api/quiz', () => {
     // stand in it as an ordinary reader and see what comes back.
     await attack();
 
-    const served = await (await realReader()).json();
+    const response = await realReader();
+    const served = await response.json();
+
+    // A 502 would pass every assertion below by having nothing in it.
+    // The reader must actually GET their quiz — the property is that
+    // it is a real one, not that the route fell over.
+    expect(response.status).toBe(200);
+    expect(served.quiz?.questions?.length).toBeGreaterThanOrEqual(3);
 
     // Asserted on the SERVED payload — the thing that reaches a phone —
     // not on what the route was handed or what it cached.
