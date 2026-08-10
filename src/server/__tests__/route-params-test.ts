@@ -11,11 +11,20 @@
  * never does.
  *
  * The table below is the point of this file. The bug was found once
- * and lived in two other routes; a fourth route added next month
- * belongs here, and gets the same eight questions asked of it.
+ * and lived in two other routes; a fifth route added next month
+ * belongs here, and gets the same questions asked of it.
+ *
+ * /api/quiz joined with #303, and brought one of the questions with
+ * it: a coordinate that is finite but NOT ON EARTH. `lat=1200` passes
+ * presence-before-coercion and costs an upstream round trip to be told
+ * nothing is at a latitude that does not exist. That rule moved into
+ * the shared reader rather than living in the route that found it —
+ * two coordinate validators with different rules is the same shape as
+ * one route hardened and three forgotten.
  */
 import { GET as areaGET } from '@/app/api/area+api';
 import { GET as historyGET } from '@/app/api/history+api';
+import { GET as quizGET } from '@/app/api/quiz+api';
 import { GET as routeGET } from '@/app/api/route+api';
 import { GET as storyGET } from '@/app/api/story+api';
 import { findNearestArea } from '@/server/area';
@@ -45,7 +54,8 @@ jest.mock('@/server/plaque-subject', () => ({ resolvePlaqueSubjects: jest.fn(asy
 jest.mock('@/server/wikidata', () => ({ fetchExistenceFacts: jest.fn(async () => new Map()) }));
 
 /** Every route that reads a number off the URL, with the work it must
- * never reach and one query that legitimately does reach it. */
+ * never reach, one query that legitimately does reach it, and — for
+ * the coordinate routes — one that is numeric but nowhere. */
 const routes = [
   {
     name: '/api/area',
@@ -53,6 +63,10 @@ const routes = [
     work: findNearestArea as jest.Mock,
     valid: '?lat=51.4826&lng=-0.0077',
     params: ['lat', 'lng'],
+    offGlobe: [
+      ['lat', '1200'],
+      ['lng', '-999'],
+    ],
   },
   {
     name: '/api/history',
@@ -60,6 +74,24 @@ const routes = [
     work: findNearbyHistory as jest.Mock,
     valid: '?lat=51.4826&lng=-0.0077',
     params: ['lat', 'lng'],
+    offGlobe: [
+      ['lat', '1200'],
+      ['lng', '-999'],
+    ],
+  },
+  {
+    name: '/api/quiz',
+    // The quiz resolves the area itself now (#303), so findNearestArea
+    // is the work it must not reach — the same mock /api/area's row
+    // watches, which is the point: one guard, one behaviour.
+    GET: quizGET,
+    work: findNearestArea as jest.Mock,
+    valid: '?lat=51.4826&lng=-0.0077',
+    params: ['lat', 'lng'],
+    offGlobe: [
+      ['lat', '1200'],
+      ['lng', '-999'],
+    ],
   },
   {
     name: '/api/route',
@@ -67,6 +99,10 @@ const routes = [
     work: fetchWalkingRoute as jest.Mock,
     valid: '?fromLat=51.48&fromLng=-0.01&toLat=51.49&toLng=-0.02',
     params: ['fromLat', 'fromLng', 'toLat', 'toLng'],
+    offGlobe: [
+      ['fromLat', '91'],
+      ['toLng', '181'],
+    ],
   },
   {
     name: '/api/story',
@@ -74,6 +110,8 @@ const routes = [
     work: fetchStoryByPageId as jest.Mock,
     valid: '?pageId=40729675',
     params: ['pageId'],
+    // A pageId is not a place — there is no globe to be off
+    offGlobe: [],
   },
 ] as const;
 
@@ -86,7 +124,7 @@ beforeEach(() => {
   delete process.env.TURSO_DATABASE_URL;
 });
 
-describe.each(routes)('$name coordinate validation', ({ GET, work, valid, params }) => {
+describe.each(routes)('$name coordinate validation', ({ GET, work, valid, params, offGlobe }) => {
   async function ask(query: string): Promise<Response> {
     return GET(new Request(`http://localhost/api/x${query}`));
   }
@@ -138,6 +176,26 @@ describe.each(routes)('$name coordinate validation', ({ GET, work, valid, params
     expect(response.status).toBe(400);
     expect(work).not.toHaveBeenCalled();
   });
+
+  // Declared as a visible skip rather than silently omitted: a row with
+  // no cases is how a table-driven suite quietly stops asking.
+  const nowhere = offGlobe as readonly (readonly [string, string])[];
+  if (nowhere.length === 0) {
+    test.skip('nothing here is a coordinate — this route has no globe to be off', () => {});
+  } else {
+    test.each(nowhere)(
+      'a %s of %s is a 400 — finite is not the same as on Earth',
+      async (name, value) => {
+        const query = new URLSearchParams(valid.slice(1));
+        query.set(name, value);
+
+        const response = await ask(`?${query}`);
+
+        expect(response.status).toBe(400);
+        expect(work).not.toHaveBeenCalled();
+      }
+    );
+  }
 
   test('a complete, numeric query does reach the work — the guard refuses nothing real', async () => {
     const response = await ask(valid);

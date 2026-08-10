@@ -26,9 +26,17 @@ export function numberParam(params: URLSearchParams, name: string): number | nul
 }
 
 /**
- * A pair of coordinate parameters, or null when either is missing or
- * is not a number. Callers answer 400 — a wrong answer is worse than
- * an error, because nothing reports it.
+ * A pair of coordinate parameters, or null when either is missing, is
+ * not a number, or is not a point on Earth. Callers answer 400 — a
+ * wrong answer is worse than an error, because nothing reports it.
+ *
+ * The range half arrived with /api/quiz (#303) and belongs here rather
+ * than there, for the reason this file exists at all: `lat=1200` is
+ * finite, so presence-before-coercion lets it through, and every
+ * coordinate route then pays an upstream round trip to be told there
+ * is nothing at a latitude that does not exist — and buckets, keys and
+ * caches it on the way past. Two coordinate validators with different
+ * rules is the same shape as one route hardened and three forgotten.
  */
 export function coordinatesParam(
   params: URLSearchParams,
@@ -38,6 +46,9 @@ export function coordinatesParam(
   const latitude = numberParam(params, latName);
   const longitude = numberParam(params, lngName);
   if (latitude === null || longitude === null) {
+    return null;
+  }
+  if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
     return null;
   }
   return { latitude, longitude };

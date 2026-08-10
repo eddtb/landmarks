@@ -24,15 +24,16 @@ import { storeHealthHeaders } from '@/server/telling-store';
  */
 
 /**
- * The same 300 the telling and quiz routes cap their titles at, for
- * the same reason and a sharper one. This is the most expensive call
- * in the app — ~4,500 tokens over up to 24,000 source chars — and
- * alone among the three its cache key is whatever the caller typed:
- * no source digest binds it, because the source is fetched here
- * rather than sent. Uncapped, ~300 crafted GETs drain the SHARED
- * daily Gemini ledger and refuse every real reader on retold, telling
- * AND quiz for the rest of the day, each one writing an unbounded key
- * into Turso and the per-isolate map on its way past.
+ * The same 300 the telling route caps its title at, for the same
+ * reason and a sharper one. This is the most expensive call in the app
+ * — ~4,500 tokens over up to 24,000 source chars — and alone among the
+ * three its cache key is whatever the caller typed: no source digest
+ * binds it, because the source is fetched here rather than sent, and
+ * unlike the quiz's the name is not resolved server-side either.
+ * Uncapped, ~300 crafted GETs drain the SHARED daily Gemini ledger and
+ * refuse every real reader on retold, telling AND quiz for the rest of
+ * the day, each one writing an unbounded key into Turso and the
+ * per-isolate map on its way past.
  */
 const MaxAreaChars = 300;
 

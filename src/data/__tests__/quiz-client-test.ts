@@ -61,7 +61,11 @@ const served: Quiz = {
   ],
 };
 
-const stories = [{ pageId: 1, title: 'Cutty Sark', extract: 'x' }];
+// All the app sends now: where the reader is standing. The stories are
+// the server's to find (#303), so nothing about the ground rides along.
+const greenwich = { latitude: 51.4826, longitude: -0.0077 };
+// A few paces on — a different ~111m feed bucket, the same area
+const alongTheRiver = { latitude: 51.4841, longitude: -0.0092 };
 
 beforeEach(() => {
   resetQuizCacheForTests();
@@ -75,7 +79,7 @@ beforeEach(() => {
 
 describe('fetchQuiz deals the hand', () => {
   test('the right answer survives any deal, for both option kinds', async () => {
-    const quiz = await fetchQuiz('Greenwich', stories);
+    const quiz = await fetchQuiz('Greenwich', greenwich);
 
     for (const [i, question] of quiz!.questions.entries()) {
       const original = served.questions[i];
@@ -99,7 +103,7 @@ describe('fetchQuiz deals the hand', () => {
       .spyOn(Math, 'random')
       .mockReturnValue(0);
 
-    const quiz = await fetchQuiz('Greenwich', stories);
+    const quiz = await fetchQuiz('Greenwich', greenwich);
     const optioned = quiz!.questions.filter(
       (question): question is AnchorQuestion | WhichPlaceQuestion =>
         question.kind === 'anchor' || question.kind === 'which-place'
@@ -118,7 +122,7 @@ describe('fetchQuiz deals the hand', () => {
     // presentation must never equal the answer.
     for (let round = 0; round < 25; round++) {
       resetQuizCacheForTests();
-      const quiz = await fetchQuiz('Greenwich', stories);
+      const quiz = await fetchQuiz('Greenwich', greenwich);
       const dealt = quiz!.questions.find(
         (question): question is OrderQuestion => question.kind === 'order'
       )!;
@@ -133,32 +137,42 @@ describe('fetchQuiz deals the hand', () => {
   });
 
   test('the session cache stores the dealt hand — Go again keeps its order', async () => {
-    const first = await fetchQuiz('Greenwich', stories);
-    const second = await fetchQuiz('Greenwich', stories);
+    const first = await fetchQuiz('Greenwich', greenwich);
+    const second = await fetchQuiz('Greenwich', greenwich);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(second).toBe(first);
   });
 
-  test('the same stories in a different order still hit the session cache', async () => {
-    // Walking re-sorts the feed by distance without changing it; an
-    // order-sensitive key sent the same quiz back to the route (#280)
-    const nearest = [
-      { pageId: 1, title: 'Cutty Sark', extract: 'x' },
-      { pageId: 2, title: 'Queen’s House', extract: 'y' },
-      { pageId: 3, title: 'Royal Observatory', extract: 'z' },
-    ];
-
-    await fetchQuiz('Greenwich', nearest);
-    await fetchQuiz('Greenwich', [nearest[2], nearest[0], nearest[1]]);
+  test('walking the area sends nothing further — the session key is the area', async () => {
+    // The device half of #280: the server holds one quiz per area for
+    // 30 days, so crossing a ~111m feed bucket must not go back to the
+    // route for a quiz it already holds.
+    await fetchQuiz('Greenwich', greenwich);
+    await fetchQuiz('Greenwich', alongTheRiver);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('the request carries the reader’s position and nothing else', async () => {
+    await fetchQuiz('Greenwich', greenwich);
+
+    // A GET with no body: there is no material to send, because the
+    // route derives its own (#303)
+    expect(mockFetch).toHaveBeenCalledWith('http://test/api/quiz?lat=51.4826&lng=-0.0077');
+  });
+
+  test('a different area is a different quiz', async () => {
+    await fetchQuiz('Greenwich', greenwich);
+    await fetchQuiz('Deptford', alongTheRiver);
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   test('no quiz stays no quiz', async () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ quiz: null }) });
 
-    expect(await fetchQuiz('Nowhere', stories)).toBeNull();
+    expect(await fetchQuiz('Nowhere', greenwich)).toBeNull();
   });
 
   test('a v1 serving — questions without kinds — reads as no quiz, never a crash', async () => {
@@ -177,6 +191,6 @@ describe('fetchQuiz deals the hand', () => {
     };
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ quiz: v1 }) });
 
-    expect(await fetchQuiz('Greenwich', stories)).toBeNull();
+    expect(await fetchQuiz('Greenwich', greenwich)).toBeNull();
   });
 });

@@ -1,8 +1,10 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { research } from '@/server/ai-router';
+import { findNearestArea } from '@/server/area';
 import { extractAnswerText } from '@/server/gemini';
-import { extractKeyPart } from '@/server/telling';
+import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
 import { storeGet, storePut } from '@/server/telling-store';
+import { findNearbyHistory } from '@/server/wikipedia';
 import {
   AnchorQuestion,
   OrderItem,
@@ -12,6 +14,7 @@ import {
   TrueFalseQuestion,
   WhichPlaceQuestion,
 } from '@/types/quiz';
+import { Coordinates } from '@/utils/geo';
 
 /**
  * The area quiz: five questions about the ground you are standing on,
@@ -36,6 +39,19 @@ import {
  * kind: which-place options are OUR titles keyed by pageId (the model
  * cannot misname a place), and an order item whose year is not literally
  * in its own extract drops the whole question.
+ *
+ * v3 moves where "we supplied" comes from. The stories used to ride in
+ * on the request, which made the material attacker-choosable: a POST
+ * could hand the model any text it liked and get its `title` strings
+ * rendered back as which-place options (#303). The digest of that
+ * material was the only guard, and it was doing identity's job too —
+ * the nearest twelve turn over at nearly every ~111m feed bucket, so
+ * the key followed the bucket and a walk re-spent the shared free-tier
+ * ledger (#280). Both defects have one cause and one fix: derive the
+ * material here, from the reader's coordinates, exactly as the
+ * retelling derives its source. The key can then be the area alone,
+ * because a key over material nobody outside this server chose carries
+ * no trust to relocate.
  */
 
 /** What we aim for, and the fewest that is still a quiz. Quiet corners
@@ -83,39 +99,98 @@ const TtlMs = 30 * 24 * 60 * 60 * 1000;
 const NoQuizTtlMs = 7 * 24 * 60 * 60 * 1000;
 
 type CachedQuiz = { quiz: Quiz | null; at: number };
-const cache = diskBackedMap<CachedQuiz>('quiz');
+/**
+ * The considered policy #309 left to whoever finished this rebuild.
+ *
+ * `ttlMs` is the LONGER of the two TTLs above, exactly as retold's is
+ * and for the same reason: the two clocks are a READ rule (peek serves
+ * a told quiz for 30 days and a no-quiz verdict for 7), and pruning is
+ * a WRITE rule. Prune at 7 days and every told quiz older than a week
+ * would be dropped on hydrate and re-generated on the next open — a
+ * free-tier call spent to rewrite something the read would still have
+ * served. Prune at 30 and nothing a caller could still be served is
+ * ever thrown away, while the no-quiz verdicts keep expiring on the
+ * read at 7 days as they always did. They also cost nothing to keep:
+ * `{quiz: null, at}` is ~30 bytes.
+ *
+ * `maxEntries` is one slot per named area now that the key is the area
+ * alone (#303) — no longer one per ~111m bucket per story-set, which
+ * is what made the old key unboundable in principle. 1,000 areas is
+ * more named areas than the app has ever seen in a month and roughly
+ * ten times Greater London's supply of them; at ~1.5KB for a five
+ * question quiz that ceiling is ~1.5MB worst case, and in practice the
+ * 30-day TTL bites long before the cap does. It matches retold's 1,000
+ * because it is the same population keyed the same way — if one of
+ * those two numbers ever moves, both should.
+ */
+const cache = diskBackedMap<CachedQuiz>('quiz', { ttlMs: TtlMs, maxEntries: 1000 });
 // One generation per area at a time: two people opening the tab in the
 // same place join one call instead of spending two
 const inFlight = new Map<string, Promise<Quiz | null>>();
 
-/** What the client sends: the stories it has for this area. */
+/** What the quiz is set from. Derived here — never sent by anyone. */
 export type QuizSubject = { pageId: number; title: string; extract: string };
 
 /**
- * The cache key binds the quiz to the material it was set from, exactly
- * as the telling's does: the area names the bucket (movement busts it),
- * and the source digest means a fabricated POST can only ever poison
- * its own slot, never the one real clients — who all send the same
- * stories for the same ground — read for the next 30 days.
+ * The area, and nothing else. One quiz per named area per 30 days, so
+ * a walk across Greenwich reads the quiz Greenwich already has instead
+ * of setting a new one at every ~111m bucket crossing (#280).
+ *
+ * There is no source digest here and none is needed — the retelling's
+ * position exactly. A digest guards a cache against material the
+ * caller chose; this route's material is fetched from Wikipedia by the
+ * server, from coordinates, so there is nothing for a fabricated
+ * request to put in the slot that a real reader standing there would
+ * not have got anyway (#303).
+ *
+ * The area name is OURS too, resolved by findNearestArea rather than
+ * typed by the caller, which closes the key space: the only strings
+ * that can ever become keys are Wikipedia titles that Wikidata classes
+ * as areas. Retold's 300-char cap (#279) has nothing to bite on here.
  *
  * The version prefix retires every older entry at once when the
- * CONTRACT changes, not just the material: v2 added kinds (a cached
- * quiz without them is a broken screen); v3 changed the question
- * register after the first on-phone run served "how many men are on
- * the memorial" — a recorded quiz in the trivia register would keep
- * serving poor questions for 30 days under its old key.
+ * CONTRACT changes: v2 added kinds (a cached quiz without them is a
+ * broken screen); v3 changed the question register after the first
+ * on-phone run served "how many men are on the memorial"; v5 is this
+ * change — the material moved to the server, and the digest that used
+ * to be part of the key went with it. (v4 is skipped deliberately: it
+ * named the area-keyed-but-client-fed shape that was built and pulled
+ * back out on branch quiz-key-by-area-step2, and no slot of that
+ * design may ever be read back.)
  */
-export async function quizKey(areaName: string, subjects: QuizSubject[]): Promise<string> {
-  // Sorted first: the SET of stories is the material, never the order
-  // the feed happened to hand them over in. The feed is distance-sorted
-  // from the reader's ~111m bucket, so the same twelve stories seen from
-  // a few paces away arrived in a different order and minted a fresh
-  // key — a free-tier call spent to re-set a quiz we already had (#280).
-  const material = [...subjects]
-    .sort((a, b) => a.pageId - b.pageId)
-    .map((s) => `${s.pageId}:${s.title}:${s.extract}`)
-    .join('\n');
-  return `v3:${areaName.toLowerCase()}:${await extractKeyPart(material)}`;
+export const quizKey = (areaName: string) => `v5:${areaName.toLowerCase()}`;
+
+/**
+ * The ground's own stories, fetched rather than accepted.
+ *
+ * Wikipedia's backbone alone, not the feed's full merge: the heritage
+ * sources contribute plaques whose "title" is an entire inscription and
+ * listed buildings with no extract at all, and isNamedPlace/the extract
+ * filter drop both before the model ever sees them. Paying for two more
+ * upstreams and an enrichment fan-out to gather material this file is
+ * about to discard would be spending for nothing.
+ *
+ * Sparse ground widens on the feed's own rule and the feed's own
+ * radius, so a village that gets a thin feed gets the same thin-feed
+ * treatment here rather than silently losing its quiz.
+ *
+ * THROWS when Wikipedia could not be asked. A failure is not a verdict:
+ * caching "nothing to quiz here" because the worker's egress was
+ * rate-limited would strand the area for seven days.
+ */
+async function quizGround(center: Coordinates): Promise<QuizSubject[]> {
+  const usable = (items: Awaited<ReturnType<typeof findNearbyHistory>>): QuizSubject[] =>
+    items
+      .filter((item) => item.extract?.trim() && isNamedPlace(item.title))
+      .slice(0, MaxStories)
+      .map((item) => ({ pageId: item.pageId, title: item.title, extract: item.extract as string }));
+
+  const nearby = await findNearbyHistory(center);
+  const subjects = usable(nearby);
+  if (subjects.length >= MinStoriesToQuiz || !shouldWiden(nearby.length)) {
+    return subjects;
+  }
+  return usable(await findNearbyHistory(center, SparseRadiusMeters));
 }
 
 /** Pure and unit-tested: the contract the model must write to. */
@@ -400,6 +475,10 @@ function peek(key: string): { quiz: Quiz | null } | undefined {
   }
   const ttl = hit.quiz ? TtlMs : NoQuizTtlMs;
   if (Date.now() - hit.at > ttl) {
+    // Write-through since #309 — this used to forget in memory only and
+    // the entry came back on the next hydrate. It is the SHORTER clock
+    // (7 days for a no-quiz verdict) and the only thing that applies
+    // it; the map's own 30-day prune deliberately does not.
     cache.delete(key);
     return undefined;
   }
@@ -407,20 +486,30 @@ function peek(key: string): { quiz: Quiz | null } | undefined {
 }
 
 /**
- * The quiz for an area, from cache where possible. Null means "no quiz
- * for this ground" — too few stories, or too little in them to ask
- * about honestly — and that verdict is cached too.
+ * The quiz for the ground under these coordinates, from cache where
+ * possible. Null means "no quiz for this ground" — nowhere here is a
+ * named area, too few stories, or too little in them to ask about
+ * honestly — and the last two verdicts are cached too.
+ *
+ * The order of the three steps is the whole cost model. The area name
+ * comes first because it is the key and it is nearly always a cache
+ * hit (the same ~111m bucket the client's own /api/area call warmed).
+ * The stories are fetched LAST, inside the generation, so the upstream
+ * work happens exactly as often as the model call it feeds — once per
+ * area per 30 days — and a warm quiz costs two cache reads and no
+ * network at all.
  */
-export async function getQuiz(areaName: string, subjects: QuizSubject[]): Promise<Quiz | null> {
-  const usable = subjects
-    .filter((subject) => subject.extract.trim().length > 0 && isNamedPlace(subject.title))
-    .slice(0, MaxStories);
-  // The floor, before any key or call: no stories, no quiz
-  if (usable.length < MinStoriesToQuiz) {
+export async function getQuiz(center: Coordinates): Promise<Quiz | null> {
+  // Ours, not the caller's. Throws if Wikipedia/Wikidata could not be
+  // asked — the route answers 502, and no verdict is written.
+  const areaName = await findNearestArea(center);
+  if (!areaName) {
+    // Nowhere nearby is a named area: nothing to key a quiz to, and
+    // nothing spent finding that out (area.ts caches the verdict).
     return null;
   }
 
-  const key = await quizKey(areaName, usable);
+  const key = quizKey(areaName);
   const peeked = peek(key);
   if (peeked !== undefined) {
     return peeked.quiz;
@@ -442,6 +531,16 @@ export async function getQuiz(areaName: string, subjects: QuizSubject[]): Promis
   }
 
   const generation = (async (): Promise<Quiz | null> => {
+    const usable = await quizGround(center);
+    // The floor, before any call: no stories, no quiz. Remembered like
+    // any other verdict, so the next open of the tab does not re-fetch
+    // the same emptiness — but never a model call to discover it.
+    if (usable.length < MinStoriesToQuiz) {
+      const thin: CachedQuiz = { quiz: null, at: Date.now() };
+      cache.set(key, thin);
+      await storePut('quiz', key, thin, thin.at);
+      return null;
+    }
     const text = await research({
       prompt: quizPrompt(areaName, usable),
       maxTokens: 2048,

@@ -1,75 +1,53 @@
-import { MinStoriesToQuiz, QuizSubject, getQuiz } from '@/server/quiz';
+import { fixturesEnabled } from '@/server/fixtures';
+import { coordinatesParam } from '@/server/params';
+import { getQuiz } from '@/server/quiz';
 import { storeHealthHeaders } from '@/server/telling-store';
 
 /**
- * POST because the client sends the stories: the server holds no
- * per-area state — history lists are fetched by location and cached on
- * the device, so the ground's own stories ride in with the request.
- * They are bound into the quiz's cache key (see quiz.ts), so a
- * fabricated body can only ever poison its own cache slot.
+ * GET /api/quiz?lat=51.4826&lng=-0.0077
+ *
+ * Five questions about the ground under these coordinates. `{ quiz:
+ * null }` is a real answer, not an error — plenty of ground has no
+ * named area or too little recorded history to ask about, and the tab
+ * is built to say so.
+ *
+ * A GET with no body, because there is no longer anything to send.
+ * This was a POST carrying the client's own stories, which made the
+ * material — and therefore the model's prompt and the which-place
+ * options rendered back on screen — whatever the caller wrote (#303).
+ * The server derives its own stories now, from the coordinates, the
+ * way /api/retold derives its own source from the area. Nothing left
+ * in the request needs validating beyond "are these two numbers a
+ * place on Earth", so nothing else is validated: the strings that
+ * become cache keys and prompt text are ours.
+ *
+ * The two numbers are still attacker-choosable, so the key space is
+ * still worth thinking about — but it is CLOSED. Coordinates resolve
+ * through findNearestArea to a Wikipedia title Wikidata classes as an
+ * area, or to nothing; no request can mint a key outside that set, and
+ * the shared free-tier breaker remains the backstop for volume.
  */
-
-const MaxTitleChars = 300;
-const MaxExtractChars = 4_000;
-/**
- * The nearest dozen is all quiz.ts will read, so anything past this is
- * simply ignored. It is NOT a rejection: a client sending its whole feed
- * is not abusing anything, and refusing at 40 made the Quiz tab fail
- * outright in every dense area — Deptford answers with 96 stories, so
- * the tab said "Couldn't set the quiz right now" on a real phone while
- * this route tested clean against a hand-made twelve. MaxBodyBytes is
- * what guards against an actual flood.
- */
-const MaxStories = 60;
-const MaxBodyBytes = 256 * 1024;
-
-export async function POST(request: Request): Promise<Response> {
-  const declaredBytes = Number(request.headers.get('content-length'));
-  if (Number.isFinite(declaredBytes) && declaredBytes > MaxBodyBytes) {
-    return Response.json({ error: 'Body too large' }, { status: 413 });
+export async function GET(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  // The shared reader (#305), which now also refuses coordinates that
+  // are finite but not on Earth — a rule this route brought and every
+  // coordinate route keeps (src/server/params.ts)
+  const center = coordinatesParam(url.searchParams);
+  if (!center) {
+    return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
-  if (typeof body !== 'object' || body === null) {
-    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
-  const { area, stories } = body as Record<string, unknown>;
-
-  if (typeof area !== 'string' || !area.trim()) {
-    return Response.json({ error: 'area is required' }, { status: 400 });
-  }
-  if (!Array.isArray(stories)) {
-    return Response.json({ error: 'stories is required' }, { status: 400 });
-  }
-  const subjects: QuizSubject[] = [];
-  for (const raw of stories.slice(0, MaxStories)) {
-    if (typeof raw !== 'object' || raw === null) {
-      continue;
-    }
-    const { pageId, title, extract } = raw as Record<string, unknown>;
-    if (typeof pageId !== 'number' || typeof title !== 'string' || typeof extract !== 'string') {
-      continue;
-    }
-    subjects.push({
-      pageId,
-      title: title.slice(0, MaxTitleChars),
-      extract: extract.slice(0, MaxExtractChars),
-    });
-  }
-
-  // The floor is a 200, not an error: "no quiz for this ground" is a
-  // real answer the tab is built to show, not a failure to report
-  if (subjects.length < MinStoriesToQuiz) {
-    return Response.json({ quiz: null }, { headers: storeHealthHeaders() });
+  // Hermetic E2E: the runner's IP gets 429'd by Wikipedia and Wikidata,
+  // and "no quiz for this ground" is a verdict the tab already knows
+  // how to show — words and a way onward, never a blank screen. Same
+  // bargain /api/area strikes: byte-stable recorded flows, no fixture
+  // to maintain.
+  if (fixturesEnabled()) {
+    return Response.json({ quiz: null });
   }
 
   try {
-    const quiz = await getQuiz(area.slice(0, MaxTitleChars), subjects);
+    const quiz = await getQuiz(center);
     return Response.json({ quiz }, { headers: storeHealthHeaders() });
   } catch (error) {
     console.error('Quiz failed:', error);
