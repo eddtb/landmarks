@@ -1,4 +1,5 @@
 import { fixturesEnabled } from '@/server/fixtures';
+import { coordinatesParam } from '@/server/params';
 import { getQuiz } from '@/server/quiz';
 import { storeHealthHeaders } from '@/server/telling-store';
 
@@ -28,17 +29,11 @@ import { storeHealthHeaders } from '@/server/telling-store';
  */
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const latParam = url.searchParams.get('lat');
-  const lngParam = url.searchParams.get('lng');
-  // NaN for absent, never 0: Number(null) is Null Island, and a request
-  // with no coordinates at all must be a 400 rather than a quiz about
-  // the Gulf of Guinea.
-  const lat = latParam ? Number(latParam) : NaN;
-  const lng = lngParam ? Number(lngParam) : NaN;
-
-  // Finite AND on the globe: a request for lat 1e12 can only ever cost
-  // an upstream round trip to be told nothing is there.
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+  // The shared reader (#305), which now also refuses coordinates that
+  // are finite but not on Earth — a rule this route brought and every
+  // coordinate route keeps (src/server/params.ts)
+  const center = coordinatesParam(url.searchParams);
+  if (!center) {
     return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
   }
 
@@ -52,7 +47,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   try {
-    const quiz = await getQuiz({ latitude: lat, longitude: lng });
+    const quiz = await getQuiz(center);
     return Response.json({ quiz }, { headers: storeHealthHeaders() });
   } catch (error) {
     console.error('Quiz failed:', error);

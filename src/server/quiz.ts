@@ -99,7 +99,31 @@ const TtlMs = 30 * 24 * 60 * 60 * 1000;
 const NoQuizTtlMs = 7 * 24 * 60 * 60 * 1000;
 
 type CachedQuiz = { quiz: Quiz | null; at: number };
-const cache = diskBackedMap<CachedQuiz>('quiz');
+/**
+ * The considered policy #309 left to whoever finished this rebuild.
+ *
+ * `ttlMs` is the LONGER of the two TTLs above, exactly as retold's is
+ * and for the same reason: the two clocks are a READ rule (peek serves
+ * a told quiz for 30 days and a no-quiz verdict for 7), and pruning is
+ * a WRITE rule. Prune at 7 days and every told quiz older than a week
+ * would be dropped on hydrate and re-generated on the next open — a
+ * free-tier call spent to rewrite something the read would still have
+ * served. Prune at 30 and nothing a caller could still be served is
+ * ever thrown away, while the no-quiz verdicts keep expiring on the
+ * read at 7 days as they always did. They also cost nothing to keep:
+ * `{quiz: null, at}` is ~30 bytes.
+ *
+ * `maxEntries` is one slot per named area now that the key is the area
+ * alone (#303) — no longer one per ~111m bucket per story-set, which
+ * is what made the old key unboundable in principle. 1,000 areas is
+ * more named areas than the app has ever seen in a month and roughly
+ * ten times Greater London's supply of them; at ~1.5KB for a five
+ * question quiz that ceiling is ~1.5MB worst case, and in practice the
+ * 30-day TTL bites long before the cap does. It matches retold's 1,000
+ * because it is the same population keyed the same way — if one of
+ * those two numbers ever moves, both should.
+ */
+const cache = diskBackedMap<CachedQuiz>('quiz', { ttlMs: TtlMs, maxEntries: 1000 });
 // One generation per area at a time: two people opening the tab in the
 // same place join one call instead of spending two
 const inFlight = new Map<string, Promise<Quiz | null>>();
@@ -451,6 +475,10 @@ function peek(key: string): { quiz: Quiz | null } | undefined {
   }
   const ttl = hit.quiz ? TtlMs : NoQuizTtlMs;
   if (Date.now() - hit.at > ttl) {
+    // Write-through since #309 — this used to forget in memory only and
+    // the entry came back on the next hydrate. It is the SHORTER clock
+    // (7 days for a no-quiz verdict) and the only thing that applies
+    // it; the map's own 30-day prune deliberately does not.
     cache.delete(key);
     return undefined;
   }

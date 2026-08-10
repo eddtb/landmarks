@@ -479,6 +479,29 @@ describe('<QuizScreen />', () => {
       expect(mockFetchQuiz).not.toHaveBeenCalled();
     });
 
+    test('no position, no coordinates invented — and the real ones when they arrive', async () => {
+      // Where #307 and #303 meet. The gate hands down a NULL centre
+      // when there is no fix, and /api/quiz takes two finite numbers or
+      // a 400 — so there is no degraded ask to make here, only no ask.
+      // The failure this forbids is the tempting one: falling back to
+      // some centre so the request is well-formed, which is how the tab
+      // came to quiz a reader in Cupertino about Charing Cross.
+      mockGate.noFix = true;
+      const { rerender } = await render(<QuizScreen />);
+
+      await screen.findByTestId('quiz-denied');
+      expect(mockFetchQuiz).not.toHaveBeenCalled();
+
+      // The reader relents and grants location: the ask happens now,
+      // and with where they actually are
+      mockGate.noFix = false;
+      await rerender(<QuizScreen />);
+
+      expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
+      expect(mockFetchQuiz).toHaveBeenCalledTimes(1);
+      expect(mockFetchQuiz).toHaveBeenCalledWith('Greenwich', greenwich);
+    });
+
     test('exploring a pinned place still quizzes it — and the header admits the mode', async () => {
       mockGate.exploring = true;
 

@@ -199,19 +199,11 @@ describe('GET /api/quiz', () => {
     expect(route.POST).toBeUndefined();
   });
 
-  test('a place on Earth is required, and nonsense coordinates never reach an upstream', async () => {
-    const asked = async (query: string) =>
-      (await route.GET!(new Request(`http://localhost/api/quiz${query}`))).status;
-
-    expect(await asked('')).toBe(400);
-    expect(await asked('?lat=51.4223')).toBe(400);
-    expect(await asked('?lat=nowhere&lng=-0.0684')).toBe(400);
-    // Finite but not on the globe — a free upstream round trip to be
-    // told nothing is there
-    expect(await asked('?lat=1200&lng=-0.0684')).toBe(400);
-    expect(await asked('?lat=51.4223&lng=999')).toBe(400);
-    expect(mockFindNearestArea).not.toHaveBeenCalled();
-  });
+  // Coordinate validation is NOT asserted here. It is the same guard
+  // /api/area, /api/history and /api/route use — the shared reader in
+  // src/server/params.ts — and route-params-test.ts asks all of them
+  // the same questions, this route included. A second copy of those
+  // assertions here is how two validators start to drift apart.
 
   test('no quiz for this ground is a 200 with a null quiz — an answer, not an error', async () => {
     mockFindNearbyHistory.mockResolvedValue([place(1, 'The Old Rectory')]);
