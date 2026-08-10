@@ -19,6 +19,26 @@ off recording session; needs Edd's go), `device-triage` (Edd's phone
 findings → diagnosed, verified, merged PRs), `perf-audit`. Prefer
 invoking these over rediscovering their contents.
 
+`skill-creator` is installed to author and improve these — use it
+rather than hand-rolling a new SKILL.md, and `claude-md-improver`
+when this file drifts from what the repo actually does.
+
+
+# frontend-design does not outrank the HIG
+
+`frontend-design` is installed for visual direction and for its
+writing guidance — interface copy names what the user controls, an
+action keeps its verb through the whole flow ("Publish" → "Published"),
+errors say what broke and what fixes it, and an empty screen is an
+invitation rather than an apology. Take all of that.
+
+Its design half is web-shaped and its instinct is to avoid anything
+that reads as a default. This app IS a defaults app: native iOS,
+liquid glass, `expo-glass-effect`, `@expo/ui`. Where the two disagree
+on anything a reviewer sees, `expo-native-ui` and the Apple HIG win —
+1.0(6) was rejected under 4.2.2 twice, and "distinctive" is not a
+defence. Spend the boldness on the map and the telling, not the chrome.
+
 
 # Paid APIs: replay-only development
 
@@ -95,7 +115,54 @@ free-keyed and unmetered — they don't belong in this table.
 
 | Call (kind)          | Cache                    | Cost |
 |----------------------|--------------------------|------|
-| Gemini telling (ungrounded) | tellings 30d (per story + SHA-256 of the extract — a fabricated POST can only poison its own slot): Turso durable store (survives worker recycles; off without TURSO_DATABASE_URL) + per-process map + device session cache, single-flight per key. Retold shares the same store ('retold' kind, incl. 7d no-retell verdicts) | free tier, 300-calls/day breaker |
-| Gemini area quiz (ungrounded) | quiz 30d (per area name + SHA-256 of the stories it was set from — a fabricated POST can only poison its own slot): Turso durable store ('quiz' kind, incl. 7d no-quiz verdicts for ground too thin to ask about) + per-process map + device session cache, single-flight per key. Refuses below 3 usable stories WITHOUT calling | free tier, 300-calls/day breaker |
-| Valhalla walking route (FOSSGIS) | routes 24h (per ~27m origin bucket + destination) | free community server; 300-calls/day breaker out of politeness |
-| Anthropic (dormant fallback) | n/a — only via explicit AI_PROVIDER=anthropic | paid; assertBudget breaker; boot log asks "is this intended?" |
+| Gemini telling (ungrounded, ~400 tok) | tellings 30d, key `<pageId>:<SHA-256 of the extract>` — a fabricated POST can only poison its own slot. Turso durable store ('telling' kind; survives worker recycles, off without TURSO_DATABASE_URL) + per-process map + device session cache + single-flight per key. NOTE the device cache keys on pageId ALONE, so a changed extract serves the stale telling for the session | free tier; SHARED 300-calls/day breaker |
+| Gemini retelling (ungrounded, ~4500 tok over ≤24k source chars — **the most expensive call in the app**) | retold 30d told / 7d no-retell verdict, key `v4:<area name>`. No source digest and none needed — the source is fetched server-side, not sent by the client. But the key IS attacker-choosable and currently uncapped (#279). Turso ('retold' kind) + per-process map + device session cache, single-flight per key. Refuses below 1500 source chars WITHOUT calling | free tier; SHARED 300-calls/day breaker |
+| Gemini area quiz (ungrounded, ~2048 tok) | quiz 30d told / 7d no-quiz verdict, key `v3:<area>:<SHA-256 of the 12 stories>` — a fabricated POST can only poison its own slot. Turso ('quiz' kind) + per-process map + device session cache + single-flight. Refuses below 3 usable stories WITHOUT calling. NOTE the digest is over an ORDER-SENSITIVE join of the feed's nearest twelve, so in practice this keys to the ~111m FEED BUCKET, not the area — walking re-spends (#280) | free tier; SHARED 300-calls/day breaker |
+| Valhalla walking route (FOSSGIS) | routes 24h (per ~27m origin bucket + destination) — per-process map ONLY, no durable store, so on the edge the cache dies with each isolate and the breaker is the real protection | free community server; its OWN 300-calls/day breaker out of politeness |
+| Anthropic `claude-haiku-4-5` (dormant fallback) | n/a — only via explicit AI_PROVIDER=anthropic; a missing Gemini key throws rather than falling through | paid; assertBudget breaker, $1/day default (AI_DAILY_BUDGET_USD); boot log asks "is this intended?" |
+
+**The three Gemini rows share ONE ledger** (`gemini-call-ledger`,
+300/day, `GEMINI_DAILY_CALLS`) — they are not three independent caps.
+Both ledgers are themselves durable (Turso 'ledger' kind, atomic
+single-statement increment), which is what makes "300/day" true across
+isolates rather than 300 per isolate lifetime. **Without
+TURSO_DATABASE_URL the cap silently degrades to per-isolate**, with no
+signal anywhere — the store-health headers only watch writes (#283).
+
+
+# The React Compiler is on, and it bails in silence
+
+`experiments.reactCompiler` is enabled. When it cannot compile a
+component it does not warn, does not fail lint, and does not fail the
+build — it simply leaves that component unoptimised while every file
+around it looks identical. Two things opt a component out:
+
+1. **A conditional inside a `try`/`catch`.** A ternary, `&&`, or
+   optional chaining within a `try` block produces *"Support value
+   blocks within a try/catch statement"* and the compiler abandons the
+   **entire enclosing function**. Hoisting the conditional out of the
+   `try` does not help; the block must leave the component — extract it
+   into a module-level async helper that returns a verdict.
+2. **`// eslint-disable-next-line react-hooks/*`.** One disable comment
+   de-optimises the whole component it sits in.
+
+Verify rather than assume — transform the file and look for its
+`_c(n)` cache:
+
+```
+npx babel src/components/thing.tsx \
+  --presets babel-preset-expo --plugins @babel/plugin-syntax-jsx | grep '_c('
+```
+
+A component absent from that output is not compiled. Adding a
+derivation to such a file costs per-render work that nothing will
+report.
+
+
+# Do not run `npm audit fix --force`
+
+The remaining advisories are dev/build-time only and none ships in the
+bundle. The "fix" npm proposes is no longer a jest downgrade: as of
+August 2026 it proposes **SDK 56 → SDK 53**, React Native 0.85 → 0.72
+and Reanimated 4.3 → 4.2. Clear advisories deliberately, with the next
+Expo upgrade, using the `expo-upgrade` skill.
