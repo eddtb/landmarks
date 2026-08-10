@@ -1,13 +1,19 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { Compass } from '@/components/compass';
 import { PointerDial } from '@/components/pointer-dial';
+import { SlowFixMs } from '@/hooks/use-location';
 
 const mockUseLocation = jest.fn();
 const mockUseHeading = jest.fn();
+const mockRequestPermission = jest.fn();
 
+// useSlowFix stays REAL — the floor under 'locating' is the thing
+// being tested, and a mocked timer would only test the mock
 jest.mock('@/hooks/use-location', () => ({
+  ...jest.requireActual('@/hooks/use-location'),
   useLocation: () => mockUseLocation(),
+  requestLocationPermission: () => mockRequestPermission(),
 }));
 jest.mock('@/hooks/use-heading', () => ({
   // The dial reads degrees off a SharedValue and branches on
@@ -72,15 +78,66 @@ describe('<Compass />', () => {
     expect(screen.queryByTestId('compass-needle')).not.toBeOnTheScreen();
   });
 
-  test('denied is not waiting: the dial says so and offers the Settings door', async () => {
+  test('refused is not waiting: the dial says so and offers the Settings door', async () => {
     mockUseLocation.mockReturnValue({ status: 'denied', coordinates: null });
     await render(<Compass target={Target} />);
 
     // No "finding you" lie — nothing here will ever arrive
     expect(screen.getByText('Location off')).toBeOnTheScreen();
     expect(screen.getByText('Venture can’t see where you are')).toBeOnTheScreen();
-    expect(screen.getByText('Enable location in Settings')).toBeOnTheScreen();
+    expect(screen.getByText('Open Settings')).toBeOnTheScreen();
     expect(screen.queryByText(/finding you/i)).not.toBeOnTheScreen();
+    // A control that announces as one, with a target you can hit
+    const settings = screen.getByTestId('open-settings');
+    expect(settings).toHaveProp('accessibilityRole', 'button');
+    expect(settings).toHaveStyle({ minHeight: 44 });
+  });
+
+  test('never asked is not waiting either: the dial says so and offers the ask', async () => {
+    // 'priming' — the state "Not now" leaves behind — used to fall
+    // through to an unbounded "Finding you…" (#290)
+    mockUseLocation.mockReturnValue({ status: 'priming', coordinates: null });
+    await render(<Compass target={Target} />);
+
+    expect(screen.getByText('Not shared')).toBeOnTheScreen();
+    expect(screen.getByText('Venture hasn’t asked where you are')).toBeOnTheScreen();
+    expect(screen.queryByText(/finding you/i)).not.toBeOnTheScreen();
+    // Settings has no Location row to send anyone to yet
+    expect(screen.queryByText('Open Settings')).toBeNull();
+
+    await fireEvent.press(screen.getByTestId('ask-for-location'));
+    expect(mockRequestPermission).toHaveBeenCalled();
+  });
+
+  test('the ask button clears 44pt and never lobbies for the answer', async () => {
+    mockUseLocation.mockReturnValue({ status: 'priming', coordinates: null });
+    await render(<Compass target={Target} />);
+
+    const ask = screen.getByTestId('ask-for-location');
+    expect(ask).toHaveProp('accessibilityRole', 'button');
+    expect(ask).toHaveStyle({ minHeight: 48 });
+    // 5.1.1(iv): the label names the mechanism, never the answer
+    expect(screen.getByText('Ask for my location')).toBeOnTheScreen();
+    expect(screen.queryByText(/allow|enable|turn on/i)).toBeNull();
+  });
+
+  test('a granted permission with no fix gets a floor: the wait stops promising', async () => {
+    jest.useFakeTimers();
+    try {
+      mockUseLocation.mockReturnValue({ status: 'locating', coordinates: null });
+      await render(<Compass target={Target} />);
+      expect(screen.getByText('Finding you…')).toBeOnTheScreen();
+
+      await act(async () => {
+        jest.advanceTimersByTime(SlowFixMs);
+      });
+
+      expect(screen.getByText('No fix yet')).toBeOnTheScreen();
+      expect(screen.getByText('Still looking — indoors this can take a while')).toBeOnTheScreen();
+      expect(screen.queryByText('Finding you…')).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test('within arm’s reach the compass stops pointing and says so', async () => {

@@ -16,6 +16,7 @@ import {
   LocationGate,
   StoriesScreen,
 } from '@/components/section-screen';
+import { PlaceSearchPlaceholder } from '@/components/place-search';
 import { clearPin } from '@/hooks/use-pin';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
@@ -28,11 +29,13 @@ jest.mock('@/hooks/use-location', () => ({
   useLocation: () => mockUseLocation(),
 }));
 
-// Area names keyed off the center so tests can read where the app is
+// Area names keyed off the center so tests can read where the app is.
+// A null centre names nothing — the real hook's own answer, and the
+// point of #289: there is no place to name.
 jest.mock('@/hooks/use-area-name', () => ({
-  useAreaName: (center: Coordinates) => ({
-    name: center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
-    label: center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
+  useAreaName: (center: Coordinates | null) => ({
+    name: center === null ? null : center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
+    label: center === null ? null : center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
     settled: true,
   }),
 }));
@@ -81,7 +84,12 @@ beforeEach(() => {
 /** Drive the header's search: open via the title, type, submit. */
 async function searchFor(screen: Awaited<ReturnType<typeof render>>, query: string) {
   await fireEvent.press(screen.getByTestId('area-title'));
-  const input = screen.getByPlaceholderText('Search near a place…');
+  await submitSearch(screen, query);
+}
+
+/** Type into whichever place field is on screen and submit it. */
+async function submitSearch(screen: Awaited<ReturnType<typeof render>>, query: string) {
+  const input = screen.getByPlaceholderText(PlaceSearchPlaceholder);
   await fireEvent.changeText(input, query);
   await fireEvent(input, 'submitEditing');
 }
@@ -91,9 +99,9 @@ describe('LocationGate pin lifecycle', () => {
   function Probe(gate: GateProps): ReactNode {
     return (
       <>
-        <Text>{`center:${gate.center.latitude}`}</Text>
+        <Text>{`center:${gate.center?.latitude ?? 'none'}`}</Text>
         <Text>{`exploring:${gate.exploring}`}</Text>
-        <Text>{`denied:${gate.locationDenied}`}</Text>
+        <Text>{`standing:${gate.standing}`}</Text>
         <Pressable testID="pin" onPress={() => gate.onManualCenter(alnwick)} />
         <Pressable testID="release" onPress={() => gate.onBackToNearMe()} />
       </>
@@ -121,12 +129,15 @@ describe('LocationGate pin lifecycle', () => {
   test('a pin dropped blind releases itself when GPS first arrives', async () => {
     gpsDenied();
     const screen = await render(gated());
-    expect(screen.getByText('denied:true')).toBeOnTheScreen();
+    expect(screen.getByText('standing:refused')).toBeOnTheScreen();
+    // Refused and unpinned: no centre at all, rather than Charing Cross
+    expect(screen.getByText('center:none')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('pin'));
     expect(screen.getByText(`center:${alnwick.latitude}`)).toBeOnTheScreen();
-    // Pinned: the gate no longer reads as denied
-    expect(screen.getByText('denied:false')).toBeOnTheScreen();
+    // Pinned: the reader chose a place, so there is a centre again —
+    // and the permission fact behind it is unchanged
+    expect(screen.getByText('standing:refused')).toBeOnTheScreen();
 
     // Location comes back — the frozen-pin bug fix: GPS wins again
     gpsLive();
@@ -163,7 +174,7 @@ describe('the Exploring header (StoriesScreen)', () => {
     expect(screen.getByText('Greenwich')).toBeOnTheScreen();
     expect(screen.queryByText('Back to near me')).toBeNull();
     // No search until the title is tapped
-    expect(screen.queryByPlaceholderText('Search near a place…')).toBeNull();
+    expect(screen.queryByPlaceholderText(PlaceSearchPlaceholder)).toBeNull();
     const dot = screen.getByTestId('locator-dot');
     expect(dot).toHaveStyle({ backgroundColor: '#6A4BDB' });
   });
@@ -184,7 +195,7 @@ describe('the Exploring header (StoriesScreen)', () => {
       borderWidth: 2,
     });
     // The search folds away once the pin lands
-    expect(screen.queryByPlaceholderText('Search near a place…')).toBeNull();
+    expect(screen.queryByPlaceholderText(PlaceSearchPlaceholder)).toBeNull();
   });
 
   test('Back to near me clears the pin and the header comes home', async () => {
@@ -223,23 +234,24 @@ describe('the Exploring header (StoriesScreen)', () => {
     expect(openURL).toHaveBeenCalledWith('https://eddtb-landmarks.expo.app/support');
   });
 
-  test('denied state keeps today’s banner and search, untouched', async () => {
+  test('refused: the banner names Settings, and the search is in the invitation below', async () => {
     gpsDenied();
     const screen = await render(<StoriesScreen />);
     expect(screen.getByText('Nearby')).toBeOnTheScreen();
     expect(
-      screen.getByText('Location is off — enable it in Settings, or search a place to explore:')
+      screen.getByText(
+        'Location is off for Venture. Turn it back on in Settings and this fills with the ground you’re standing on.'
+      )
     ).toBeOnTheScreen();
-    expect(screen.getByPlaceholderText('Search near a place…')).toBeOnTheScreen();
+    expect(screen.getByTestId('open-settings')).toBeOnTheScreen();
+    expect(screen.getByPlaceholderText(PlaceSearchPlaceholder)).toBeOnTheScreen();
     expect(screen.queryByText('Back to near me')).toBeNull();
   });
 
-  test('a denied-state search pins and reads Exploring, with the way home', async () => {
+  test('a refused-state search pins and reads Exploring, with the way home', async () => {
     gpsDenied();
     const screen = await render(<StoriesScreen />);
-    const input = screen.getByPlaceholderText('Search near a place…');
-    await fireEvent.changeText(input, 'Alnwick');
-    await fireEvent(input, 'submitEditing');
+    await submitSearch(screen, 'Alnwick');
 
     await waitFor(() => expect(screen.getByText('Exploring')).toBeOnTheScreen());
     expect(screen.getByText('Alnwick')).toBeOnTheScreen();
@@ -306,7 +318,9 @@ describe('standing-on suppression while exploring', () => {
       state: { status: 'ready', items: [townHall] },
       refresh: jest.fn(),
     });
-    const screen = await render(<HistoryBody center={alnwick} exploring />);
+    const screen = await render(
+      <HistoryBody center={alnwick} exploring onManualCenter={jest.fn()} />
+    );
     expect(screen.queryByText(/standing on it/)).toBeNull();
     expect(screen.getByText('Alnwick Town Hall')).toBeOnTheScreen();
   });
@@ -316,7 +330,7 @@ describe('standing-on suppression while exploring', () => {
       state: { status: 'ready', items: [townHall] },
       refresh: jest.fn(),
     });
-    const screen = await render(<HistoryBody center={alnwick} />);
+    const screen = await render(<HistoryBody center={alnwick} onManualCenter={jest.fn()} />);
     expect(screen.getByText(/standing on it/)).toBeOnTheScreen();
   });
 });
@@ -329,19 +343,19 @@ describe('the Exploring header (HistoryArchiveScreen)', () => {
     expect(screen.getByText('gazetteer body')).toBeOnTheScreen();
   });
 
-  test('denied: the HISTORY header with the search, as today', async () => {
+  test('refused: the HISTORY header, and the invitation carries the search', async () => {
     gpsDenied();
     const screen = await render(<HistoryArchiveScreen />);
     expect(screen.getByText('History')).toBeOnTheScreen();
-    expect(screen.getByPlaceholderText('Search near a place…')).toBeOnTheScreen();
+    expect(screen.getByPlaceholderText(PlaceSearchPlaceholder)).toBeOnTheScreen();
+    // The gazetteer itself stands down — it is written ABOUT a place
+    expect(screen.queryByText('gazetteer body')).toBeNull();
   });
 
   test('exploring: the header appears and owns the mode', async () => {
     gpsDenied();
     const screen = await render(<HistoryArchiveScreen />);
-    const input = screen.getByPlaceholderText('Search near a place…');
-    await fireEvent.changeText(input, 'Alnwick');
-    await fireEvent(input, 'submitEditing');
+    await submitSearch(screen, 'Alnwick');
 
     await waitFor(() => expect(screen.getByText('Exploring')).toBeOnTheScreen());
     expect(screen.queryByText('History')).toBeNull();
