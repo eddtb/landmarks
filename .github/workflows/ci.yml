@@ -8,8 +8,10 @@ on:
   # merge_group events — a required check that never runs there
   # would block the queue forever
   merge_group:
-  # The merge chain updates branches with GITHUB_TOKEN, whose pushes
-  # trigger no workflows (anti-recursion) — so it dispatches CI here
+  # A manual re-run handle. The merge chain no longer dispatches CI —
+  # it updates branches with a PAT, whose pushes fire the pull_request
+  # run natively — but a human still needs a way to re-run main's
+  # checks without pushing an empty commit
   workflow_dispatch:
 
 concurrency:
