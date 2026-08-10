@@ -140,10 +140,14 @@ const TagTtlMs = 30 * 24 * 60 * 60 * 1000;
 // v2: verdicts carry the event flag (events-are-history ruling) — a v1
 // entry lacks it and would keep filing crashes as visitable places
 const factCache = diskBackedMap<{ tag: string | null; event: boolean; area: boolean; at: number }>(
-  'wikidata-existence-v3'
+  'wikidata-existence-v3',
+  // ~86 bytes an entry and one per article ever classified — the
+  // cheapest thing here to keep and the fastest to accumulate
+  { ttlMs: TagTtlMs, maxEntries: 5000 }
 );
-// Class labels are stable vocabulary — cache without expiry semantics
-const labelCache = diskBackedMap<string>('wikidata-class-labels');
+// Class labels are stable vocabulary — cached without expiry
+// semantics, so only the cap bounds them (oldest-inserted first)
+const labelCache = diskBackedMap<string>('wikidata-class-labels', { maxEntries: 2000 });
 
 function chunk<T>(list: T[], size: number): T[][] {
   const chunks: T[][] = [];

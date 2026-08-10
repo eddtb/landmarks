@@ -68,7 +68,10 @@ export function makeBudget(options: {
   defaultDailyCap: number;
 }): SpendBudget {
   const { provider, ledgerName, envVar, unit, defaultDailyCap } = options;
-  const ledger = diskBackedMap<DayEntry>(ledgerName);
+  // Day-keyed and undated, so only the cap bounds it — oldest-inserted
+  // leaves first, which for day keys IS oldest-first. Well past the
+  // seven days `recent` reads, so nothing visible is ever evicted.
+  const ledger = diskBackedMap<DayEntry>(ledgerName, { maxEntries: 90 });
 
   const cap = () => {
     const configured = Number(process.env[envVar]);

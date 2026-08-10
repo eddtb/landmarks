@@ -269,7 +269,10 @@ export function mergeHistorySources(
  * article for a listed building doesn't move when the user does.
  */
 const StoryTtlMs = 7 * 24 * 60 * 60 * 1000;
-const storyCache = diskBackedMap<{ story: StoryResult | null; at: number }>('nhle-stories');
+const storyCache = diskBackedMap<{ story: StoryResult | null; at: number }>('nhle-stories', {
+  ttlMs: StoryTtlMs,
+  maxEntries: 2000,
+});
 
 // Each uncached enrichment is up to two Wikipedia calls, and a dense
 // listed-building area brings dozens — an unbounded Promise.all here

@@ -35,7 +35,13 @@ export const MinSourceChars = 1500;
 // contract (Edd, 2026-08-06) — everything regenerates once on next
 // open, arriving with its card. One prefix, lazy, free tier.
 const retoldKey = (areaName: string) => `v4:${areaName.toLowerCase()}`;
-const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v4');
+// The LONGER of the two TTLs above: pruning at 30 days can never drop
+// an entry a caller would still have served, while a no-retell verdict
+// stops being served at 7 days by the read below, as it always did.
+const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v4', {
+  ttlMs: TtlMs,
+  maxEntries: 1000,
+});
 // What a joiner learns when the shared generation settles: a VERDICT
 // (told, or honestly untellable — 404 material) or an INTERRUPTION
 // (transport died, nothing cached — 502 material, retry welcome).

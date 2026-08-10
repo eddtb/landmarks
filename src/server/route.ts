@@ -87,7 +87,12 @@ export function buildRoute(trip: ValhallaTrip): WalkingRoute | null {
 }
 
 const RouteTtlMs = 24 * 60 * 60 * 1000;
-const cache = diskBackedMap<{ route: WalkingRoute; at: number }>('routes');
+// Geometry is bulky (~3.7KB an entry) and a day old is a day dead —
+// 10 entries were on disk at last measure and all 10 were expired
+const cache = diskBackedMap<{ route: WalkingRoute; at: number }>('routes', {
+  ttlMs: RouteTtlMs,
+  maxEntries: 500,
+});
 
 export async function fetchWalkingRoute(
   from: Coordinates,

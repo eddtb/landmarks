@@ -7,6 +7,7 @@ import {
   fetchPlaques,
   mergeHistorySources,
 } from '@/server/heritage';
+import { coordinatesParam } from '@/server/params';
 import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
 import { storeGet, storeHealthHeaders, storePut } from '@/server/telling-store';
@@ -47,7 +48,16 @@ const ListTtlMs = 60 * 60 * 1000;
 // v4: plaque items may carry resolved subject titles (option A);
 // v3 and earlier predate photo rules and existence tags
 type CachedList = { items: HistoryItem[]; sparse?: boolean; at: number };
-const listCache = diskBackedMap<CachedList>('history-lists-v7');
+// The most expensive entry in the codebase to hold: a Greenwich-sized
+// feed serialises at ~95KB, and this map was measured holding 13 of
+// them — 1.24MB, every one of them hours past the TTL above (#246).
+// The TTL does the forgetting; the cap is the backstop for a busy dev
+// server, at roughly an hour of walking (a ~111m bucket every few
+// hundred metres) and ~3MB worst case.
+const listCache = diskBackedMap<CachedList>('history-lists-v7', {
+  ttlMs: ListTtlMs,
+  maxEntries: 32,
+});
 
 /**
  * The durable half of the same cache. The map above is per-process,
@@ -128,17 +138,15 @@ const SparseFixtureMeters = 20000;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const latParam = url.searchParams.get('lat');
-  const lngParam = url.searchParams.get('lng');
   const fresh = url.searchParams.get('fresh') === '1';
 
-  const lat = latParam ? Number(latParam) : NaN;
-  const lng = lngParam ? Number(lngParam) : NaN;
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  // The shared reader (#305): this route already refused a missing
+  // parameter, but `?lat=%20` is truthy and `Number(' ')` is 0 — the
+  // same Null Island by a narrower door
+  const center = coordinatesParam(url.searchParams);
+  if (!center) {
     return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
   }
-  const center = { latitude: lat, longitude: lng };
 
   // Hermetic E2E: recorded payloads instead of upstreams — runner IPs
   // get 429'd by Wikipedia/Wikidata. Near the pinned simulator it's
@@ -197,7 +205,7 @@ export async function GET(request: Request) {
   let cacheOutcome = 'compose';
   let breakdown = '';
 
-  const key = feedBucketKey(lat, lng);
+  const key = feedBucketKey(center.latitude, center.longitude);
   if (!fresh) {
     const cached = listCache.get(key);
     if (cached && Date.now() - cached.at < ListTtlMs) {

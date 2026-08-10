@@ -117,7 +117,12 @@ export function pickMatchingPhoto(
 const PhotoTtlMs = 7 * 24 * 60 * 60 * 1000;
 // Renamed from story-photos: the old cache holds blind nearest-photo
 // verdicts (a station on a theatre's card) that must not survive
-const photoCache = diskBackedMap<{ photo: StoryPhoto | null; at: number }>('subject-photos');
+// Cheap entries (a URL and a credit line, ~140 bytes) but one per
+// story ever dressed: 196 held at last measure, 152 of them stale.
+const photoCache = diskBackedMap<{ photo: StoryPhoto | null; at: number }>('subject-photos', {
+  ttlMs: PhotoTtlMs,
+  maxEntries: 2000,
+});
 // A subject photo is now existential for a card, so converge faster
 const MaxLookupsPerRequest = 20;
 
