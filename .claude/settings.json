@@ -1,5 +1,27 @@
 {
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.ts|*.tsx) cd \"${CLAUDE_PROJECT_DIR:-.}\" && out=$(npx tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsbuildinfo-hook 2>&1) || { echo \"$out\" >&2; exit 2; } ;; esac",
+            "timeout": 90,
+            "statusMessage": "Typechecking after edit"
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
-    "expo@claude-plugins-official": true
+    "expo@claude-plugins-official": true,
+    "learning-output-style@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "swift-lsp@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "hookify@claude-plugins-official": true
   }
 }

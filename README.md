@@ -17,15 +17,15 @@ the process.
   Wikipedia, Historic England's National Heritage List, and Open
   Plaques, with Geograph photographs (CC BY-SA, credited) for the
   stories nobody illustrated.
-- **The telling** — press 🔊 Listen and the phone speaks a ~one-minute
+- **The telling** — press Listen and the phone speaks a ~one-minute
   narration, written once per story by Gemini's free tier from the
-  source text alone, cached 30 days. Hook first, no invention, sources
-  linked beside it.
-- **Walks** — build a walking tour with ＋ Walk, reorder with ↑↓, and
-  **▶ Play the walk**: the tellings in sequence, an audio tour of
-  ground you're actually covering.
-- **Compass** — a bearing-and-distance modal that works for buildings
-  that no longer exist.
+  source text alone, cached 30 days. Hook first, no invention, the
+  full article and its source linked beside it.
+- **Saved** — Save on any story keeps it on the shelf; one Keep
+  offline switch downloads the shelf so it answers with no signal.
+- **Go & Compass** — a guided walk with a live route and an
+  instrument dial, and a bearing-and-distance modal that works for
+  buildings that no longer exist.
 
 ## Development
 

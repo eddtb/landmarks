@@ -1,48 +1,60 @@
-# Venture — v2 Roadmap
+# Venture — Roadmap
 
-Goal: extract maximum value from the APIs we already pay for (Google Places,
-Wikipedia, device location) before adding new dependencies.
-See [PRODUCT.md](PRODUCT.md) for the v1 spec.
+Where the Storyteller goes next. The v2 roadmap this file used to hold
+was written for the Google-Places era; the Storyteller pivot (PR #117)
+deleted that world, and everything it planned is either shipped in
+different clothes or moot. See [PRODUCT.md](PRODUCT.md) for what the
+app is today.
 
-## M1 — Two-tier fetching (architecture, enables everything below)
+## Shipped — the pivot and after
 
-The list currently fetches every field for all 20 places although users tap
-roughly one. Split into:
+For orientation, not celebration: the ground the next ideas stand on.
 
-- **List call**: lean field mask — id, name, location, rating, count, photo,
-  primary type label. Cheaper per search.
-- **`GET /api/place/[id]`** (new, Google Place Details behind it): rich fields
-  for the tapped place only — full opening hours, price level, phone,
-  Google Maps link, amenity/accessibility flags, all photos, reviews.
-- Fixes deep-link cold starts (detail no longer depends on the session cache).
+- **The Storyteller pivot (#117–#123)** — history only, free sources
+  only (Wikipedia, Historic England, Open Plaques, Geograph), zero
+  marginal cost by architecture. "Hidden history nearby" stopped being
+  a milestone and became the product.
+- **The story, properly told** — Gemini free-tier tellings streamed
+  part by part (#220), the Gazetteer (#136, #163), the full article in
+  chapter folds with a link out (#221–#223, #233).
+- **Saved + offline (#228, #229)** — the shelf the user fills, and one
+  keep-offline switch that downloads it.
+- **The walking companion** — Go mode with corridor rerouting (#213),
+  the compass as an instrument (#230), on-device geocoding for
+  "search near a place" when location is denied.
+- **Durable AI caches (#231, #232)** — a Turso store behind the
+  tellings; the cache outlives the worker.
+- **CD** — API routes live on EAS Hosting; iOS 1.0 through App Store
+  review.
 
-## M2 — Detail screen enrichment (UI over M1's data)
+## Candidates under discussion — not commitments
 
-- Swipeable photo gallery (all photos, not just the first)
-- Real hours: "Closes at 17:00" + expandable week schedule
-- Price level badges (££)
-- Tap-to-call, website, and a **Directions** button (`googleMapsUri`)
-- "What people say": top reviews
-- Amenity chips (outdoor seating, dog-friendly, wheelchair access…) — restrained
+Each of these has been talked about; none is scheduled, and any of
+them dies the moment a better idea shows up. The bar stays: free data,
+location-first caching, no new dependencies where primitives suffice.
 
-## M3 — Hidden history nearby (differentiator)
+- **A local visited/read journal** — the stories you've stood on or
+  read, kept on-device the way the Saved shelf is.
+- **"After this?" story chaining** — finish a story, get the natural
+  next one. The walk plan's one good idea, reborn without the plan.
+- **Listening upgrades** — pause/resume, highlighting the part being
+  spoken, an expo-speech voice picker.
+- **Non-UK reach** — the heritage layer is UK-shaped. Candidates:
+  a Wikimedia Commons geo-photo fallback where Geograph thins out,
+  Wikidata heritage-designation badges (P1435) as the international
+  answer to NHLE grades, and a local-language wiki merge later.
 
-Wikipedia geosearch already returns historical entities with no Google
-listing (old prisons, incidents, boundaries, plaques). Surface "history
-within ~150 m" as its own module. Free data; nothing on Google Maps offers it.
+## Tried and removed — the walk plan (#100 → #168, #203)
 
-## M4 — Walking companion
-
-- `watchPositionAsync`: live re-sort as you move, distances tick down
-- Compass heading: directional arrows to places
-- Free on-device geocoding for "search near a place" (location-denied fallback)
-
-## M5 — AI tour-guide blurbs (needs Anthropic API key)
-
-Claude Haiku fills the description gap for places with no Wikipedia article
-and no Google editorial summary (e.g. Bridget Jones's Flat). Server-side
-route, per-place cache, must-decline-when-unsure prompt, labeled AI-generated.
-Trust chain: Wikipedia → Google editorial → AI → nothing.
+Anchor-first walks: add stops with ＋ Walk, the app keeps order,
+▶ Play the walk speaks the tellings in sequence. Solidly built —
+hand-rolled reordering, persistence, an audio tour from cached
+tellings — and retired anyway ("eight files, one button, zero
+regrets"): a planning surface in an app whose whole promise is the
+ground you're already standing on. The debris sweep (#203) took the
+ghost screen with it. Lesson kept: Venture is where you stand, not an
+itinerary; the fragment worth rebuilding is "After this?" — chaining
+from the story you just finished, no plan required.
 
 ## Tried and removed — the Today section (#53 → #56)
 
@@ -52,27 +64,13 @@ sourced) but the section failed as a *destination*: coverage is
 inherently patchy day to day, first-load research took ~20s, and
 tapping an event led to venue info rather than event info. Lesson
 kept: AI-researched facts land when they decorate a place the user is
-already looking at (What's On, busyness notes), and disappoint when
-they must carry a surface alone. The good idea it leaves behind:
-day-aware What's On on venue screens ("Tonight · Quiz · 8pm").
-
-## Parked idea — concept queries for Activities
-
-Google's type taxonomy can't express some activity venues (e.g. Badger
-Badger: a board-game cafe typed only as a pub). When the Search milestone
-lands, consider enriching Activities with a few Text Search concept
-queries ("board game cafe", "escape room", "mini golf") merged into the
-type-based results — Text Search matches meaning, not just types.
-Deliberately not hacked in via name matching or manual lists.
-
-## Parallel track — Deployment (CD)
-
-When the Apple Developer membership activates: EAS dev/preview builds,
-EAS Hosting for the API routes (app stops depending on a laptop running
-Metro), deploys wired into GitHub Actions.
+already looking at, and disappoint when they must carry a surface
+alone. (The idea it left behind — day-aware What's On on venue
+screens — went with the venue screens at the pivot.)
 
 ## Working method
 
-Each milestone is a PR (or a few) through the gated pipeline. Small,
-well-scoped items get filed as GitHub issues for @claude to implement in the
-cloud; architectural work happens locally with simulator verification.
+Each item is a PR (or a few) through the gated pipeline: tests,
+typecheck, lint, review. UI work carries simulator evidence before it
+ships; data-layer work gets read line by line. Mocks before code for
+anything the user will see — and then the mock is the contract.
