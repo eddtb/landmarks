@@ -2,6 +2,7 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 import { Quiz, QuizQuestion } from '@/types/quiz';
+import { Coordinates } from '@/utils/geo';
 
 /**
  * The quiz client: a session cache in front of one ask per area.
@@ -12,8 +13,6 @@ import { Quiz, QuizQuestion } from '@/types/quiz';
  */
 
 const cache = new Map<string, Quiz | null>();
-
-export type QuizStory = { pageId: number; title: string; extract: string };
 
 /** A fresh dealing of [0..count): Fisher–Yates. */
 function dealtOrder(count: number): number[] {
@@ -76,28 +75,29 @@ export function orderedByYear<Item extends { year: number }>(items: Item[]): Ite
   return [...items].sort((a, b) => a.year - b.year);
 }
 
-/** The stories are the material; the area names the cache bucket. */
-export async function fetchQuiz(areaName: string, stories: QuizStory[]): Promise<Quiz | null> {
-  // The material is part of the identity: arriving somewhere new, or the
-  // feed widening, must be able to produce a different quiz. Sorted,
-  // because the SET is the material and the feed's order is not: it is
-  // distance-sorted from the reader's ~111m bucket, so the same twelve
-  // stories seen from a few paces away used to miss this cache and go
-  // back to the route for a quiz it already held (#280).
-  const key = `${areaName.toLowerCase()}:${stories
-    .map((story) => story.pageId)
-    .sort((a, b) => a - b)
-    .join(',')}`;
+/**
+ * The quiz for the ground the reader is standing on.
+ *
+ * Two arguments doing two different jobs. `center` is what goes on the
+ * wire, and it is ALL that goes on the wire: the route derives its own
+ * stories from it now, so the app no longer hands the server material
+ * to quiz from (#303). `areaName` never leaves the device — it is the
+ * session cache's key, and it is the area rather than the position on
+ * purpose: the server holds one quiz per area for 30 days, so walking
+ * the length of Greenwich should not send a single further request
+ * (#280). The name the client caches under is the same canonical
+ * article title the server will resolve those coordinates to.
+ */
+export async function fetchQuiz(areaName: string, center: Coordinates): Promise<Quiz | null> {
+  const key = areaName.toLowerCase();
   const cached = cache.get(key);
   if (cached !== undefined) {
     return cached;
   }
 
-  const response = await fetch(apiUrl('/api/quiz'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ area: areaName, stories }),
-  });
+  const response = await fetch(
+    apiUrl(`/api/quiz?lat=${center.latitude}&lng=${center.longitude}`)
+  );
   if (!response.ok) {
     throw new Error(`Quiz failed (${response.status})`);
   }

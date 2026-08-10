@@ -153,18 +153,16 @@ describe('<QuizScreen />', () => {
     expect(screen.getByText('Cutty Sark')).toBeOnTheScreen();
     expect(screen.getByText("Queen's House")).toBeOnTheScreen();
 
-    // It asks by the CANONICAL area name, never the display label
-    expect(mockFetchQuiz).toHaveBeenCalledWith('Greenwich', [
-      { pageId: 1, title: 'Cutty Sark', extract: 'The story of Cutty Sark.' },
-      { pageId: 2, title: "Queen's House", extract: "The story of Queen's House." },
-    ]);
+    // It caches by the CANONICAL area name, never the display label,
+    // and it sends the reader's position — nothing else. The feed's
+    // stories stay on the device now: the route finds its own (#303).
+    expect(mockFetchQuiz).toHaveBeenCalledWith('Greenwich', greenwich);
   });
 
-  test('sends the nearest dozen, not the whole feed', async () => {
-    // Deptford answers with 96 stories. Sending all of them made the
-    // route refuse the request and the tab show its error state on a
-    // real phone — the bug that no amount of route testing found,
-    // because the route was tested with a hand-made twelve.
+  test('the feed’s stories never leave the device, however deep the feed', async () => {
+    // Deptford answers with 96 stories. They used to ride in the
+    // request body, which is what made the quiz's material — and the
+    // place names rendered back as options — the caller's to choose.
     mockUseHistory.mockReturnValue({
       state: {
         status: 'ready',
@@ -176,8 +174,7 @@ describe('<QuizScreen />', () => {
     await render(<QuizScreen />);
     await screen.findByTestId('quiz-start');
 
-    const sent = mockFetchQuiz.mock.calls[0][1] as unknown[];
-    expect(sent).toHaveLength(12);
+    expect(mockFetchQuiz.mock.calls[0]).toEqual(['Greenwich', greenwich]);
   });
 
   test('the screen title stands down while a run is up — one screen, no scroll', async () => {
@@ -508,13 +505,26 @@ describe('<QuizScreen />', () => {
       expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
     });
 
-    test('while the feed and the area are still settling, it says what it is doing', async () => {
-      mockUseHistory.mockReturnValue({ state: { status: 'loading' }, refresh: jest.fn() });
+    test('while the questions are being set, it says what it is doing', async () => {
+      let settle: (quiz: Quiz | null) => void = () => {};
+      mockFetchQuiz.mockReturnValue(new Promise<Quiz | null>((resolve) => (settle = resolve)));
       await render(<QuizScreen />);
 
       expect(await screen.findByTestId('quiz-loading')).toBeOnTheScreen();
       expect(screen.getByText('Setting the questions…')).toBeOnTheScreen();
-      expect(mockFetchQuiz).not.toHaveBeenCalled();
+
+      settle(quiz);
+      expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
+    });
+
+    test('a still-loading feed no longer holds the quiz up — the ground is the server’s to find', async () => {
+      // It used to wait for the feed, because the feed WAS the material.
+      // Now the only thing worth waiting for is the area's name.
+      mockUseHistory.mockReturnValue({ state: { status: 'loading' }, refresh: jest.fn() });
+      await render(<QuizScreen />);
+
+      expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
+      expect(mockFetchQuiz).toHaveBeenCalledWith('Greenwich', greenwich);
     });
 
     test('an unsettled area name is not yet an answer — it waits, it does not ask', async () => {

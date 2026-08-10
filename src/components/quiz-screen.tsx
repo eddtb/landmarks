@@ -33,13 +33,6 @@ import { pointableStory } from '@/utils/quiz-direction';
 type Phase = 'loading' | 'ready' | 'none' | 'error';
 
 /**
- * How many of the feed's stories the quiz is set from. The server reads
- * the nearest twelve and its route refuses more than forty, so sending
- * the whole feed was both wasteful and a hard failure in any dense area.
- */
-const QuizStories = 12;
-
-/**
  * A crash in the quiz must not kill the tab. The pointing question is
  * driven by a sensor no simulator has and worklets no test executes for
  * real, so this is the one surface where a defect can reach a phone with
@@ -118,38 +111,23 @@ function QuizBody({
   // finding, 2026-08-06 — the largeTitle pushed the run into a scroll)
   const [begun, setBegun] = useState(false);
 
-  // The nearest dozen, and no more. The feed runs to ~100 stories in a
-  // dense area and the server only ever reads twelve — sending all of
-  // them made the route answer 413 "Body too large" and the tab said
-  // "Couldn't set the quiz right now" in Deptford, on a phone, while the
-  // route itself tested clean against a hand-made twelve.
-  const stories =
-    state.status === 'ready'
-      ? state.items
-          .filter((item) => item.extract?.trim())
-          .slice(0, QuizStories)
-          .map((item) => ({
-            pageId: item.pageId,
-            title: item.title,
-            extract: item.extract as string,
-          }))
-      : null;
-
   // No centre, no quiz. A quiz about Charing Cross, served without
   // comment to someone in Cupertino who tapped "Not now", is nonsense
   // wearing a straight face (and denying location is the first thing
   // an App Review reviewer does). Say what is needed instead, and
   // spend nothing. Exploring is different and stays: a pinned place is
   // somewhere the reader CHOSE, and quizzing it is the point of it.
+  //
+  // It is also the route's own precondition now: /api/quiz takes two
+  // finite numbers and nothing else (#303), so a null centre is not a
+  // degraded ask, it is no ask at all.
   const denied = center === null;
 
-  // Ask only once BOTH have settled: before the area is named the quiz
-  // would be keyed to a placeholder, and before the feed lands it would
-  // be set from three stories when twelve were coming.
-  const askKey =
-    !denied && stories && areaSettled && areaName
-      ? `${areaName}:${stories.map((story) => story.pageId).join(',')}:${attempt}`
-      : null;
+  // Ask once the area has settled, and not before: the name is what the
+  // quiz is cached under, so asking early would key it to a placeholder.
+  // It no longer waits for the feed — the stories are the server's to
+  // find now (#303), so a slow feed only delays the pointing finale.
+  const askKey = !denied && areaSettled && areaName ? `${areaName}:${attempt}` : null;
 
   // Adjust-during-render (the Gazetteer's own pattern): walking into a
   // new area must not leave the last area's quiz on screen while its own
@@ -164,11 +142,14 @@ function QuizBody({
   }
 
   useEffect(() => {
-    if (!askKey || !areaName || !stories) {
+    // center is non-null wherever askKey is (see `denied`), but the ask
+    // says so itself rather than leaning on that: the route's contract
+    // is two finite numbers, and this is where they are handed over.
+    if (!askKey || !areaName || !center) {
       return;
     }
     let active = true;
-    fetchQuiz(areaName, stories)
+    fetchQuiz(areaName, center)
       .then((next) => {
         if (!active) {
           return;
@@ -184,8 +165,10 @@ function QuizBody({
     return () => {
       active = false;
     };
-    // askKey carries the area and its stories — the only things that
-    // change what quiz this is
+    // askKey carries the area — the only thing that changes what quiz
+    // this is. The center rides along to name the ground to the server,
+    // and deliberately does NOT re-trigger: a few paces is the same
+    // area, and the same quiz (#280).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [askKey]);
 
