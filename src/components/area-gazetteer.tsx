@@ -22,7 +22,12 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExternalLink } from '@/components/external-link';
-import { GlassChip, GlassIslandHeader } from '@/components/glass-header';
+import {
+  ChromeEdgeInset,
+  GlassChip,
+  GlassIslandHeader,
+  StoryBackChip,
+} from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
 import { TellingLead, TellingSection } from '@/components/telling-section';
@@ -529,7 +534,10 @@ export function AreaGazetteer({
   // mounts and unmounts on the crossing, one JS hop per change.
   // Declared before the scroll handler that writes it.
   const heroCleared = useSharedValue(0);
-  const heroClearAt = HeroClearOffset + (chrome ? insets.top : 0);
+  // The hero is full-bleed on BOTH screens now (direction B): the tab
+  // keeps its magazine cover and wears no chrome until the cover has
+  // gone, exactly as the story screen does. One offset, no branch.
+  const heroClearAt = HeroClearOffset + insets.top;
   const [islandShown, setIslandShown] = useState(false);
   useAnimatedReaction(
     () => heroCleared.get(),
@@ -562,6 +570,11 @@ export function AreaGazetteer({
   // Which part the reader is in, for the island's counter — viewability
   // granularity, and it never regresses to zero between rows
   const [currentPart, setCurrentPart] = useState(1);
+  // …and whether they have left the telling for the ground beneath it.
+  // The counter is honest about where in the SCREEN you are: it counts
+  // parts while you are reading them and counts relics once you reach
+  // them, which is where the History tab's missing count line lands.
+  const [onGround, setOnGround] = useState(false);
   const onViewableRows = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
     const partsInView = viewableItems.filter(
       (token) => (token.item as GazetteerRow).kind === 'part'
@@ -570,13 +583,21 @@ export function AreaGazetteer({
     if (last) {
       setCurrentPart(last.index + 1);
     }
+    // The ground announces itself with its own section head, so the
+    // flip happens on the row the reader can see rather than on a
+    // scroll offset nobody can point at.
+    setOnGround(
+      viewableItems.some((token) => {
+        const kind = (token.item as GazetteerRow).kind;
+        return kind === 'relic' || kind === 'section';
+      })
+    );
   }, []);
-  // The bar earns its place: the track shows only when the story is
-  // taller than the screen — the same "nothing to read, no bar" rule
-  // readingProgress enforces for the fill
-  const [scrollable, setScrollable] = useState(false);
-  const frame = useRef({ content: 0, viewport: 0 });
-  const remeasure = () => setScrollable(frame.current.content - frame.current.viewport > 0);
+  // The bar no longer needs measuring for its own sake: it has ONE home
+  // now, along the island's base, and the island only exists once the
+  // reader has scrolled a hero's worth — which is the same question
+  // "is there anything to read?" asked by the screen instead of by a
+  // second measurement of the content box.
   const listRef = useRef<FlatList<GazetteerRow>>(null);
   const [article, setArticle] = useState<Article | null>(null);
   const [articleStatus, setArticleStatus] = useState<'pending' | 'ready' | 'none'>('pending');
@@ -943,10 +964,24 @@ export function AreaGazetteer({
     ]
   );
 
+  /**
+   * The island's counter slot, and the whole of what the History tab's
+   * missing count line became. It says where in the SCREEN the reader
+   * is: their place in the telling while they are in it, and the size
+   * of the ground once they have reached it. An area with no telling
+   * has no parts to count, so it counts relics from the first frame.
+   */
+  const partCount = retold?.parts.length ?? 0;
+  const islandCounter =
+    partCount > 0 && !onGround
+      ? `${currentPart} / ${partCount}`
+      : `${relics.length} ${relics.length === 1 ? 'relic' : 'relics'}`;
+
   return (
     <View style={styles.wrap}>
     <Animated.FlatList
       ref={listRef}
+      testID="gazetteer-list"
       data={rows}
       keyExtractor={keyExtractor}
       renderItem={renderItem}
@@ -957,14 +992,6 @@ export function AreaGazetteer({
       // The island's part counter reads the last part in view
       onViewableItemsChanged={onViewableRows}
       viewabilityConfig={partViewability}
-      onContentSizeChange={(_, height) => {
-        frame.current.content = height;
-        remeasure();
-      }}
-      onLayout={(event) => {
-        frame.current.viewport = event.nativeEvent.layout.height;
-        remeasure();
-      }}
       contentContainerStyle={{
         paddingBottom: Spacing.four + insets.bottom,
       }}
@@ -990,7 +1017,7 @@ export function AreaGazetteer({
                 areaName={areaLabel ?? areaName}
                 article={article}
                 retold={retold}
-                topInset={chrome ? insets.top : 0}
+                topInset={insets.top}
               />
             </Pressable>
             {(article.images ?? []).length > 1 && (
@@ -1025,19 +1052,26 @@ export function AreaGazetteer({
             )}
             {lead}
           </View>
-        ) : record && spokenName ? (
+        ) : spokenName ? (
           // The name renders whether or not an article does (#292). The
           // hero is the PHOTOGRAPHIC treatment of a title block that
           // always exists; with no photograph the block stands on the
-          // page in the same ramp and the same 24pt padding. Areas pass
-          // no record — the History tab's own section header already
-          // says where you are, and two largeTitles naming one place is
-          // worse than none.
+          // page in the same ramp and the same 24pt padding.
+          //
+          // AREAS take it too now. They used to lean on the History
+          // tab's own standing section header to say where the reader
+          // was — and direction B takes that header away, because the
+          // hero is the title. With no article there is no hero, so
+          // this block IS the title, and it is what the island later
+          // arrives to carry. A screen that never names its place was
+          // exactly the #292 regression.
           <View>
             <RecordTitle
               name={spokenName}
-              source={record.source}
-              topPad={chrome ? insets.top + ChipRowHeight + Spacing.three : Spacing.three}
+              source={record?.source}
+              topPad={
+                chrome ? insets.top + ChipRowHeight + Spacing.three : insets.top + Spacing.three
+              }
             />
             {lead}
           </View>
@@ -1061,29 +1095,6 @@ export function AreaGazetteer({
         )
       }
     />
-    {/* The violet reading bar (Edd's ask, returned): how far through
-        the story you are, riding the top edge of the scroll. The soft
-        track is the fix for "hasn't been built": a bare fill is zero
-        pixels before you scroll, and violet alone vanished into the
-        hero's shade — the track says the bar exists from the start */}
-    {/* Not on chrome screens: full-bleed put this track at the literal
-        screen top, where it read as a stray bar above the hero (Edd's
-        phone, 22:18, pixel-measured accentSoft) — there the island
-        carries the reading bar instead. The History tab keeps it. */}
-    {scrollable && !islandShown && !chrome && (
-      <View
-        pointerEvents="none"
-        style={[styles.progressTrack, { backgroundColor: theme.accentSoft }]}
-        testID="reading-progress">
-        <Animated.View
-          style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
-        />
-      </View>
-    )}
-    {/* The arriving island (Edd's mock pick): once the hero's title
-        clears, the glass carries it on — with your place in the parts
-        and the reading bar living along its base instead of the bare
-        screen-top track above */}
     {/* A story screen's standing chrome: back and the ⋯, floating as
         glass chips over the full-bleed hero — the native header's job,
         rehoused (Edd's ask). They stand down when the island arrives
@@ -1095,23 +1106,15 @@ export function AreaGazetteer({
         with a white chevron floating on a white page is the rule read
         backwards. On the page they take the island's rendering: theme
         glass, theme ink, and the ⋯ drawn for a theme surface. */}
-    {chrome && !(islandShown && retold) && (
+    {chrome && !islandShown && (
       <View
         style={[styles.chipRow, { top: insets.top + Spacing.two }]}
         pointerEvents="box-none">
-        <GlassChip circle over={onPhoto ? 'photo' : 'page'} testID="back-chip">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Back to ${chrome.backLabel}`}
-            testID="story-back"
-            onPress={chrome.onBack}
-            hitSlop={Spacing.two}
-            style={styles.circlePress}>
-            <ThemedText type="title" style={[styles.chevron, onPhoto && styles.chipGlyph]}>
-              ‹
-            </ThemedText>
-          </Pressable>
-        </GlassChip>
+        <StoryBackChip
+          backLabel={chrome.backLabel}
+          over={onPhoto ? 'photo' : 'page'}
+          onPress={chrome.onBack}
+        />
         {(onPhoto ? chrome.menuOnPhoto : chrome.menu) && (
           <GlassChip circle over={onPhoto ? 'photo' : 'page'}>
             {onPhoto ? chrome.menuOnPhoto : chrome.menu}
@@ -1119,11 +1122,19 @@ export function AreaGazetteer({
         )}
       </View>
     )}
-    {islandShown && retold && (
-      <GlassIslandHeader
-        onHeight={noHeight}
-        passThrough={!chrome}
-        topOffset={chrome ? undefined : 0}>
+    {/* The arriving island (direction B, #300): an island exists to
+        carry a title the screen can no longer show, so it arrives on
+        the hero clearing and on NOTHING ELSE. It used to be gated on
+        `islandShown && retold`, which meant an area Wikipedia never
+        retold scrolled forever with no chrome and no title — not "late",
+        never. The gate belongs on the hero, not on whether the AI had
+        something to say.
+
+        The tab gets the same one professional row minus the chevron,
+        which the tab pill makes unnecessary, and the reading bar lives
+        along its base — the app's one progress idiom, with one home. */}
+    {islandShown && (
+      <GlassIslandHeader onHeight={noHeight} passThrough={!chrome}>
         <View style={styles.islandInner} testID="gazetteer-island">
           {/* One professional row (Edd, 22:25): chevron · title · count
               · menu, with the reading bar along the base */}
@@ -1143,8 +1154,8 @@ export function AreaGazetteer({
             <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
               The story of {areaLabel ?? areaName}
             </ThemedText>
-            <ThemedText type="eyebrow" themeColor="textSecondary">
-              {currentPart} / {retold.parts.length}
+            <ThemedText type="eyebrow" themeColor="textSecondary" testID="island-counter">
+              {islandCounter}
             </ThemedText>
             {chrome?.menu}
           </View>
@@ -1181,16 +1192,22 @@ function RecordTitle({
   topPad,
 }: {
   name: string;
-  source: string;
-  /** Clears the floating chips on a chrome screen; a breath otherwise. */
+  /** A record's source is the whole of what we know about it. An AREA
+   *  with no article has no such line to give — and no source is a
+   *  correct answer, so the block is the name alone. */
+  source?: string;
+  /** Clears the floating chips on a chrome screen; the status bar
+   *  otherwise — every gazetteer runs full-bleed now. */
   topPad: number;
 }) {
   return (
     <View style={[styles.recordTitle, { paddingTop: topPad }]} testID="gazetteer-title">
       <ThemedText type="largeTitle">{name}</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        {source}
-      </ThemedText>
+      {source && (
+        <ThemedText type="small" themeColor="textSecondary">
+          {source}
+        </ThemedText>
+      )}
     </View>
   );
 }
@@ -1416,27 +1433,17 @@ const styles = StyleSheet.create({
   },
   chipRow: {
     position: 'absolute',
-    left: Spacing.three - 4,
-    right: Spacing.three - 4,
+    left: ChromeEdgeInset,
+    right: ChromeEdgeInset,
     zIndex: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  circlePress: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   // Sized to read as an icon, nudged up — the glyph's baseline sits low
   chevron: {
     lineHeight: 24,
     marginTop: -2,
-  },
-  // Over the photo scrim the glyph is always white, whatever the scheme
-  chipGlyph: {
-    color: '#FFFFFF',
   },
   islandInner: {
     paddingHorizontal: Spacing.three,
@@ -1459,13 +1466,6 @@ const styles = StyleSheet.create({
   },
   // 4px, not 3: thick enough to register at a glance, thin enough to
   // stay a bar and not a banner
-  progressTrack: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-  },
   progressFill: {
     height: 4,
   },

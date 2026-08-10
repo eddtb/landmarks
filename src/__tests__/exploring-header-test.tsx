@@ -51,10 +51,19 @@ jest.mock('@/hooks/use-history', () => ({
 }));
 
 // The Gazetteer hero is its own tested surface — a stub keeps these
-// tests on the header
+// tests on the chrome. It renders `lead`, because with the History
+// tab's standing header gone that slot is where the mode admission
+// lives (direction B, #300).
 jest.mock('@/components/area-gazetteer', () => {
-  const { Text: RNText } = jest.requireActual('react-native');
-  return { AreaGazetteer: () => <RNText>gazetteer body</RNText> };
+  const { Text: RNText, View: RNView } = jest.requireActual('react-native');
+  return {
+    AreaGazetteer: ({ lead }: { lead?: ReactNode }) => (
+      <RNView>
+        <RNText>gazetteer body</RNText>
+        {lead}
+      </RNView>
+    ),
+  };
 });
 
 function gpsLive() {
@@ -272,17 +281,18 @@ describe('the pin is shared across tabs', () => {
     </>
   );
 
-  test('a pin dropped on Nearby pins History too — same center, both headers', async () => {
+  test('a pin dropped on Nearby pins History too — both tabs admit the mode', async () => {
     gpsLive();
     const screen = await render(bothTabs());
-    // Both tabs carry a header now (#292): History's used to appear
-    // only when the hero couldn't stand in for it
-    expect(screen.getAllByTestId('area-title')).toHaveLength(2);
+    // Only Nearby's island carries the search affordance now: History
+    // wears no chrome at rest (direction B), so there is one title.
+    expect(screen.getAllByTestId('area-title')).toHaveLength(1);
 
     await searchFor(screen, 'Alnwick');
 
+    // Nearby says it in its island, History in its flow — the SAME pin
     await waitFor(() => expect(screen.getAllByText('Exploring')).toHaveLength(2));
-    expect(screen.getAllByText('Alnwick')).toHaveLength(2); // the SAME pinned center
+    expect(screen.getByText('Alnwick')).toBeOnTheScreen();
     expect(screen.getAllByText('Back to near me')).toHaveLength(2);
   });
 
@@ -298,8 +308,9 @@ describe('the pin is shared across tabs', () => {
     expect(screen.queryByText('Exploring')).toBeNull();
     expect(screen.queryByText('Back to near me')).toBeNull();
     expect(screen.getByText('Nearby')).toBeOnTheScreen();
-    // Both headers came home to the live fix, and both say so
-    expect(screen.getAllByText('Greenwich')).toHaveLength(2);
+    // Both tabs came home to the live fix; the one that still has
+    // chrome at rest says so, and the other has stopped saying anything
+    expect(screen.getByText('Greenwich')).toBeOnTheScreen();
   });
 });
 
@@ -338,35 +349,39 @@ describe('standing-on suppression while exploring', () => {
   });
 });
 
-describe('the Exploring header (HistoryArchiveScreen)', () => {
-  test('GPS live: the header stands and names the place — the hero is not its deputy', async () => {
-    // It used to mount only when denied or exploring, on the reasoning
-    // that the hero would name the area. The hero needs an article, so
-    // a located reader in an unwritten place got a screen that never
-    // said where they were (#292).
+describe('the History tab wears no chrome at rest (direction B, #300)', () => {
+  test('GPS live: the hero IS the header, so nothing repeats it', async () => {
+    // The standing SectionHeader is gone: an island exists to carry a
+    // title the screen can no longer show, and at rest the hero is
+    // showing it. #292's rule — a located reader must never get a
+    // screen that fails to say where they are — is kept by the
+    // gazetteer itself, which now renders its title block on the page
+    // when no article resolves (fenced in gazetteer-chrome-test).
     gpsLive();
     const screen = await render(<HistoryArchiveScreen />);
-    expect(screen.getByText('History')).toBeOnTheScreen();
-    expect(screen.getByText('Greenwich')).toBeOnTheScreen();
     expect(screen.getByText('gazetteer body')).toBeOnTheScreen();
+    expect(screen.queryByText('History')).toBeNull();
+    // …and no island either: it arrives on the hero clearing, not on mount
+    expect(screen.queryByTestId('glass-island')).toBeNull();
   });
 
-  test('refused: the HISTORY header, and the invitation carries the search', async () => {
+  test('refused: the invitation carries the search, and is below the notch', async () => {
     gpsDenied();
     const screen = await render(<HistoryArchiveScreen />);
-    expect(screen.getByText('History')).toBeOnTheScreen();
     expect(screen.getByPlaceholderText(PlaceSearchPlaceholder)).toBeOnTheScreen();
     // The gazetteer itself stands down — it is written ABOUT a place
     expect(screen.queryByText('gazetteer body')).toBeNull();
+    // The refusal is not lost copy, it is the invitation's own heading
+    expect(screen.getByText('The Gazetteer is written about a place')).toBeOnTheScreen();
   });
 
-  test('exploring: the header appears and owns the mode', async () => {
+  test('exploring: the mode is admitted in the flow, with the way home', async () => {
     gpsDenied();
     const screen = await render(<HistoryArchiveScreen />);
     await submitSearch(screen, 'Alnwick');
 
-    await waitFor(() => expect(screen.getByText('Exploring')).toBeOnTheScreen());
-    expect(screen.queryByText('History')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('gazetteer-exploring')).toBeOnTheScreen());
+    expect(screen.getByText('Exploring')).toBeOnTheScreen();
     expect(screen.getByText('Back to near me')).toBeOnTheScreen();
     expect(screen.getByText('gazetteer body')).toBeOnTheScreen();
   });

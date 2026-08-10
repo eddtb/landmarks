@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
-import { BrandPurple, BrandWarm, BrandWarmInk, Spacing } from '@/constants/theme';
+import { BrandPurple, BrandWarm, BrandWarmInk, Radius, Spacing } from '@/constants/theme';
 import { requestLocationPermission, useLocationPermission } from '@/hooks/use-location';
 
 export const ONE_DOOR_DISMISSED_KEY = 'one-door-dismissed-v1';
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
   enable: {
     marginTop: Spacing.two,
     backgroundColor: BrandWarm,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingVertical: Spacing.three - Spacing.half,
     alignItems: 'center',
   },

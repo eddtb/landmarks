@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { QuizDirection } from '@/components/quiz-direction';
 import { ThemedText } from '@/components/themed-text';
-import { BrandWarmInk, Colors, Spacing } from '@/constants/theme';
+import { BrandWarmInk, Colors, Radius, Spacing } from '@/constants/theme';
 import { orderedByYear } from '@/data/quiz-client';
 import { Ranks, rankFor, recordRun, useAreaProgress } from '@/data/quiz-progress';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -31,6 +31,13 @@ import { DirectionQuestion } from '@/utils/quiz-direction';
 
 type RunResult = { label: string; right: boolean; pageId: number };
 
+/**
+ * The run's three surfaces. Two of them are things you BROWSE and wear
+ * the tab's island; the middle one is the app asking, and owns the
+ * screen alone (direction B, #300).
+ */
+export type RunStage = 'start' | 'question' | 'results';
+
 /** What the reveal says instead of colouring. */
 const RightChosen = 'Right — you chose this';
 const RightNotChosen = 'The answer';
@@ -42,6 +49,7 @@ export function QuizRun({
   areaLabel,
   begun,
   onBegin,
+  onStage,
 }: {
   quiz: Quiz;
   pointing: DirectionQuestion | null;
@@ -50,6 +58,10 @@ export function QuizRun({
   areaLabel: string | null;
   begun: boolean;
   onBegin: () => void;
+  /** Which of the three surfaces is up, so the screen can stand its
+   *  island down for a question and back up for the results. `begun`
+   *  cannot answer it: it stays true through the results. */
+  onStage?: (stage: RunStage) => void;
 }) {
   const [index, setIndex] = useState(0);
   const [results, setResults] = useState<RunResult[]>([]);
@@ -62,6 +74,17 @@ export function QuizRun({
     setResults((previous) => [...previous, result]);
     setIndex((previous) => previous + 1);
   };
+
+  // Declared before the returns below, which is what keeps the report
+  // honest: every surface this component can render is named here once.
+  const stage: RunStage = !begun
+    ? 'start'
+    : question || (pointing && index === written)
+      ? 'question'
+      : 'results';
+  useEffect(() => {
+    onStage?.(stage);
+  }, [stage, onStage]);
 
   if (!begun) {
     return <StartCard quiz={quiz} total={total} onBegin={onBegin} />;
@@ -161,8 +184,14 @@ function spelt(count: number): string {
   return words[count] ?? String(count);
 }
 
-/** The run's whole header: area, count, and the segmented bar — the
- *  compact stand-in for the screen title while a run is up. */
+/** The run's whole header: area, count, and the progress bar — the
+ *  compact stand-in for the screen title while a run is up.
+ *
+ *  ONE progress idiom (direction B, #300). Six segments used to say
+ *  here what a 4pt accent-on-accentSoft bar says on every reading
+ *  screen, so the app had two ways of drawing the same fact. The bar
+ *  won because it is the one that scales: it reads identically at six
+ *  questions and at three, which the segments did not. */
 function Progress({
   label,
   index,
@@ -175,6 +204,14 @@ function Progress({
   const theme = useTheme();
   return (
     <View style={styles.progressBlock}>
+      <View style={[styles.progress, { backgroundColor: theme.accentSoft }]} testID="quiz-progress">
+        <View
+          style={[
+            styles.progressFill,
+            { backgroundColor: theme.accent, width: `${(index / total) * 100}%` },
+          ]}
+        />
+      </View>
       <View style={styles.progressWords}>
         {label && (
           <ThemedText type="eyebrow" themeColor="accent">
@@ -184,17 +221,6 @@ function Progress({
         <ThemedText type="eyebrow" themeColor="textSecondary">
           {index + 1} of {total}
         </ThemedText>
-      </View>
-      <View style={styles.progress} testID="quiz-progress">
-        {Array.from({ length: total }, (_, segment) => (
-          <View
-            key={segment}
-            style={[
-              styles.segment,
-              { backgroundColor: segment < index ? theme.accent : theme.backgroundSelected },
-            ]}
-          />
-        ))}
       </View>
     </View>
   );
@@ -594,7 +620,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
@@ -605,15 +631,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.two,
     alignItems: 'baseline',
+    justifyContent: 'space-between',
   },
+  // The reading bar's exact track: 4pt, thick enough to register at a
+  // glance, thin enough to stay a bar and not a banner
   progress: {
-    flexDirection: 'row',
-    gap: Spacing.one,
-  },
-  segment: {
-    flex: 1,
-    height: 3,
+    height: 4,
     borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: 4,
   },
   option: {
     gap: Spacing.one,
@@ -631,7 +659,7 @@ const styles = StyleSheet.create({
   orderBadge: {
     width: Spacing.four,
     height: Spacing.four,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -642,7 +670,7 @@ const styles = StyleSheet.create({
   pill: {
     alignItems: 'center',
     paddingVertical: Spacing.three,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     marginTop: Spacing.two,
   },
   scoreHero: {
@@ -663,7 +691,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   rankChip: {
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },

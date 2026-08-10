@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FlatList, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GlassIslandHeader, IslandBreath } from '@/components/glass-header';
+import { GlassIslandHeader, useIslandInset } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -31,6 +31,9 @@ export function SavedScreen() {
   // The island reports its height; the shelf starts below it and
   // slides beneath it on scroll. A sane guess until first layout.
   const [islandHeight, setIslandHeight] = useState(44);
+  // ONE origin, shared with Nearby and Quiz (#300): this screen used to
+  // add insets.top itself while Nearby let a SafeAreaView supply it.
+  const topInset = useIslandInset(islandHeight);
 
   if (saved === null) {
     return <ThemedView style={styles.screen} testID="saved-screen" />;
@@ -42,7 +45,7 @@ export function SavedScreen() {
         data={saved}
         keyExtractor={(place) => String(place.item.pageId)}
         contentContainerStyle={{
-          paddingTop: insets.top + islandHeight + IslandBreath,
+          paddingTop: topInset,
           paddingBottom: Spacing.four + insets.bottom,
         }}
         ListHeaderComponent={saved.length > 0 ? <KeepOfflineRow /> : null}

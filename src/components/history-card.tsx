@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { GlassChip } from '@/components/glass-header';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useJournalEntry } from '@/data/journal';
@@ -62,13 +63,16 @@ export function HistoryCard({ item, archive, saved }: Props) {
           />
         )}
         {item.thumbnailUrl && journalWord && (
-          // Translucent, not blurred: expo-blur isn't a dependency this
-          // chip earns, and 55% ink over a photo reads frosted anyway
-          <View style={styles.glassTick} testID="read-tick">
+          // THE chip, not a copy of it. This mark predated GlassChip and
+          // hand-rolled the same pill from its own grey, which made it
+          // the one chip in the app that never got real glass on iOS 26.
+          // It is a worded mark on a photograph, so it takes the photo
+          // material at the label's lighter weight.
+          <GlassChip over="photo" style={styles.glassTick} testID="read-tick">
             <ThemedText type="captionBold" style={styles.glassTickText}>
               ✓&ensp;{journalWord}
             </ThemedText>
-          </View>
+          </GlassChip>
         )}
         <View style={styles.body}>
           {archive && (item.pastTag || item.source.startsWith('Open Plaques')) && (
@@ -116,16 +120,13 @@ const styles = StyleSheet.create({
   archive: {
     borderLeftWidth: 3,
   },
+  // Geometry only — the material is the chip's, from the Glass tokens
   glassTick: {
     position: 'absolute',
     top: Spacing.two + 2,
     right: Spacing.two + 2,
-    backgroundColor: 'rgba(22, 22, 26, 0.55)',
-    borderRadius: 999,
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three - 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   glassTickText: {
     color: '#FFFFFF',

@@ -2,13 +2,15 @@ import { Component, ReactNode, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { QuizRun } from '@/components/quiz-run';
+import { GlassIslandHeader, IslandTitle, useIslandInset } from '@/components/glass-header';
+import { QuizRun, RunStage } from '@/components/quiz-run';
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
 import { fetchQuiz } from '@/data/quiz-client';
+import { rankFor, useAreaProgress } from '@/data/quiz-progress';
 import { useAreaName } from '@/hooks/use-area-name';
 import { useHistory } from '@/hooks/use-history';
 import { useTheme } from '@/hooks/use-theme';
@@ -110,6 +112,14 @@ function QuizBody({
   // down, so a question and its options fit one screen (Edd's phone
   // finding, 2026-08-06 — the largeTitle pushed the run into a scroll)
   const [begun, setBegun] = useState(false);
+  // Which of the run's three surfaces is up. The start card and the
+  // results are surfaces you BROWSE, so the island stands on both; a
+  // question is the app asking, the one place it does, so the chrome
+  // stands down and the question owns the screen (direction B, #300).
+  // `begun` cannot answer this on its own — it stays true through the
+  // results, which are a surface again.
+  const [stage, setStage] = useState<RunStage>('start');
+  const [islandHeight, setIslandHeight] = useState(96);
 
   // No centre, no quiz. A quiz about Charing Cross, served without
   // comment to someone in Cupertino who tapped "Not now", is nonsense
@@ -139,6 +149,7 @@ function QuizBody({
     setQuiz(null);
     // A new area's quiz opens on its start card, not mid-run
     setBegun(false);
+    setStage('start');
   }
 
   useEffect(() => {
@@ -192,28 +203,30 @@ function QuizBody({
   // The run carries its own compact header (area · count · progress);
   // the screen's title would only push it into a scroll
   const running = begun && !denied && resolved === 'ready' && Boolean(quiz);
+  // An island either stands or arrives (DESIGN.md, Glass). This one
+  // stands — the quiz tab's title is the screen's own — and stands DOWN
+  // for a question, which is the 2026-08-06 phone finding made into a
+  // rule instead of a special case: the run needs that ~80pt.
+  const islandStands = !(running && stage === 'question');
+  const islandInset = useIslandInset(islandHeight);
 
   return (
-    // ThemedView for the ground, SafeAreaView for the top edge — the
-    // Nearby tab's own arrangement. Without the safe area the title drew
-    // underneath the status bar clock (caught on Edd's phone); without
-    // ThemedView the screen loses its themed background in dark mode.
+    // ThemedView for the ground; the island pays the top edge for the
+    // whole screen (useIslandInset), so the SafeAreaView keeps only the
+    // horizontal ones. Without ThemedView the screen loses its themed
+    // background in dark mode.
     <ThemedView style={styles.screen}>
-      <SafeAreaView style={styles.screen} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.screen} edges={['left', 'right']}>
         <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: Spacing.four + insets.bottom }]}>
-          {/* A pinned place is a mode the header must admit, exactly as
-              Nearby's does: accent eyebrow, and the worded way home. */}
-          {!running && (
-            <>
-              <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
-                {exploring ? 'Exploring · test yourself on' : 'Test yourself on'}
-              </ThemedText>
-              <ThemedText type="largeTitle">
-                {denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
-              </ThemedText>
-            </>
-          )}
+          contentContainerStyle={[
+            styles.content,
+            {
+              // Chrome-less mid-question: the content takes the notch
+              // back and keeps the height an island would have spent.
+              paddingTop: islandStands ? islandInset : insets.top + Spacing.two,
+              paddingBottom: Spacing.four + insets.bottom,
+            },
+          ]}>
 
           {denied && (
             <View style={styles.centered} testID="quiz-denied">
@@ -258,16 +271,6 @@ function QuizBody({
             </View>
           )}
 
-          {exploring && !running && (
-            <Pressable
-              accessibilityRole="button"
-              testID="quiz-back-to-near-me"
-              onPress={onBackToNearMe}
-              hitSlop={Spacing.two}>
-              <ThemedText type="linkPrimary">Back to near me</ThemedText>
-            </Pressable>
-          )}
-
           {!denied && resolved === 'ready' && quiz && (
             <QuizGuard onRetry={retry}>
               <QuizRun
@@ -276,13 +279,61 @@ function QuizBody({
                 areaLabel={denied ? null : areaLabel}
                 begun={begun}
                 onBegin={() => setBegun(true)}
+                onStage={setStage}
                 key={quiz.areaName}
               />
             </QuizGuard>
           )}
         </ScrollView>
       </SafeAreaView>
+      {/* After the body so it paints above, and a DIRECT child of the
+          screen surface — the one arrangement useIslandInset assumes. */}
+      {islandStands && (
+        <GlassIslandHeader onHeight={setIslandHeight}>
+          <View style={styles.island} testID="quiz-island">
+            {/* A pinned place is a mode the chrome must admit, exactly
+                as Nearby's does: accent eyebrow, and the worded way
+                home. The eyebrow is the TAB's name — the nameplate
+                grammar wants it there, and the start card already says
+                what the run is. */}
+            <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
+              {exploring ? 'Exploring · Quiz' : 'Quiz'}
+            </ThemedText>
+            <IslandTitle
+              title={denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
+              hollow={Boolean(exploring) || denied}
+            />
+            <QuizStanding areaName={areaName} />
+            {exploring && (
+              <Pressable
+                accessibilityRole="button"
+                testID="quiz-back-to-near-me"
+                onPress={onBackToNearMe}
+                hitSlop={Spacing.two}>
+                <ThemedText type="linkPrimary">Back to near me</ThemedText>
+              </Pressable>
+            )}
+          </View>
+        </GlassIslandHeader>
+      )}
     </ThemedView>
+  );
+}
+
+/**
+ * The island's status line: your standing on this ground, not this
+ * run's score. DESIGN.md's rule for the line under an island title is
+ * that it is the screen's STATUS line — Nearby's count, History's
+ * relics, and here the rank the ground remembers.
+ */
+function QuizStanding({ areaName }: { areaName: string | null }) {
+  const progress = useAreaProgress(areaName ?? '');
+  const correct = progress?.correct ?? 0;
+  const rank = rankFor(correct);
+  return (
+    <ThemedText type="small" themeColor="textSecondary" testID="quiz-standing">
+      {correct > 0 ? `${rank} · ${correct} right on this ground` : `${rank} · no answers here yet`}
+    </ThemedText>
   );
 }
 
@@ -292,8 +343,13 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
     gap: Spacing.one,
+  },
+  island: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.three - 4,
+    gap: Spacing.half,
   },
   centered: {
     alignItems: 'center',
