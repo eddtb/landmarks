@@ -13,9 +13,79 @@ name: Publish OTA update to production
 # fingerprint, and phones on the old binary simply stop being offered
 # the update instead of crashing on it. When that happens the answer is
 # a new build, never a policy loosening.
+#
+# Until #288 this file was a single `type: update` job, so the run that
+# reached every phone was the ONLY route to production that skipped
+# typecheck, lint and tests. scripts/preflight-ota.sh said otherwise and
+# nothing ran it. The gate below is the same bar as a build, plus the one
+# check only an OTA needs: an update published against a fingerprint no
+# finished binary carries is offered to nobody, and looks identical to an
+# update everybody got.
+#
+# Run scripts/preflight-ota.sh first anyway. It checks what a worker
+# cannot see — an uncommitted app.json, and a HEAD that is not on the
+# reviewed line — and it fails in seconds instead of minutes.
 jobs:
+  checks:
+    name: Typecheck, lint and test
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      # expo-env.d.ts and .expo/types are gitignored; the typecheck needs
+      # them, exactly as ci.yml regenerates them
+      - name: Generate Expo types
+        run: npx expo customize tsconfig.json
+      - name: Typecheck
+        run: npm run typecheck
+      # --max-warnings 0 to match ci.yml and the pre-push hook. The
+      # publish with no review after it must not be the loosest check.
+      - name: Lint
+        run: npm run lint -- --max-warnings 0
+      - name: Test
+        run: npm test -- --ci
+
+  fingerprint:
+    name: Fingerprint the native runtime
+    needs: [checks]
+    type: fingerprint
+    # Must match the build profile's environment, or the hash is computed
+    # against a different set of variables than the binary was
+    environment: production
+
+  matching_build:
+    name: Find a finished build that runs this fingerprint
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: ios
+      channel: production
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+
+  require_matching_build:
+    name: Refuse an update no binary can receive
+    # fingerprint is listed as well as matching_build because this job reads
+    # an output from each, and a transitive dependency is not a promise
+    needs: [fingerprint, matching_build]
+    # get-build reports an unmatched build as empty outputs rather than a
+    # failure, so the absence has to be turned into one here — otherwise
+    # the publish proceeds and succeeds and reaches nobody.
+    steps:
+      - name: A finished production build must run this exact fingerprint
+        run: |
+          if [ -z "${{ needs.matching_build.outputs.build_id }}" ]; then
+            echo "No finished iOS build on the production channel carries fingerprint"
+            echo "${{ needs.fingerprint.outputs.ios_fingerprint_hash }}."
+            echo
+            echo "Something native has changed since the binaries on that channel were"
+            echo "made, so an update published now would be offered to no phone at all."
+            echo "The answer is a new build — never a looser runtimeVersion policy."
+            exit 1
+          fi
+          echo "Build ${{ needs.matching_build.outputs.build_id }} runs this fingerprint."
+
   publish_production_update:
     name: Publish update to the production channel
+    needs: [require_matching_build]
     type: update
     params:
       platform: ios
