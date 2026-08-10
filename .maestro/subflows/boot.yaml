@@ -27,6 +27,9 @@ appId: com.eddtb.landmarks
       visible: 'Development servers'
     commands:
       - openLink: exp+landmarks://expo-development-client/?url=${METRO_URL}
+      # iOS 26 asks before it hands the URL over. Unanswered, the
+      # relink never happens AND the alert owns the hierarchy.
+      - runFlow: confirm-open.yaml
       # The dev-menu welcome mat only rides in AFTER the JS bundle
       # loads — a one-shot guard here races it and loses (verified on
       # the sim: guard checked, SKIPPED, mat arrived a beat later).

@@ -18,6 +18,7 @@ appId: com.eddtb.landmarks
 # A real story: Royal Naval College, Greenwich — pageId 40729675 in
 # the committed e2e-fixtures/history.json (re-record both together)
 - openLink: landmarks://history/40729675
+- runFlow: subflows/confirm-open.yaml
 - extendedWaitUntil:
     visible:
       id: 'story-screen'
@@ -30,6 +31,7 @@ appId: com.eddtb.landmarks
 # A bogus id: /api/story 404s, the screen says so, nothing crashes.
 # Maestro text asserts are FULL-STRING regexes — wrap substrings.
 - openLink: landmarks://history/999999
+- runFlow: subflows/confirm-open.yaml
 - extendedWaitUntil:
     visible: '.*could not be found.*'
     timeout: 20000
