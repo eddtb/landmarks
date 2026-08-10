@@ -172,17 +172,58 @@ around it looks identical. Two things opt a component out:
 2. **`// eslint-disable-next-line react-hooks/*`.** One disable comment
    de-optimises the whole component it sits in.
 
-Verify rather than assume — transform the file and look for its
-`_c(n)` cache:
+Verify rather than assume — ask the compiler and read its own log:
 
 ```
-npx babel src/components/thing.tsx \
-  --presets babel-preset-expo --plugins @babel/plugin-syntax-jsx | grep '_c('
+node scripts/react-compiler-scan.js
 ```
 
-A component absent from that output is not compiled. Adding a
-derivation to such a file costs per-render work that nothing will
-report.
+It runs the real pipeline (`babel-preset-expo` with
+`supportsReactCompiler`, Metro's production caller) over every `.tsx` in
+`src/components` and `src/app`, and prints what compiled, what bailed
+and why — the reason is the compiler's own, from its logger, not a guess
+read off the output. A component absent from the compiled list is not
+compiled; adding a derivation to it costs per-render work that nothing
+will report. `src/__tests__/react-compiler-test.ts` runs the same scan in
+CI, and fails on a new bail.
+
+**Do not hand-roll this.** This file used to recommend
+`npx babel <file> --presets babel-preset-expo | grep '_c('`. There is no
+`@babel/cli` in this tree, so `npx babel` fetches the abandoned babel@6
+shim and throws. A `@babel/core` one-liner does not work either: without
+`caller.supportsReactCompiler` the preset never adds the compiler plugin
+at all, and the file transforms clean with zero `_c(` — indistinguishable
+from "nothing compiled". That is how `glass-header.tsx` was read as
+compiling nothing when it compiles three components. Grepping for `_c(`
+also cannot say WHICH function bailed, or why. Run the script.
+
+
+# Design rules that enforce themselves
+
+Every rule in `docs/DESIGN.md` used to be enforced by reading, and the
+August 2026 review found the same shape repeatedly: a rule written down,
+obeyed by hand, quietly broken (#299). Four fences now fail instead
+(`app-config-test.ts` was the precedent — the fence lives in the suite,
+because the suite is what CI runs):
+
+| Fence | Catches |
+|---|---|
+| `src/__tests__/palette-test.ts` | a colour literal in `src/components`/`src/app` outside the allowlist; white text on a `theme.accent` surface; a native splash/icon colour that has left the palette |
+| `src/__tests__/type-ramp-test.ts` | a fourth inline `fontSize`; a sanctioned one that stops explaining itself; a `ThemedText` tier defined and rendered nowhere |
+| `src/__tests__/control-names-test.ts` | a glyph reaching a tappable's accessible name (a drawn glyph is fine — give it an `accessibilityLabel`) |
+| `src/__tests__/react-compiler-test.ts` | a load-bearing component that stopped compiling, and any new silent bail |
+
+`eslint.config.js` carries the palette rule too, at typing speed: its
+granularity is the FILE, the test's is the VALUE, and the test asserts
+the two lists agree.
+
+**`src/test-utils/design-allowlist.ts` is the ledger.** Two kinds of
+entry, and the difference is the whole point: `Sanctioned*` is approved
+with the reason at the entry; `Quarantined*` is a known violation that
+is scheduled, not forgiven. Both are asserted EXACTLY — fix a
+quarantined violation and the fence fails, telling you to delete its
+entry. The lists can only shrink. **Never add to a `Quarantined*` list
+to get green**; that is the failure mode these fences exist to stop.
 
 
 # Do not run `npm audit fix --force`
