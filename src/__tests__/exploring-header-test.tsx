@@ -81,9 +81,10 @@ beforeEach(() => {
   mockUseHistory.mockReturnValue({ state: { status: 'ready', items: [] }, refresh: jest.fn() });
 });
 
-/** Drive the header's search: open via the title, type, submit. */
+/** Drive the header's search: open via the title, type, submit. Both
+ * tabs wear a header now, so a two-tab render is driven from the first. */
 async function searchFor(screen: Awaited<ReturnType<typeof render>>, query: string) {
-  await fireEvent.press(screen.getByTestId('area-title'));
+  await fireEvent.press(screen.getAllByTestId('area-title')[0]);
   await submitSearch(screen, query);
 }
 
@@ -274,8 +275,9 @@ describe('the pin is shared across tabs', () => {
   test('a pin dropped on Nearby pins History too — same center, both headers', async () => {
     gpsLive();
     const screen = await render(bothTabs());
-    // GPS live: only Nearby has a header to search from
-    expect(screen.getAllByTestId('area-title')).toHaveLength(1);
+    // Both tabs carry a header now (#292): History's used to appear
+    // only when the hero couldn't stand in for it
+    expect(screen.getAllByTestId('area-title')).toHaveLength(2);
 
     await searchFor(screen, 'Alnwick');
 
@@ -296,7 +298,8 @@ describe('the pin is shared across tabs', () => {
     expect(screen.queryByText('Exploring')).toBeNull();
     expect(screen.queryByText('Back to near me')).toBeNull();
     expect(screen.getByText('Nearby')).toBeOnTheScreen();
-    expect(screen.getByText('Greenwich')).toBeOnTheScreen();
+    // Both headers came home to the live fix, and both say so
+    expect(screen.getAllByText('Greenwich')).toHaveLength(2);
   });
 });
 
@@ -336,10 +339,15 @@ describe('standing-on suppression while exploring', () => {
 });
 
 describe('the Exploring header (HistoryArchiveScreen)', () => {
-  test('GPS live: no header — the hero is the header', async () => {
+  test('GPS live: the header stands and names the place — the hero is not its deputy', async () => {
+    // It used to mount only when denied or exploring, on the reasoning
+    // that the hero would name the area. The hero needs an article, so
+    // a located reader in an unwritten place got a screen that never
+    // said where they were (#292).
     gpsLive();
     const screen = await render(<HistoryArchiveScreen />);
-    expect(screen.queryByText('History')).toBeNull();
+    expect(screen.getByText('History')).toBeOnTheScreen();
+    expect(screen.getByText('Greenwich')).toBeOnTheScreen();
     expect(screen.getByText('gazetteer body')).toBeOnTheScreen();
   });
 

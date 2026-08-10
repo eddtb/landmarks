@@ -2,6 +2,7 @@ import {
   buildListedBuildingItems,
   buildPlaqueItems,
   mergeHistorySources,
+  plaqueSubjectName,
   plaqueTitle,
   titleCaseName,
 } from '@/server/heritage';
@@ -69,18 +70,79 @@ describe('buildListedBuildingItems', () => {
 describe('buildPlaqueItems', () => {
   const items = buildPlaqueItems(plaques, Center);
 
-  test('collapses the inscription and cuts a readable title', () => {
+  test('collapses the inscription and files the plaque under its subject', () => {
     expect(items).toHaveLength(1);
-    expect(items[0].title).toBe('In September 1767 Olaudah Equiano c.1745-1797 African…');
+    // The dedication, not the first sixty characters of a biography.
+    // "In September 1767" is a preamble, so the name is taken from the
+    // clause after it — and the whole inscription survives as the extract.
+    expect(items[0].title).toBe('Olaudah Equiano');
     expect(items[0].extract).not.toMatch(/[\r\n]/);
+    expect(items[0].extract).toContain('African writer and abolitionist');
     expect(items[0].pageId).toBe(3_000_059_267);
     expect(items[0].source).toBe('Open Plaques');
   });
 
-  test('plaqueTitle keeps short inscriptions whole', () => {
-    expect(plaqueTitle('Peter the Great planted a mulberry here')).toBe(
-      'Peter the Great planted a mulberry here'
-    );
+  /**
+   * Every inscription below was read off the live Open Plaques box query
+   * on 2026-08-10 — the same call the feed makes, which answers with id,
+   * coordinates and inscription and nothing else. The subject, the
+   * address and the plaque's own title live one HTTP call per plaque
+   * away, so the name is read out of the inscription or not claimed.
+   */
+  describe('plaqueSubjectName (the dedication, or nothing)', () => {
+    test('capitalised words closed by a lifespan are the subject', () => {
+      expect(plaqueSubjectName('Jimi Hendrix 1942-1970 guitarist and songwriter lived here 1968-1969')).toBe(
+        'Jimi Hendrix'
+      );
+      expect(plaqueSubjectName('Sir John Betjeman 1906-1984 Poet Laureate and writer lived here')).toBe(
+        'Sir John Betjeman'
+      );
+      expect(plaqueSubjectName('Horatio, Lord Nelson 1758-1805 lived here in 1798')).toBe(
+        'Horatio, Lord Nelson'
+      );
+      // An en-dashed span, a d. and a c. are all lifespans
+      expect(plaqueSubjectName('Christina Broom 1862–1939 Photographer lived and worked here')).toBe(
+        'Christina Broom'
+      );
+      expect(plaqueSubjectName('WINIFRED ATWELL d.1983 Pianist, entertainer and entrepreneur lived here')).toBe(
+        'Winifred Atwell'
+      );
+    });
+
+    test('a plaque that shouts is quieted; initials keep their own case', () => {
+      expect(plaqueSubjectName('AUDREY HEPBURN 1929–1993 Actress lived in a flat at number 65')).toBe(
+        'Audrey Hepburn'
+      );
+      expect(plaqueSubjectName('J.L. Garvin C.H. 1868 - 1947 for thirty-four years Editor of The Observer')).toBe(
+        'J.L. Garvin C.H.'
+      );
+    });
+
+    test('anything less certain than that is not claimed', () => {
+      // Prose before any lifespan: the subject is buried mid-sentence
+      expect(
+        plaqueSubjectName('This tunnel constructed by the London County Council was opened in 1902')
+      ).toBeNull();
+      expect(plaqueSubjectName('Radio History On this site stood Communications House')).toBeNull();
+      expect(plaqueSubjectName('Battersea Park The site of this park was formerly known as Battersea Fields')).toBeNull();
+      // Opens with a number: an occasion, not a person
+      expect(plaqueSubjectName('400 Year Celebration 1625 - 2025 St. Oliver Plunkett.')).toBeNull();
+      // A service number is not a lifespan — this man is not "Detective Constable"
+      expect(plaqueSubjectName('Detective Constable 0144 John Raymond Coker. Passed away 1985')).toBeNull();
+      // Longer than any name: a sentence in capitals
+      expect(
+        plaqueSubjectName('Turner House Artists Alfred Turner RA (1873 - 1940) and his daughter')
+      ).toBeNull();
+    });
+
+    test('an unclaimed name leaves the old truncation exactly as it was', () => {
+      expect(plaqueTitle('Peter the Great planted a mulberry here')).toBe(
+        'Peter the Great planted a mulberry here'
+      );
+      expect(
+        plaqueTitle('This gateway marks the position of the north bank of the River Thames before the Embankment')
+      ).toBe('This gateway marks the position of the north bank of the…');
+    });
   });
 });
 

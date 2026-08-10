@@ -6,9 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { GlassChip } from '@/components/glass-header';
-import { ExternalLink } from '@/components/external-link';
 import { OverflowMenu } from '@/components/overflow-menu';
-import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -18,17 +16,19 @@ import { toggleSaved, useSaved, useSavedItem } from '@/data/saved';
 import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem, isWikiPageId } from '@/types/history';
-import { formatWalkTimeForMeters, storyParagraphs } from '@/utils/format';
+import { formatWalkTimeForMeters } from '@/utils/format';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
 /** The story screen owns its navigation now the native header is
  * gone: a floating glass back chip, present in every state — a screen
- * a reader cannot leave is a trap, whatever else failed. */
+ * a reader cannot leave is a trap, whatever else failed. Loading,
+ * failed and not-found are plainly not photographs, so the chip takes
+ * the page rendering (DESIGN.md: the material follows what it sits on). */
 function FloatingBack() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.floatingBack, { top: insets.top + Spacing.two }]}>
-      <GlassChip circle>
+      <GlassChip circle over="page">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to Stories"
@@ -36,9 +36,7 @@ function FloatingBack() {
           onPress={() => router.back()}
           hitSlop={Spacing.two}
           style={styles.floatingBackPress}>
-          <ThemedText type="title" style={styles.floatingBackGlyph}>
-            ‹
-          </ThemedText>
+          <ThemedText type="title">‹</ThemedText>
         </Pressable>
       </GlassChip>
     </View>
@@ -86,7 +84,10 @@ function ActionsLead({ item }: { item: HistoryItem }) {
           { backgroundColor: theme.accent },
           pressed && { opacity: 0.85 },
         ]}>
-        <ThemedText type="smallBold" style={styles.goText}>
+        {/* theme.background, not white: #FFFFFF on the DARK accent is
+            2.79:1, the exact ratio DESIGN.md names when it forbids
+            this. The background token reads 5.77:1 light, 7.53:1 dark. */}
+        <ThemedText type="smallBold" style={{ color: theme.background }}>
           {walkTime ? `Go · ${walkTime}` : 'Go'}
         </ThemedText>
       </Pressable>
@@ -150,42 +151,6 @@ function JournalVisitMarker({ item }: { item: HistoryItem }) {
     }
   }, [standing, item.pageId]);
   return null;
-}
-
-/** No Wikipedia article of its own: the record stands, and cites itself. */
-function ExtractStory({ item }: { item: HistoryItem }) {
-  if (!item.extract) {
-    return null;
-  }
-  // A plaque's extract IS its inscription, and the lead's "The plaque
-  // reads" block already shows it — saying it twice reads as broken
-  const inscriptionShownAbove = item.source.startsWith('Open Plaques');
-  return (
-    <View style={styles.section}>
-      <ThemedText type="eyebrow" themeColor="textSecondary">
-        Story
-      </ThemedText>
-      <TellingSection item={item} />
-      {/* Reading type (16/24), real paragraphs — an extract is a
-          story body, not a meta line */}
-      {!inscriptionShownAbove &&
-        storyParagraphs(item.extract).map((paragraph, index) => (
-          <ThemedText key={index} type="default">
-            {paragraph}
-          </ThemedText>
-        ))}
-      {/* No StoryFolds. This used to render the source article in full
-          beneath the record — the same republication the Gazetteer's
-          fallback row did, and the exhibit App Review cited 4.2.2 for
-          three times. The record above is short and the source is one
-          citation away; a copy of the page adds nothing but the charge. */}
-      <ExternalLink href={item.url as `https://${string}`}>
-        <ThemedText type="small" themeColor="accent">
-          From {item.source}
-        </ThemedText>
-      </ExternalLink>
-    </View>
-  );
 }
 
 /**
@@ -319,7 +284,12 @@ export default function HistoryDetailScreen() {
         allStories={others}
         refreshing={false}
         onRefresh={() => {}}
-        sourceUrl={item.url}
+        // The citation points at what the reader just read. A plaque
+        // that resolved to a subject tells the SUBJECT's article, so
+        // its own openplaques.org URL is not the source of that story —
+        // dropping it lets the gazetteer derive the article's own link,
+        // the way an area does. Unresolved, the record IS the source.
+        sourceUrl={item.subject ? undefined : item.url}
         // The telling can only open the place's OWN story: a plaque
         // screen tells its subject's article, and a telling written
         // from the inscription would speak past it. No extract, no
@@ -342,7 +312,11 @@ export default function HistoryDetailScreen() {
             )}
           </>
         }
-        empty={<ExtractStory item={item} />}
+        // The record itself, not an element that renders it. With no
+        // article this names the screen, decides the one measured line
+        // about how much the records hold, and is what the citation
+        // cites (#292, #255).
+        record={item}
       />
     </ThemedView>
   );
@@ -359,9 +333,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  floatingBackGlyph: {
-    color: '#FFFFFF',
   },
   container: {
     flex: 1,
@@ -387,9 +358,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     borderRadius: Spacing.six,
   },
-  goText: {
-    color: '#FFFFFF',
-  },
   compass: {
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.four,
@@ -399,9 +367,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
     gap: Spacing.one,
-  },
-  section: {
-    padding: Spacing.four,
-    gap: Spacing.three,
   },
 });

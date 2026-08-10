@@ -4,6 +4,7 @@ import HistoryDetailScreen from '@/app/history/[pageId]';
 import { fetchArticle } from '@/data/article-client';
 import { cacheHistoryItems, fetchNearbyHistory } from '@/data/history-client';
 import { fetchRetold } from '@/data/retold-client';
+import { HistoryItem } from '@/types/history';
 
 const mockUseLocalSearchParams = jest.fn();
 const mockPush = jest.fn();
@@ -54,6 +55,14 @@ jest.mock('@/hooks/use-location', () => ({
   useLocation: () => mockUseLocation(),
 }));
 
+// The scheme is a test seam here because two of DESIGN.md's rules only
+// BITE in dark: #FFFFFF on the dark accent is 2.79:1, and the page
+// chip's ink has to follow the theme rather than the photograph.
+const mockScheme = jest.fn(() => 'light');
+jest.mock('@/hooks/use-color-scheme', () => ({
+  useColorScheme: () => mockScheme(),
+}));
+
 describe('<HistoryDetailScreen />', () => {
   beforeEach(() => {
     mockUseLocation.mockReset();
@@ -61,6 +70,7 @@ describe('<HistoryDetailScreen />', () => {
       status: 'ready',
       coordinates: { latitude: 51.5055, longitude: -0.0906 },
     });
+    mockScheme.mockReturnValue('light');
   });
 
   beforeAll(() => {
@@ -213,16 +223,103 @@ describe('<HistoryDetailScreen />', () => {
     });
   });
 
-  test('a place with NO article of its own keeps the extract story', async () => {
+  test('a place with NO article of its own is still NAMED, and keeps the record story', async () => {
     (fetchArticle as jest.Mock).mockResolvedValueOnce(null);
     mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
     await render(<HistoryDetailScreen />);
 
-    expect(await screen.findByText('Story')).toBeOnTheScreen();
+    // #292: the name lived only in the hero, and the hero needs an
+    // article — so this screen used to reach the reader without once
+    // saying whose it was. It renders on the page now, same ramp.
+    expect(await screen.findByTestId('gazetteer-title')).toBeOnTheScreen();
+    expect(screen.getByText('Borough Compter')).toBeOnTheScreen();
+    expect(screen.getByText('Wikipedia')).toBeOnTheScreen();
+
+    expect(screen.getByText('Story')).toBeOnTheScreen();
     expect(screen.getByText(/demolished in 1855/)).toBeOnTheScreen();
-    expect(screen.getByText('From Wikipedia')).toBeOnTheScreen();
+    // The citation is the list's own row now, not a stray link at the
+    // foot of an `empty` element (#255)
+    expect(screen.getByText('Source: Wikipedia ›')).toBeOnTheScreen();
+    expect(screen.queryByText('From Wikipedia')).not.toBeOnTheScreen();
+    // The record HAS its own words, so nothing claims nobody wrote it
+    // down — a failed article fetch is not evidence of an empty record
+    expect(screen.queryByText(/nothing written under either/)).not.toBeOnTheScreen();
     // The venue grammar survives the fallback
     expect(screen.getByText(/Go · 1 min walk/)).toBeOnTheScreen();
+  });
+
+  /**
+   * Direction C, "Thin ground, and where it thickens" (#292): a plaque
+   * that never matched an article gets its name, one measured grey line
+   * about how much the records hold, and then the neighbourhood — the
+   * dead end becomes a junction.
+   */
+  test('an unresolved plaque: named, measured, and pointed at the ground that is better recorded', async () => {
+    mockExpoFetch.mockReset();
+    mockExpoFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            pageId: 3000000595,
+            title: 'Jimi Hendrix',
+            coordinates: { latitude: 51.51302, longitude: -0.14609 },
+            distanceMeters: 20,
+            extract:
+              'Jimi Hendrix 1942-1970 guitarist and songwriter lived here 1968-1969',
+            url: 'https://openplaques.org/plaques/595',
+            source: 'Open Plaques',
+          },
+          {
+            pageId: 91,
+            title: 'Handel & Hendrix in London',
+            coordinates: { latitude: 51.51304, longitude: -0.146 },
+            distanceMeters: 30,
+            url: 'https://en.wikipedia.org/wiki/Handel_%26_Hendrix_in_London',
+            source: 'Wikipedia',
+          },
+          {
+            pageId: 92,
+            title: 'Brook Street, Mayfair',
+            coordinates: { latitude: 51.5126, longitude: -0.147 },
+            distanceMeters: 60,
+            url: 'https://en.wikipedia.org/wiki/Brook_Street,_Mayfair',
+            source: 'Wikipedia',
+          },
+        ],
+      }),
+    });
+    await fetchNearbyHistory({ latitude: 51.51302, longitude: -0.14609 });
+    (fetchArticle as jest.Mock).mockResolvedValue(null);
+
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '3000000595' });
+    await render(<HistoryDetailScreen />);
+
+    // The name — filed under its subject, not the first sixty
+    // characters of its own inscription
+    expect(await screen.findByTestId('gazetteer-title')).toBeOnTheScreen();
+    expect(screen.getByText('Jimi Hendrix')).toBeOnTheScreen();
+    expect(screen.getByText('Open Plaques')).toBeOnTheScreen();
+    // The inscription still stands, whole, where the primary source goes
+    expect(screen.getByText('The plaque reads')).toBeOnTheScreen();
+    expect(screen.getByText(/guitarist and songwriter lived here/)).toBeOnTheScreen();
+
+    // One measured grey line — a measurement, not an apology
+    expect(
+      await screen.findByText('The plaque is the whole record — no article stands behind it.')
+    ).toBeOnTheScreen();
+
+    // …then where the ground thickens
+    expect(screen.getByText('Also within a walk · 2')).toBeOnTheScreen();
+    expect(screen.getByText('Handel & Hendrix in London')).toBeOnTheScreen();
+    expect(screen.getByText('Brook Street, Mayfair')).toBeOnTheScreen();
+
+    // The citation names what it actually opens — this link goes to
+    // openplaques.org, and used to say "Source: Wikipedia"
+    expect(screen.getByText('Source: Open Plaques ›')).toBeOnTheScreen();
+
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+    (fetchArticle as jest.Mock).mockResolvedValue({ minutes: 3, images: [], chapters: [] });
   });
 
   test('a plaque with a resolved subject opens the SUBJECT gazetteer, inscription in view', async () => {
@@ -428,5 +525,222 @@ describe('<HistoryDetailScreen />', () => {
 
       await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
     });
+  });
+});
+
+/**
+ * #292's CLASS, not its instance. "The name always renders" is a rule
+ * about every story shape, so it is tested over every story shape — a
+ * new one cannot slip in nameless. The name lived only in `Hero`, which
+ * mounts on `article && areaName`, so the shapes that never resolve an
+ * article (the majority of plaques and every bare register entry) drew
+ * a screen that said Go, Compass, Save and nothing whatever about what
+ * you were looking at.
+ *
+ * Assertions are on the RENDERED screen: what a reader gets, not what
+ * the row builder was handed.
+ */
+describe('a story screen names what it is about — every shape', () => {
+  const shapes: {
+    what: string;
+    item: HistoryItem;
+    /** Does an article resolve for it? */
+    article: boolean;
+    /** The name a reader must see. */
+    name: string;
+    /** Where it renders: the photographic block, or the plain one. */
+    block: 'gazetteer-hero' | 'gazetteer-title';
+  }[] = [
+    {
+      what: 'a Wikipedia place whose article resolves',
+      item: {
+        pageId: 5001,
+        title: 'Borough Compter',
+        coordinates: { latitude: 51.5045, longitude: -0.0905 },
+        distanceMeters: 112,
+        extract: 'A small compter or prison in Southwark, demolished in 1855.',
+        url: 'https://en.wikipedia.org/wiki/Borough_Compter',
+        source: 'Wikipedia',
+      },
+      article: true,
+      name: 'Borough Compter',
+      block: 'gazetteer-hero',
+    },
+    {
+      what: 'a plaque with an inscription and no article',
+      item: {
+        pageId: 5002,
+        title: 'Jimi Hendrix',
+        coordinates: { latitude: 51.51302, longitude: -0.14609 },
+        distanceMeters: 20,
+        extract: 'Jimi Hendrix 1942-1970 guitarist and songwriter lived here 1968-1969',
+        url: 'https://openplaques.org/plaques/595',
+        source: 'Open Plaques',
+      },
+      article: false,
+      name: 'Jimi Hendrix',
+      block: 'gazetteer-title',
+    },
+    {
+      what: 'a listed building with a grade and no extract',
+      item: {
+        pageId: 5003,
+        title: 'Telephone Kiosks, Broad Court',
+        coordinates: { latitude: 51.5135, longitude: -0.1221 },
+        distanceMeters: 240,
+        url: 'https://historicengland.org.uk/listing/the-list/list-entry/1066301',
+        source: 'Historic England · Grade II',
+      },
+      article: false,
+      name: 'Telephone Kiosks, Broad Court',
+      block: 'gazetteer-title',
+    },
+    {
+      what: 'a bare pin with nothing written under it at all',
+      item: {
+        pageId: 5004,
+        title: 'Bow Street',
+        coordinates: { latitude: 51.5132, longitude: -0.1224 },
+        distanceMeters: 320,
+        url: 'https://en.wikipedia.org/wiki/Bow_Street',
+        source: 'Wikipedia',
+      },
+      article: false,
+      name: 'Bow Street',
+      block: 'gazetteer-title',
+    },
+    {
+      what: 'a plaque whose subject resolved to its own article',
+      item: {
+        pageId: 5005,
+        title: 'Deptford Creek. This is the mouth of the River…',
+        coordinates: { latitude: 51.4814, longitude: -0.01613 },
+        distanceMeters: 200,
+        extract: 'Deptford Creek. This is the mouth of the River Ravensbourne, first bridged in 1804.',
+        url: 'https://openplaques.org/plaques/31040',
+        source: 'Open Plaques',
+        subject: 'River Ravensbourne',
+      },
+      article: true,
+      name: 'River Ravensbourne',
+      block: 'gazetteer-hero',
+    },
+  ];
+
+  test.each(shapes)('$what', async ({ item, article, name, block }) => {
+    cacheHistoryItems([item]);
+    (fetchArticle as jest.Mock).mockResolvedValue(
+      article ? { minutes: 3, images: [], chapters: [] } : null
+    );
+    mockUseLocalSearchParams.mockReturnValue({ pageId: String(item.pageId) });
+    await render(<HistoryDetailScreen />);
+
+    // The name is on the screen, in the block that owns it
+    expect(await screen.findByTestId(block)).toBeOnTheScreen();
+    expect(screen.getByText(name)).toBeOnTheScreen();
+    // …and the screen never reaches the reader with only its controls
+    expect(screen.queryByTestId('story-screen')).toBeOnTheScreen();
+
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+  });
+
+  /**
+   * The other half of DESIGN.md's Glass rule, over the same shapes: the
+   * material follows what the chip sits ON. A hero means a photograph
+   * and a pinned-dark chip under a white glyph; no hero means the page,
+   * and the island's own rendering in the theme's ink.
+   */
+  test.each(shapes)('$what — the back chip takes the material of what it sits on', async ({
+    item,
+    article,
+    block,
+  }) => {
+    cacheHistoryItems([item]);
+    (fetchArticle as jest.Mock).mockResolvedValue(
+      article ? { minutes: 3, images: [], chapters: [] } : null
+    );
+    mockUseLocalSearchParams.mockReturnValue({ pageId: String(item.pageId) });
+    await render(<HistoryDetailScreen />);
+    await screen.findByTestId(block);
+
+    const chip = screen.getByTestId('back-chip');
+    if (block === 'gazetteer-hero') {
+      // Over a photograph: the fixed dark scrim, white chevron
+      expect(chip).toHaveStyle({ backgroundColor: 'rgba(20, 20, 24, 0.75)' });
+      expect(screen.getByText('‹')).toHaveStyle({ color: '#FFFFFF' });
+    } else {
+      // On the page: the island's translucency, and the theme's ink
+      expect(chip).toHaveStyle({ backgroundColor: 'rgba(245, 245, 247, 0.88)' });
+      expect(screen.getByText('‹')).toHaveStyle({ color: '#17181A' });
+      expect(screen.getByText('‹')).not.toHaveStyle({ color: '#FFFFFF' });
+    }
+
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+  });
+
+  test('in dark, the page chip follows the app rather than the photograph', async () => {
+    mockScheme.mockReturnValue('dark');
+    cacheHistoryItems([shapes[3].item]);
+    (fetchArticle as jest.Mock).mockResolvedValue(null);
+    mockUseLocalSearchParams.mockReturnValue({ pageId: String(shapes[3].item.pageId) });
+    await render(<HistoryDetailScreen />);
+    await screen.findByTestId('gazetteer-title');
+
+    expect(screen.getByTestId('back-chip')).toHaveStyle({
+      backgroundColor: 'rgba(30, 30, 34, 0.86)',
+    });
+
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+  });
+});
+
+/**
+ * DESIGN.md: text on an accent surface takes `theme.background`, never
+ * white — #FFFFFF on the DARK accent is 2.79:1, the exact ratio the
+ * palette names when it forbids this. Light mode cannot see the bug at
+ * all (background IS white there), which is why it survived: the test
+ * has to be run in the scheme where it bites.
+ */
+describe('Go, on the violet', () => {
+  // Self-sufficient: this block caches its own story and pins its own
+  // location, so it proves what it claims when run alone
+  beforeEach(() => {
+    cacheHistoryItems([
+      {
+        pageId: 5100,
+        title: 'Marshalsea',
+        coordinates: { latitude: 51.5012, longitude: -0.0921 },
+        distanceMeters: 300,
+        extract: 'A prison on the south bank of the Thames.',
+        url: 'https://en.wikipedia.org/wiki/Marshalsea',
+        source: 'Wikipedia',
+      },
+    ]);
+    mockUseLocation.mockReturnValue({
+      status: 'ready',
+      coordinates: { latitude: 51.5012, longitude: -0.0921 },
+    });
+    (fetchArticle as jest.Mock).mockResolvedValue(null);
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '5100' });
+  });
+
+  test('dark: the label takes the background token, not white', async () => {
+    mockScheme.mockReturnValue('dark');
+    await render(<HistoryDetailScreen />);
+
+    const go = await screen.findByText(/^Go/);
+    expect(go).toHaveStyle({ color: '#000000' });
+    expect(go).not.toHaveStyle({ color: '#FFFFFF' });
+
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
+  });
+
+  test('light: it is the background token there too — the same rule, not a special case', async () => {
+    mockScheme.mockReturnValue('light');
+    await render(<HistoryDetailScreen />);
+
+    expect(await screen.findByText(/^Go/)).toHaveStyle({ color: '#FFFFFF' });
+
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 60)));
   });
 });
