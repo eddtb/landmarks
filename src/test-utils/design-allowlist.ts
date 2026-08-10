@@ -211,10 +211,10 @@ export type SanctionedFontSize = { file: string; value: number; reason: string }
  */
 export const SanctionedFontSizes: readonly SanctionedFontSize[] = [
   {
-    file: 'src/components/section-screen.tsx',
+    file: 'src/components/place-search.tsx',
     value: 15,
     reason:
-      'The area search TextInput. A TextInput is not a ThemedText and cannot take a ramp tier; 15 sits between `small` and `default` for a comfortable field.',
+      'The area search TextInput (extracted from section-screen in #307, comment and all). A TextInput is not a ThemedText and cannot take a ramp tier; 15 sits between `small` and `default` for a comfortable field.',
   },
   {
     file: 'src/components/pointer-dial.tsx',
