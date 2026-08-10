@@ -79,8 +79,15 @@ export function orderedByYear<Item extends { year: number }>(items: Item[]): Ite
 /** The stories are the material; the area names the cache bucket. */
 export async function fetchQuiz(areaName: string, stories: QuizStory[]): Promise<Quiz | null> {
   // The material is part of the identity: arriving somewhere new, or the
-  // feed widening, must be able to produce a different quiz
-  const key = `${areaName.toLowerCase()}:${stories.map((story) => story.pageId).join(',')}`;
+  // feed widening, must be able to produce a different quiz. Sorted,
+  // because the SET is the material and the feed's order is not: it is
+  // distance-sorted from the reader's ~111m bucket, so the same twelve
+  // stories seen from a few paces away used to miss this cache and go
+  // back to the route for a quiz it already held (#280).
+  const key = `${areaName.toLowerCase()}:${stories
+    .map((story) => story.pageId)
+    .sort((a, b) => a - b)
+    .join(',')}`;
   const cached = cache.get(key);
   if (cached !== undefined) {
     return cached;

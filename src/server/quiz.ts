@@ -106,7 +106,15 @@ export type QuizSubject = { pageId: number; title: string; extract: string };
  * serving poor questions for 30 days under its old key.
  */
 export async function quizKey(areaName: string, subjects: QuizSubject[]): Promise<string> {
-  const material = subjects.map((s) => `${s.pageId}:${s.title}:${s.extract}`).join('\n');
+  // Sorted first: the SET of stories is the material, never the order
+  // the feed happened to hand them over in. The feed is distance-sorted
+  // from the reader's ~111m bucket, so the same twelve stories seen from
+  // a few paces away arrived in a different order and minted a fresh
+  // key — a free-tier call spent to re-set a quiz we already had (#280).
+  const material = [...subjects]
+    .sort((a, b) => a.pageId - b.pageId)
+    .map((s) => `${s.pageId}:${s.title}:${s.extract}`)
+    .join('\n');
   return `v3:${areaName.toLowerCase()}:${await extractKeyPart(material)}`;
 }
 

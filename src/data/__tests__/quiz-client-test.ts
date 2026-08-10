@@ -140,6 +140,21 @@ describe('fetchQuiz deals the hand', () => {
     expect(second).toBe(first);
   });
 
+  test('the same stories in a different order still hit the session cache', async () => {
+    // Walking re-sorts the feed by distance without changing it; an
+    // order-sensitive key sent the same quiz back to the route (#280)
+    const nearest = [
+      { pageId: 1, title: 'Cutty Sark', extract: 'x' },
+      { pageId: 2, title: 'Queen’s House', extract: 'y' },
+      { pageId: 3, title: 'Royal Observatory', extract: 'z' },
+    ];
+
+    await fetchQuiz('Greenwich', nearest);
+    await fetchQuiz('Greenwich', [nearest[2], nearest[0], nearest[1]]);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
   test('no quiz stays no quiz', async () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ quiz: null }) });
 
