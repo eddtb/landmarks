@@ -43,7 +43,12 @@ jobs:
       - name: Lint
         run: npm run lint -- --max-warnings 0
 
+      # `shell: bash` is load-bearing, not decoration. The default `run:` shell
+      # is `bash -e {0}` with NO pipefail, so a pipe reports tee's exit status
+      # and jest's is discarded — this step, the ONLY required check, could not
+      # fail on a red suite. `shell: bash` selects `bash -eo pipefail`.
       - name: Test
+        shell: bash
         run: npm test -- --ci --coverage --coverageReporters=text --coverageReporters=text-summary | tee test-output.txt
 
       # Coverage is VISIBILITY, never a gate — a threshold would teach
