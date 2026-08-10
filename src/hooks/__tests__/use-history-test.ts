@@ -89,10 +89,29 @@ describe('useHistory setState bail', () => {
 
     // Same items array, but now served offline-stale — the honesty
     // flag must not be swallowed by the bail
-    mockFetchNearbyHistory.mockResolvedValue({ items, stale: true });
+    const savedAt = Date.now() - 3 * 60 * 60 * 1000;
+    mockFetchNearbyHistory.mockResolvedValue({ items, stale: true, savedAt });
     await act(() => result.current.refresh());
     expect(result.current.state).not.toBe(before);
-    expect(result.current.state).toMatchObject({ status: 'ready', stale: true });
+    // Both halves reach the screens: the admission AND the day it names
+    expect(result.current.state).toMatchObject({ status: 'ready', stale: true, savedAt });
+  });
+
+  test('a failed feed carries WHY, so the panel can say what came back', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ApiError } = require('@/data/cached-get') as typeof import('@/data/cached-get');
+    mockFetchNearbyHistory.mockRejectedValue(new ApiError('History', 502));
+    const { result } = await renderHook(() =>
+      useHistory({ latitude: 51.5041, longitude: -0.0902 })
+    );
+
+    await waitFor(() => expect(result.current.state.status).toBe('error'));
+    expect(result.current.state).toEqual({ status: 'error', verdict: 'errored' });
+
+    // …and a request that never completed is a different verdict
+    mockFetchNearbyHistory.mockRejectedValue(new TypeError('Network request failed'));
+    await act(() => result.current.refresh());
+    expect(result.current.state).toEqual({ status: 'error', verdict: 'silent' });
   });
 });
 

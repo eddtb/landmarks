@@ -33,6 +33,10 @@ const HourMs = 60 * 60 * 1000;
 // after a force-quit. Keys are the client's own ~111m (3 dp — the
 // server's own grid) buckets; values are whole feeds (items plus
 // sparse metadata).
+/** When the offline bucket was written — the day the History tab's own
+ * offline line names ("as it was saved on 8 August", #248). */
+const OfflineSavedAt = Date.now() - 2 * HourMs;
+
 const store = (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> })
   .__INTERNAL_MOCK_STORAGE__;
 store['cache-history-feed-v2-v1'] = JSON.stringify([
@@ -46,7 +50,7 @@ store['cache-history-feed-v2-v1'] = JSON.stringify([
   ],
   [
     '50.300|-0.090',
-    { value: { items: [persistedItem(3, 'Persisted Offline')] }, at: Date.now() - 2 * HourMs },
+    { value: { items: [persistedItem(3, 'Persisted Offline')] }, at: OfflineSavedAt },
   ],
   [
     '50.400|-0.090',
@@ -160,8 +164,11 @@ describe('fetchNearbyHistory persistence (relaunch simulated by pre-import seedi
     expect(result.items[0].title).toBe('Persisted Offline'); // placeholder first
 
     const offline = await result.revalidate!;
-    expect(offline.stale).toBe(true); // the flag HistoryBody's note hangs on
+    expect(offline.stale).toBe(true); // the flag both tabs' note hangs on
     expect(offline.items[0].title).toBe('Persisted Offline');
+    // …and WHEN it was saved, so the note can name the day rather than
+    // just admitting to a cache (#248)
+    expect(offline.savedAt).toBe(OfflineSavedAt);
   });
 
   test('a persisted sparse bucket round-trips its flag — offline, the honesty survives', async () => {
