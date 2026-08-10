@@ -5,7 +5,7 @@ import { Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native'
 import { PlaceSearch } from '@/components/place-search';
 import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { requestLocationPermission } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { Coordinates } from '@/utils/geo';
@@ -146,14 +146,14 @@ export function LocationInvitation({
 const styles = StyleSheet.create({
   pill: {
     minHeight: 48,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chip: {
     minHeight: 44,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingHorizontal: Spacing.three + 2,
     alignSelf: 'flex-start',
     alignItems: 'center',

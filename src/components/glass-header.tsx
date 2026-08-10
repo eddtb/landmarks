@@ -1,10 +1,12 @@
 import { ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 
-import { Spacing } from '@/constants/theme';
+import { ThemedText } from '@/components/themed-text';
+import { Glass, Radius, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTheme } from '@/hooks/use-theme';
 
 /**
  * The glass island (Edd's pick from the mocked variants, 2026-08-06):
@@ -20,26 +22,106 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
  * glass. Native module, so true glass ships in a BINARY — this
  * component is why the OTA cut strips the import.
  *
- * Geometry is the screen's business: the island floats at the top of
- * whatever positioned ancestor it is mounted in, reports its height
- * through onHeight, and the screen decides its scroll content's
- * paddingTop. MOUNT AS A DIRECT CHILD of the screen surface: wrapping
- * it in a plain View collapses the positioning context to zero height
- * at the bottom of the flow and the island renders nowhere
- * (sentinel-bisected the hard way).
+ * Every material in this file comes from the `Glass` token group and
+ * nowhere else. Three surfaces used to hand-roll their own greys.
  */
 
 export const IslandTopGap = Spacing.two;
 export const IslandBreath = Spacing.three;
+/**
+ * How far in from the screen's edges chrome sits — the island's own
+ * margin, and the one the floating chips line up with. Named because it
+ * was spelled `Spacing.three - 4` in three files, and chrome that does
+ * not share an edge reads as two unrelated objects.
+ */
+export const ChromeEdgeInset = Spacing.three - 4;
 
-/** The fallback material: translucent, per scheme. */
+/**
+ * THE ONE ISLAND INSET. Every screen wearing an island pads its scroll
+ * content with this and nothing else.
+ *
+ * There were three spellings of this measurement — Saved added
+ * `insets.top` itself, Nearby let a `SafeAreaView` supply it and passed
+ * only the island's height, the Gazetteer passed `topOffset={0}` — and
+ * changing the geometry once made two of the three drift. The rule the
+ * helper encodes:
+ *
+ *   MOUNT EVERY ISLAND AS A DIRECT CHILD OF THE SCREEN SURFACE, never
+ *   inside a `SafeAreaView`, and pad the content by `useIslandInset`.
+ *
+ * That way one origin (the screen's true top) serves the island's
+ * `top`, which defaults to the same inset, and the content's padding.
+ * `topOffset` survives only as the story screen's special case, for a
+ * parent that genuinely already sits below the notch.
+ */
+export function useIslandInset(islandHeight: number) {
+  const insets = useSafeAreaInsets();
+  return insets.top + islandHeight + IslandBreath;
+}
+
+/** The fallback material for chrome over the PAGE: translucent, per scheme. */
 function useGlassFallback() {
   const dark = useColorScheme() === 'dark';
+  const material = dark ? Glass.page.dark : Glass.page.light;
   return {
-    backgroundColor: dark ? 'rgba(30, 30, 34, 0.86)' : 'rgba(245, 245, 247, 0.88)',
+    backgroundColor: material.fill,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: dark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(23, 24, 26, 0.10)',
+    borderColor: material.hairline,
   };
+}
+
+/**
+ * The raw material in an arbitrary shape: real glass following the
+ * app's scheme, or the translucent fallback with its own edge.
+ *
+ * The island is this plus the island's geometry; Go's chrome over the
+ * map is this plus Go's. Go used to carry a third, older copy whose
+ * fallback was an opaque `theme.background` slab — the exact material
+ * rejected in `ded231b` — and whose glass passed no `colorScheme` at
+ * all, so on iOS 26 it sampled a live map and changed its mind as the
+ * reader walked.
+ */
+export function GlassPanel({
+  children,
+  style,
+  /** A control surface reacts to touch; an info surface does not. */
+  interactive,
+  onLayout,
+  testID,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  interactive?: boolean;
+  onLayout?: (height: number) => void;
+  testID?: string;
+}) {
+  const dark = useColorScheme() === 'dark';
+  const fallback = useGlassFallback();
+  const measure = onLayout
+    ? (event: { nativeEvent: { layout: { height: number } } }) =>
+        onLayout(event.nativeEvent.layout.height)
+    : undefined;
+
+  if (isLiquidGlassAvailable()) {
+    return (
+      <GlassView
+        glassEffectStyle="regular"
+        isInteractive={interactive}
+        // The content is theme-coloured, so the glass follows the APP
+        // scheme rather than sampling whatever is behind it
+        colorScheme={dark ? 'dark' : 'light'}
+        style={style}
+        onLayout={measure}
+        testID={testID}>
+        {children}
+      </GlassView>
+    );
+  }
+  return (
+    <View style={[styles.solid, fallback, style]} onLayout={measure} testID={testID}>
+      {children}
+    </View>
+  );
 }
 
 export function GlassIslandHeader({
@@ -57,46 +139,56 @@ export function GlassIslandHeader({
   /** Distance from the mount parent's top. Defaults to the safe-area
    *  inset — right when the parent starts at the screen's true top
    *  (Yoga anchors absolute children to the border box, ignoring a
-   *  SafeAreaView parent's padding). A parent that already sits below
+   *  SafeAreaView parent's padding), which `useIslandInset` now makes
+   *  the only sanctioned arrangement. A parent that already sits below
    *  the notch passes 0, or the island double-insets — sim-caught. */
   topOffset?: number;
 }) {
   const insets = useSafeAreaInsets();
-  const dark = useColorScheme() === 'dark';
-  const fallback = useGlassFallback();
-  const glass = isLiquidGlassAvailable();
-  const report = (height: number) => onHeight(IslandTopGap + height);
 
   return (
     <View
       style={[styles.anchor, { top: topOffset ?? insets.top }]}
       pointerEvents={passThrough ? 'none' : 'box-none'}
       testID="glass-island">
-      {glass ? (
-        // The island's content is theme-coloured, so its glass follows
-        // the APP scheme rather than sampling the backdrop
-        <GlassView
-          glassEffectStyle="regular"
-          colorScheme={dark ? 'dark' : 'light'}
-          style={styles.island}
-          onLayout={(event) => report(event.nativeEvent.layout.height)}>
-          {children}
-        </GlassView>
-      ) : (
-        <View
-          style={[styles.island, styles.solid, fallback]}
-          onLayout={(event) => report(event.nativeEvent.layout.height)}>
-          {children}
-        </View>
-      )}
+      <GlassPanel style={styles.island} onLayout={(height) => onHeight(IslandTopGap + height)}>
+        {children}
+      </GlassPanel>
+    </View>
+  );
+}
+
+/**
+ * The eyebrow's companion: the locator dot and the screen's name, the
+ * one title block every standing island wears. Shared so Nearby and
+ * Quiz cannot drift into two spellings of one nameplate.
+ *
+ * The dot means "you are here". It fills only where the app KNOWS: a
+ * solid dot over a resolved London name once told a reader in
+ * Cupertino they were standing in Charing Cross (#289).
+ */
+export function IslandTitle({ title, hollow }: { title: string; hollow: boolean }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.titleGroup}>
+      <View
+        testID="locator-dot"
+        style={[
+          styles.locatorDot,
+          hollow
+            ? { backgroundColor: 'transparent', borderWidth: 2, borderColor: theme.textSecondary }
+            : { backgroundColor: theme.accent },
+        ]}
+      />
+      <ThemedText type="largeTitle">{title}</ThemedText>
     </View>
   );
 }
 
 /**
  * A small floating glass capsule or circle — the story screen's back
- * chevron and ⋯ menu wear these over the full-bleed hero, where the
- * native header used to be. Same material rules as the island.
+ * chevron and ⋯ menu over the full-bleed hero, and the journal tick on
+ * a card's photograph. Same material rules as the island.
  */
 export function GlassChip({
   children,
@@ -106,10 +198,11 @@ export function GlassChip({
   testID,
 }: {
   children: ReactNode;
-  style?: object;
+  style?: StyleProp<ViewStyle>;
   testID?: string;
   /** A 40pt round chip — the chevron and the ⋯ (Edd, 22:25: the
-   *  simplified chrome). */
+   *  simplified chrome). Round means a LONE GLYPH, which is also what
+   *  decides the weight of the scrim below. */
   circle?: boolean;
   /**
    * What the chip sits ON, which is the whole of what decides its
@@ -124,9 +217,17 @@ export function GlassChip({
 }) {
   const dark = useColorScheme() === 'dark';
   const fallback = useGlassFallback();
-  const glass = isLiquidGlassAvailable();
   const onPhoto = over === 'photo';
-  if (glass) {
+  // A lone glyph on a 40pt circle drowns where a whole worded label
+  // survives (Edd, 22:31), so the round chip takes the deeper scrim and
+  // the tick the lighter one. The real-glass TINT does not split: its
+  // job is to stop the material going light over a bright sky, and that
+  // job is the same whatever the chip is carrying.
+  const ink = circle
+    ? { backgroundColor: Glass.photo.glyphScrim, borderColor: Glass.photo.glyphHairline }
+    : { backgroundColor: Glass.photo.labelScrim, borderColor: Glass.photo.labelHairline };
+
+  if (isLiquidGlassAvailable()) {
     return (
       // On a photo the colorScheme is pinned DARK: real glass ADAPTS to
       // its backdrop, and over a bright sky it turned light under our
@@ -142,7 +243,7 @@ export function GlassChip({
         // ANY backdrop and still reads as glass. Over the page the
         // backdrop is already the app's own colour — inking it would
         // paint a dark disc on a white screen, the very complaint.
-        tintColor={onPhoto ? 'rgba(20, 20, 24, 0.65)' : undefined}
+        tintColor={onPhoto ? Glass.photo.tint : undefined}
         style={[styles.chip, circle && styles.circle, style]}
         testID={testID}>
         {children}
@@ -153,18 +254,56 @@ export function GlassChip({
   // ink with white glyphs whatever the scheme (Edd, 22:27: the scheme
   // surface went navy over a bright sky). Over the page it takes the
   // island's translucency instead, for the same reason the island does:
-  // it sits over text, not imagery.
+  // it sits over text, not imagery. Either way it takes the fallback's
+  // own edge — a chip over a pale photo had only its hairline, and on
+  // Android, which has no shadow without `elevation`, not even that.
   return (
     <View
       testID={testID}
       style={[
         styles.chip,
         circle && styles.circle,
-        onPhoto ? styles.scrim : [styles.solid, fallback],
+        styles.solid,
+        onPhoto ? [styles.scrim, ink] : fallback,
         style,
       ]}>
       {children}
     </View>
+  );
+}
+
+/**
+ * THE back chip. Two screens drew their own circle-with-a-chevron, both
+ * claiming `testID="story-back"`, and the 40pt press box was copied
+ * into a third file — so a fix to one left the others behind.
+ *
+ * A screen a reader cannot leave is a trap, so this renders in every
+ * state of a story screen, including the failed ones.
+ */
+export function StoryBackChip({
+  backLabel,
+  onPress,
+  over = 'photo',
+}: {
+  /** Where back GOES, spoken: "Back to Stories". */
+  backLabel: string;
+  onPress: () => void;
+  over?: 'photo' | 'page';
+}) {
+  return (
+    <GlassChip circle over={over} testID="back-chip">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Back to ${backLabel}`}
+        testID="story-back"
+        onPress={onPress}
+        hitSlop={Spacing.two}
+        style={styles.pressBox}>
+        <ThemedText type="title" style={[styles.chevron, over === 'photo' && styles.photoGlyph]}>
+          ‹
+        </ThemedText>
+      </Pressable>
+    </GlassChip>
   );
 }
 
@@ -175,10 +314,10 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     paddingTop: IslandTopGap,
-    paddingHorizontal: Spacing.three - 4,
+    paddingHorizontal: ChromeEdgeInset,
   },
   chip: {
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     borderCurve: 'continuous',
     overflow: 'hidden',
   },
@@ -188,26 +327,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /** The 40pt press box — the chip's whole face is the target. */
+  pressBox: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Sized to read as an icon, nudged up — the glyph's baseline sits low
+  chevron: {
+    lineHeight: 24,
+    marginTop: -2,
+  },
+  /** On the photo scrim the glyph is white whatever the scheme. */
+  photoGlyph: {
+    color: '#FFFFFF',
+  },
   island: {
-    borderRadius: Spacing.four,
+    borderRadius: Radius.island,
     borderCurve: 'continuous',
     overflow: 'hidden',
   },
+  titleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    flexShrink: 1,
+  },
+  locatorDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
   solid: {
-    // The fallback card needs its own edge; real glass draws its own
+    // The fallback needs its own edge; real glass draws its own.
+    // `elevation` is the Android half of it — without it a chip over a
+    // pale photograph had nothing but a hairline there.
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
-  // 0.75, not the tick's 0.55: a 40pt chip must hold its own against
-  // a bright sky (Edd, 22:31 — at 0.55 the chip washed out and the
-  // white chevron drowned); the tick's larger white label survives
-  // the lighter scrim, a lone glyph doesn't
   scrim: {
-    backgroundColor: 'rgba(20, 20, 24, 0.75)',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.30)',
   },
 });

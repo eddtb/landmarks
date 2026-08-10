@@ -378,12 +378,15 @@ describe('the Gazetteer is written about a place', () => {
     refused();
     const screen = await render(<HistoryArchiveScreen />);
 
+    // The tab's refusal copy lives in the invitation now, not in a
+    // standing header — direction B (#300) removed the header, and the
+    // invitation was always the longer, more useful version of it.
+    expect(await screen.findByText('The Gazetteer is written about a place')).toBeOnTheScreen();
     expect(
-      await screen.findByText(
-        'Location is off for Venture. Turn it on in Settings to read the ground you’re standing on.'
+      screen.getByText(
+        'Name one and Venture writes it — the area’s own story, with the relics of its ground beneath.'
       )
     ).toBeOnTheScreen();
-    expect(screen.getByText('The Gazetteer is written about a place')).toBeOnTheScreen();
     expect(screen.queryByTestId('ask-for-location')).toBeNull();
   });
 
@@ -407,15 +410,15 @@ describe('the Gazetteer is written about a place', () => {
     arrange();
     const screen = await render(<HistoryArchiveScreen />);
 
-    // The header stands and keeps the tab's identity (#292)…
-    expect(await screen.findByText('History')).toBeOnTheScreen();
-    // …but the thin-records claim is never made, because the Gazetteer
-    // that would make it never mounts
+    // The invitation keeps the tab's identity now the header has gone…
+    expect(await screen.findByTestId('location-invitation')).toBeOnTheScreen();
+    // …the thin-records claim is never made, because the Gazetteer that
+    // would make it never mounts…
     expect(screen.queryByText(/^Nothing is written down within a walk/)).toBeNull();
     expect(screen.queryByText('gazetteer body')).toBeNull();
-    // …and the name above is not a control, which is what that copy
-    // would have been pointing at
+    // …and there is no name above to be mistaken for the control that
+    // copy would have been pointing at
     expect(screen.queryByTestId('area-title')).toBeNull();
-    expect(screen.getByText('Near you')).toBeOnTheScreen();
+    expect(screen.queryByText('Near you')).toBeNull();
   });
 });

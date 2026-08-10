@@ -1,55 +1,22 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleProp,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Compass } from '@/components/compass';
+import { GlassPanel } from '@/components/glass-header';
 import { AskForLocation, OpenSettings } from '@/components/location-ask';
 import { PointerDial } from '@/components/pointer-dial';
 import { RouteMap } from '@/components/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { getCachedHistoryItem } from '@/data/history-client';
 import { fetchRoute } from '@/data/route-client';
 import { useLocation, useSlowFix } from '@/hooks/use-location';
-import { useTheme } from '@/hooks/use-theme';
 import { WalkingRoute } from '@/types/route';
 import { formatDistance, formatWalkTime } from '@/utils/format';
 import { guidanceFor, needsReroute, RouteCorridor } from '@/utils/guidance';
-
-/**
- * Liquid glass chrome where supported (iOS 26+); the themed solid
- * surface — today's exact look — everywhere else. Content stays
- * opaque; only the chrome floating over the map is glass.
- */
-function ChromeSurface({
-  style,
-  interactive,
-  children,
-}: {
-  style: StyleProp<ViewStyle>;
-  interactive?: boolean;
-  children: ReactNode;
-}) {
-  const theme = useTheme();
-  if (isLiquidGlassAvailable()) {
-    return (
-      <GlassView glassEffectStyle="regular" isInteractive={interactive} style={style}>
-        {children}
-      </GlassView>
-    );
-  }
-  return <View style={[style, { backgroundColor: theme.background }]}>{children}</View>;
-}
 
 /**
  * Go mode: the whole screen is the journey — the venue-era UI, back
@@ -205,7 +172,7 @@ export default function GoScreen() {
       )}
 
       <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
-        <ChromeSurface style={styles.topCard} interactive>
+        <GlassPanel style={styles.topCard} interactive>
           {/* Close is a word, and violet — the compass modal's exact
               treatment (the grey ✕ broke both halves of the rule);
               16pt slop on the 20px label clears the 44pt target */}
@@ -228,12 +195,12 @@ export default function GoScreen() {
               </ThemedText>
             )}
           </View>
-        </ChromeSurface>
+        </GlassPanel>
       </SafeAreaView>
 
       {guidance && coordinates && (
         <SafeAreaView style={styles.sheetArea} edges={['bottom']} pointerEvents="box-none">
-          <ChromeSurface style={styles.sheet} interactive>
+          <GlassPanel style={styles.sheet} interactive>
             <Pressable
               accessibilityRole="button"
               // The label carries what the sheet shows — the live step
@@ -283,7 +250,7 @@ export default function GoScreen() {
                   </ThemedText>
                 ))}
             </Pressable>
-          </ChromeSurface>
+          </GlassPanel>
         </SafeAreaView>
       )}
     </ThemedView>
@@ -326,7 +293,7 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.three,
     marginTop: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.three - Spacing.one,
+    borderRadius: Radius.control,
   },
   topText: {
     flex: 1,
@@ -341,7 +308,7 @@ const styles = StyleSheet.create({
   sheet: {
     marginHorizontal: Spacing.three,
     marginBottom: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.sheet,
     overflow: 'hidden',
   },
   sheetPress: {

@@ -5,7 +5,7 @@ import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, View } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
-import { GlassChip } from '@/components/glass-header';
+import { ChromeEdgeInset, StoryBackChip } from '@/components/glass-header';
 import { OverflowMenu } from '@/components/overflow-menu';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -28,17 +28,7 @@ function FloatingBack() {
   const insets = useSafeAreaInsets();
   return (
     <View style={[styles.floatingBack, { top: insets.top + Spacing.two }]}>
-      <GlassChip circle over="page">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to Stories"
-          testID="story-back"
-          onPress={() => router.back()}
-          hitSlop={Spacing.two}
-          style={styles.floatingBackPress}>
-          <ThemedText type="title">‹</ThemedText>
-        </Pressable>
-      </GlassChip>
+      <StoryBackChip backLabel="Stories" over="page" onPress={() => router.back()} />
     </View>
   );
 }
@@ -325,14 +315,8 @@ export default function HistoryDetailScreen() {
 const styles = StyleSheet.create({
   floatingBack: {
     position: 'absolute',
-    left: Spacing.three - 4,
+    left: ChromeEdgeInset,
     zIndex: 10,
-  },
-  floatingBackPress: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   container: {
     flex: 1,

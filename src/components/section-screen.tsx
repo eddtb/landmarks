@@ -15,7 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
-import { GlassIslandHeader, IslandBreath } from '@/components/glass-header';
+import { GlassIslandHeader, useIslandInset } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { LocationInvitation, OpenSettings } from '@/components/location-ask';
 import { PlaceSearch } from '@/components/place-search';
@@ -57,12 +57,16 @@ export type LocationStanding =
   /** Asked and refused — only Settings can undo it. */
   | 'refused';
 
-/** The banner over the two tabs' no-location state. One sentence each,
- *  and only for 'refused': never-asked has nothing to turn back on. */
+/** The banner over Nearby's no-location state, and only for 'refused':
+ *  never-asked has nothing to turn back on.
+ *
+ *  History had one of these too, in the standing header direction B
+ *  removed. It is not lost copy: refused with no pin sends the tab to
+ *  `HistoryInvitation.refused`, which says the same thing at more
+ *  length and offers the way out — and refused WITH a pin is exploring,
+ *  which was never told about Settings anyway. */
 const NearbyRefusedCopy =
   'Location is off for Venture. Turn it back on in Settings and this fills with the ground you’re standing on.';
-const HistoryRefusedCopy =
-  'Location is off for Venture. Turn it on in Settings to read the ground you’re standing on.';
 
 /** What each tab shows instead of a feed it cannot honestly compose. */
 const NearbyInvitation = {
@@ -364,24 +368,34 @@ export function StoriesScreen() {
   // float together in glass — the pinned-count redline survives,
   // modernised — and the whole feed scrolls beneath them.
   const [islandHeight, setIslandHeight] = useState(120);
+  // ONE origin (#300). The island used to sit inside a SafeAreaView and
+  // be handed only its own height, while Saved added `insets.top`
+  // itself and the Gazetteer passed `topOffset={0}` — three spellings
+  // of one measurement, and moving the geometry drifted two of them.
+  const topInset = useIslandInset(islandHeight);
   return (
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
-          <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+          {/* The body keeps the horizontal edges — the TOP one is the
+              island's business now, and paid once by useIslandInset. */}
+          <SafeAreaView style={styles.container} edges={['left', 'right']}>
             <HistoryBody
               center={gate.center}
               exploring={gate.exploring}
               standing={gate.standing}
               onManualCenter={gate.onManualCenter}
-              topInset={islandHeight + IslandBreath}
+              topInset={topInset}
             />
-            {/* After the body so it paints above; the feed slides under */}
-            <GlassIslandHeader onHeight={setIslandHeight}>
-              <SectionHeader {...gate} eyebrow="Nearby" refusedCopy={NearbyRefusedCopy} overflow />
-              <FeedCountLine center={gate.center} />
-            </GlassIslandHeader>
           </SafeAreaView>
+          {/* After the body so it paints above; the feed slides under.
+              A DIRECT child of the screen surface — never inside a
+              SafeAreaView, which is the arrangement useIslandInset
+              assumes and the island's own default `top` matches. */}
+          <GlassIslandHeader onHeight={setIslandHeight}>
+            <SectionHeader {...gate} eyebrow="Nearby" refusedCopy={NearbyRefusedCopy} overflow />
+            <FeedCountLine center={gate.center} />
+          </GlassIslandHeader>
         </ThemedView>
       )}
     </LocationGate>
@@ -422,31 +436,36 @@ export function FeedCountLine({ center }: { center: Coordinates | null }) {
 
 /**
  * The Gazetteer (Edd's pick): the place's own illustrated story with
- * the relics of its ground beneath, under a header that always says
- * which ground it is.
+ * the relics of its ground beneath.
+ *
+ * Direction B (#300): the hero IS the header, so the tab wears no
+ * chrome at all until the hero's title has cleared the top edge — and
+ * then the story screen's own one-row island arrives, minus the
+ * chevron the tab pill makes unnecessary. The standing `SectionHeader`
+ * that used to sit above the hero is gone with it: one title, once.
+ *
+ * #292's rule survives the removal rather than being reverted — a
+ * LOCATED reader must never get a screen that fails to say where they
+ * are. With an article the hero says it; with none, the gazetteer now
+ * renders the same title block on the page (see `RecordTitle`), which
+ * is the thing the island later arrives to carry.
  */
 export function HistoryArchiveScreen() {
   return (
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
-          <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            {/* The header stands, always (#292). It mounted only with no
-                centre or a held pin — no centre keeps the tab's identity
-                and its one sentence, exploring owns the mode, and
-                otherwise "the hero IS the header". That last clause is
-                true right up until no article resolves, and then a
-                LOCATED reader gets a screen that never says where they
-                are, above a row calling it "this area". Naming the place
-                is not the hero's favour to grant.
-
-                The two earlier cases are unchanged, because always
-                includes them. */}
-            <SectionHeader {...gate} eyebrow="History" refusedCopy={HistoryRefusedCopy} />
+          {/* No top edge: the gazetteer runs full-bleed to the true
+              screen top and pays the notch itself, hero and island
+              alike. The states that are NOT the gazetteer take the
+              inset back, below. */}
+          <SafeAreaView style={styles.container} edges={['left', 'right']}>
             <GazetteerBody
               center={gate.center}
               standing={gate.standing}
               onManualCenter={gate.onManualCenter}
+              exploring={gate.exploring}
+              onBackToNearMe={gate.onBackToNearMe}
             />
           </SafeAreaView>
         </ThemedView>
@@ -455,14 +474,31 @@ export function HistoryArchiveScreen() {
   );
 }
 
+/** A tab state that is not the full-bleed gazetteer is an ordinary
+ *  screen, and sits below the notch like one. */
+function BelowTheNotch({ children }: { children: ReactNode }) {
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {children}
+    </SafeAreaView>
+  );
+}
+
 function GazetteerBody({
   center,
   standing,
   onManualCenter,
+  exploring,
+  onBackToNearMe,
 }: {
   center: Coordinates | null;
   standing: LocationStanding;
   onManualCenter: (center: Coordinates, label?: string) => void;
+  /** A held pin is a mode the screen must admit — and with the standing
+   *  header gone the admission rides in the flow, under the hero, where
+   *  Nearby's offline line already lives. */
+  exploring?: boolean;
+  onBackToNearMe?: () => void;
 }) {
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
@@ -481,30 +517,38 @@ function GazetteerBody({
   if (center === null) {
     const copy = invitationCopy(HistoryInvitation, standing);
     return (
-      <View style={styles.invitation}>
-        <LocationInvitation
-          askable={standing === 'unasked'}
-          heading={copy.heading}
-          lede={copy.lede}
-          onManualCenter={onManualCenter}
-        />
-      </View>
+      <BelowTheNotch>
+        <View style={styles.invitation}>
+          <LocationInvitation
+            askable={standing === 'unasked'}
+            heading={copy.heading}
+            lede={copy.lede}
+            onManualCenter={onManualCenter}
+          />
+        </View>
+      </BelowTheNotch>
     );
   }
 
   if (state.status === 'loading') {
-    return <ColdLoad areaLabel={areaLabel} />;
+    return (
+      <BelowTheNotch>
+        <ColdLoad areaLabel={areaLabel} />
+      </BelowTheNotch>
+    );
   }
   if (state.status === 'error') {
     return (
-      <View style={styles.centered}>
-        <ThemedText type="small" themeColor="textSecondary">
-          Couldn&apos;t load stories right now.
-        </ThemedText>
-        <Pressable accessibilityRole="button" onPress={refresh}>
-          <ThemedText type="linkPrimary">Try again</ThemedText>
-        </Pressable>
-      </View>
+      <BelowTheNotch>
+        <View style={styles.centered}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Couldn&apos;t load stories right now.
+          </ThemedText>
+          <Pressable accessibilityRole="button" onPress={refresh}>
+            <ThemedText type="linkPrimary">Try again</ThemedText>
+          </Pressable>
+        </View>
+      </BelowTheNotch>
     );
   }
 
@@ -520,6 +564,20 @@ function GazetteerBody({
       allStories={state.items}
       refreshing={refreshing}
       onRefresh={onRefresh}
+      lead={
+        // The mode admission, in the flow rather than in chrome that no
+        // longer stands at rest — the slot Nearby's offline line uses.
+        exploring ? (
+          <View style={styles.gazetteerLead} testID="gazetteer-exploring">
+            <ThemedText type="eyebrow" themeColor="accent">
+              Exploring
+            </ThemedText>
+            <Pressable accessibilityRole="button" onPress={onBackToNearMe} hitSlop={Spacing.two}>
+              <ThemedText type="linkPrimary">Back to near me</ThemedText>
+            </Pressable>
+          </View>
+        ) : undefined
+      }
     />
   );
 }
@@ -909,6 +967,11 @@ const styles = StyleSheet.create({
   settingsRow: {
     flexDirection: 'row',
     paddingTop: Spacing.one,
+  },
+  gazetteerLead: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    gap: Spacing.half,
   },
   invitation: {
     flex: 1,

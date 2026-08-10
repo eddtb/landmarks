@@ -185,23 +185,57 @@ top of a screen, 24pt corners, `Spacing.two` below the safe-area inset,
 over a photograph. The island pairs with the system tab pill below it:
 two glass objects framing a feed that scrolls under both.
 
-**The island owns its height; the screen owns its padding.** It reports
-its rendered height and the screen pads its scroll content by that plus
-`IslandBreath`. Mount it as a **direct child of the screen surface** —
-wrapped in a plain `View` the positioning context collapses and the
-island renders nowhere.
+**The island owns its height; the screen owns its padding — and there
+is ONE spelling of that padding.** It reports its rendered height and
+the screen pads its scroll content with `useIslandInset(height)`, which
+is `insets.top + height + IslandBreath` and nothing else. Mount it as a
+**direct child of the screen surface**, never inside a `SafeAreaView`:
+Yoga anchors an absolute child to the border box, so a SafeAreaView
+parent's padding is invisible to the island and the two origins
+disagree by exactly the notch. (Wrapped in a plain `View` the
+positioning context collapses and the island renders nowhere.) There
+were three spellings of this measurement once and changing the geometry
+drifted two of them; `topOffset` survives only for a parent that
+genuinely already sits below the notch.
 
-**An island either stands or arrives.** Saved and Nearby stand: the
-title is the screen's title, present from the first frame. The story
-screen's arrives — the hero runs full-bleed, and once its title has
-cleared the top edge the glass carries it on, taking the back chip
-aboard. Arrival is a **threshold, not a fade**: animating opacity over a
-`GlassView` disables the glass.
+**An island either stands or arrives** (#300, direction B). Saved,
+Nearby and Quiz **stand**: the title is the screen's own, present from
+the first frame. The story screen and the History tab **arrive** — the
+hero runs full-bleed, and once its title has cleared the top edge the
+glass carries it on, taking the back chip aboard on the story screen
+and leaving the chevron off on the tab, where the tab pill is already
+the navigation. Arrival is a **threshold, not a fade**: animating
+opacity over a `GlassView` disables the glass.
+
+**The gate on arrival is the hero, and only the hero.** Never the
+content the chrome would carry: gating History's island on whether a
+retelling existed meant an area Wikipedia never wrote up scrolled
+forever with no chrome and no title — not late, never. And where there
+is no hero, the title stands on the page instead, so a located reader
+is never shown a screen that fails to say where they are.
+
+**A standing island stands DOWN when the app is asking.** The quiz's
+start card and results are surfaces you browse and wear the island; a
+question is not a surface, so the chrome leaves and the question owns
+the screen. That is the one sanctioned exception, and it was a device
+finding before it was a rule: a `largeTitle` above a question and four
+options pushed the run into a scroll.
 
 **One professional row.** Chevron · title · count · `⋯`, with the
 reading bar along its base. Not two decks of navigation. An info-only
 island passes touches through, so a reader can scroll by dragging across
 it; only an island holding controls intercepts.
+
+**The line under an island title is the screen's STATUS line**, and the
+count is its default: Nearby's `62 stories within a walk`, Quiz's rank
+on this ground, History's counter — which is honest about where in the
+screen the reader is, counting parts while they are in the telling and
+relics once they reach the ground.
+
+**One progress idiom.** A 4pt `accent`-on-`accentSoft` bar, wherever
+progress is drawn — the reading bar along the island's base, and the
+quiz run's own. It has one home per screen; there is no second
+rendering of the same fact.
 
 **Glass replaces the native header — never joins it.** A screen wearing
 glass sets `headerShown: false`. And every state of that screen —
@@ -227,7 +261,19 @@ slab, which reads as a card sitting beside the real thing — plus a
 hairline and a soft shadow, since real glass draws its own. The chip
 falls back to a **fixed dark scrim with white glyphs whatever the
 scheme**, deeper than the journal tick's: a lone white glyph on a 40pt
-chip drowns where a whole white label survives.
+chip drowns where a whole white label survives. Every fallback carries
+`elevation` as well as a shadow — Android draws no shadow without it,
+and a chip over a pale photograph was left holding nothing but a
+hairline there.
+
+**Every one of those materials comes from the `Glass` token group in
+`theme.ts` and nowhere else.** It is sanctioned material rather than
+palette, and the reason is written above it: a translucent material has
+to be specified as one, and the photo scrim deliberately ignores the
+theme instead of following it. Two materials — `Glass.photo` and
+`Glass.page` — one base grey each, and the alpha pairs that differ
+differ for a reason a comment gives. Three surfaces once carried three
+greys because three people wrote them.
 
 **Glass ships in a binary, never an OTA.** It is a native module. An
 `eas update` carrying a new glass surface reaches phones whose binary

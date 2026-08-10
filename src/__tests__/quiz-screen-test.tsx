@@ -145,7 +145,11 @@ describe('<QuizScreen />', () => {
     await render(<QuizScreen />);
 
     expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
-    expect(screen.getByText('Test yourself on')).toBeOnTheScreen();
+    // The start card is a surface you browse, so the island STANDS on
+    // it (direction B, #300) — tab name in the eyebrow, ground in the
+    // title, and your standing on it underneath
+    expect(screen.getByTestId('quiz-island')).toBeOnTheScreen();
+    expect(screen.getByText('Quiz')).toBeOnTheScreen();
     expect(screen.getByText('Greenwich')).toBeOnTheScreen();
     // The grounding contract, worn on the outside: the chips name the
     // exact stories the run was set from
@@ -177,17 +181,49 @@ describe('<QuizScreen />', () => {
     expect(mockFetchQuiz.mock.calls[0]).toEqual(['Greenwich', greenwich]);
   });
 
-  test('the screen title stands down while a run is up — one screen, no scroll', async () => {
+  test('the chrome stands DOWN for a question — one screen, no scroll', async () => {
     // Edd's phone finding: largeTitle + serif question + four options
-    // pushed the run into a scroll. During a run the header is the
-    // run's own compact eyebrow (area · count · progress).
+    // pushed the run into a scroll. Direction B makes that a rule
+    // rather than a special case — a question is the app asking, and
+    // owns the screen; the whole island leaves, not just a title.
     await render(<QuizScreen />);
     await begin();
 
-    expect(screen.queryByText('Test yourself on')).toBeNull();
+    expect(screen.queryByTestId('quiz-island')).toBeNull();
+    expect(screen.queryByText('Quiz')).toBeNull();
     // The area still names the run, in the compact eyebrow
     expect(screen.getByText('Greenwich')).toBeOnTheScreen();
     expect(screen.getByText('1 of 2')).toBeOnTheScreen();
+  });
+
+  test('the six segments became the reading bar — ONE progress idiom', async () => {
+    // The app used to draw the same fact two ways: a 4pt
+    // accent-on-accentSoft track everywhere you read, and N segments
+    // here. The segments are gone; what is left is one track with one
+    // fill, at the reading bar's exact 4pt.
+    await render(<QuizScreen />);
+    await begin();
+
+    const bar = screen.getByTestId('quiz-progress');
+    expect(bar).toHaveStyle({ height: 4, backgroundColor: '#EFEAFC' });
+    // One fill, not one child per question
+    expect(bar.children).toHaveLength(1);
+    expect(bar.children[0]).toHaveStyle({ height: 4, backgroundColor: '#6A4BDB' });
+  });
+
+  test('…and stands back UP for the results, which are a surface again', async () => {
+    // `begun` stays true through the results, so it cannot be what
+    // decides this — the run reports which of its three surfaces is up.
+    await render(<QuizScreen />);
+    await begin();
+    await lockIn(0);
+    await next();
+    await lockIn(0);
+    await next();
+
+    expect(await screen.findByTestId('quiz-rank')).toBeOnTheScreen();
+    expect(screen.getByTestId('quiz-island')).toBeOnTheScreen();
+    expect(screen.getByText('Quiz')).toBeOnTheScreen();
   });
 
   test('the answer stays hidden until you lock one in', async () => {
@@ -509,8 +545,9 @@ describe('<QuizScreen />', () => {
 
       expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
       expect(mockFetchQuiz).toHaveBeenCalled();
-      // The accent eyebrow and the worded way home, as Nearby has
-      expect(screen.getByText('Exploring · test yourself on')).toBeOnTheScreen();
+      // The accent eyebrow and the worded way home, as Nearby has —
+      // now carried by the island rather than an in-flow title
+      expect(screen.getByText('Exploring · Quiz')).toBeOnTheScreen();
       fireEvent.press(screen.getByTestId('quiz-back-to-near-me'));
       expect(mockBackToNearMe).toHaveBeenCalled();
     });
