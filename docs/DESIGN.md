@@ -80,17 +80,23 @@ accessible label excludes them; expand/collapse controls carry
 
 ## Navigation
 
-Two tabs, two questions: **Nearby** (what can I go see?) and
-**History** (what happened here?). Nearby holds the subject-photo
-stories — findable, recognisable on arrival — under the approved
-header identity: NEARBY over the area name with the violet locator
-dot, and a count line, `62 stories within a walk`, fixed with the
-header. History is the archive: every story of the ground, photo
-optional, on text-first cards with a lavender spine and an honest tag
-(NO LONGER STANDING · HIDDEN HISTORY) derived from the record; its
-count line reads `41 stories of this ground · 6 no longer standing`.
-Story screens push over the tab bar; dip-in tools (compass, Go)
-present modally.
+Four tabs, four questions: **Nearby** (what can I go see?), **Saved**
+(what did I keep?), **History** (what happened here?) and **Quiz**
+(what do I actually know?). Nearby holds the subject-photo stories —
+findable, recognisable on arrival — under the approved header
+identity: NEARBY over the area name with the violet locator dot, and
+a count line, `62 stories within a walk`, fixed with the header.
+Saved is the shelf the user fills: Save on any story keeps it, newest
+first, with one Keep offline switch that downloads the shelf; empty is
+a state, not a failure. History is the archive as Gazetteer: the
+area's own illustrated story, retold, with the relics of its ground
+beneath — photo optional, on cards with a lavender spine and an honest
+tag (NO LONGER STANDING · PLAQUE) derived from the record. Quiz asks
+about the ground the feed just described, and is the only surface
+where the app asks rather than tells; it is wholly derived from
+Nearby's stories and says so by refusing below three of them. Story
+screens push over the tab bar; dip-in tools (compass, Go) present
+modally.
 
 Lists scroll under the translucent tab bar but pad their bottom by the
 safe-area inset: the last card must always be able to rest fully above
