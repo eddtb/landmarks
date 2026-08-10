@@ -19,7 +19,10 @@ import { HistoryItem } from '@/types/history';
 const TtlMs = 30 * 24 * 60 * 60 * 1000;
 type Resolution = { title: string; thumbnailUrl?: string } | null;
 // v2: v1 was poisoned by rate-limited lookups cached as "no subject"
-const cache = diskBackedMap<{ resolution: Resolution; at: number }>('plaque-subjects-v2');
+const cache = diskBackedMap<{ resolution: Resolution; at: number }>('plaque-subjects-v2', {
+  ttlMs: TtlMs,
+  maxEntries: 2000,
+});
 
 const normalize = (text: string) => text.toLowerCase().replace(/['’]/g, '').trim();
 

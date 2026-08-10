@@ -1,3 +1,4 @@
+import { coordinatesParam } from '@/server/params';
 import { fetchWalkingRoute } from '@/server/route';
 
 /**
@@ -9,19 +10,16 @@ import { fetchWalkingRoute } from '@/server/route';
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const values = ['fromLat', 'fromLng', 'toLat', 'toLng'].map((name) =>
-    Number(url.searchParams.get(name))
-  );
-  if (values.some((value) => !Number.isFinite(value))) {
+  // The same absence-is-not-zero rule as /api/area (#305): four
+  // missing parameters used to route from Null Island to Null Island
+  const from = coordinatesParam(url.searchParams, 'fromLat', 'fromLng');
+  const to = coordinatesParam(url.searchParams, 'toLat', 'toLng');
+  if (!from || !to) {
     return Response.json({ error: 'Expected fromLat, fromLng, toLat, toLng' }, { status: 400 });
   }
-  const [fromLat, fromLng, toLat, toLng] = values;
 
   try {
-    const route = await fetchWalkingRoute(
-      { latitude: fromLat, longitude: fromLng },
-      { latitude: toLat, longitude: toLng }
-    );
+    const route = await fetchWalkingRoute(from, to);
     if (!route) {
       return Response.json({ error: 'No route found' }, { status: 404 });
     }

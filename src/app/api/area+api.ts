@@ -1,5 +1,6 @@
 import { findNearestArea } from '@/server/area';
 import { fixturesEnabled } from '@/server/fixtures';
+import { coordinatesParam } from '@/server/params';
 import { storeHealthHeaders } from '@/server/telling-store';
 
 /**
@@ -18,10 +19,10 @@ import { storeHealthHeaders } from '@/server/telling-store';
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const lat = Number(url.searchParams.get('lat'));
-  const lng = Number(url.searchParams.get('lng'));
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  // Both parameters must be PRESENT before either is coerced — a
+  // missing one used to read as 0 and name Null Island (#305)
+  const center = coordinatesParam(url.searchParams);
+  if (!center) {
     return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
   }
 
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const name = await findNearestArea({ latitude: lat, longitude: lng });
+    const name = await findNearestArea(center);
     // The area cache rides the same table as the tellings — so this
     // route reports the store's health too. It is also the cheapest
     // URL to curl after a deploy.

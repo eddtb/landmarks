@@ -51,7 +51,10 @@ const ClassifyDepth = 60;
 const NameTtlMs = 30 * 24 * 60 * 60 * 1000;
 // The name of ground does not change, so this TTL is about correcting
 // OUR verdicts, not tracking the world.
-const nameCache = diskBackedMap<{ name: string | null; at: number }>('area-names-v1');
+const nameCache = diskBackedMap<{ name: string | null; at: number }>('area-names-v1', {
+  ttlMs: NameTtlMs,
+  maxEntries: 2000,
+});
 const AreaKind = 'area';
 
 // Single-flight per bucket: three screens call useAreaName, and a cold

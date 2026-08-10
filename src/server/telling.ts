@@ -13,7 +13,9 @@ import { storeGet, storePut } from '@/server/telling-store';
 const TtlMs = 30 * 24 * 60 * 60 * 1000;
 
 type CachedTelling = { text: string; at: number };
-const cache = diskBackedMap<CachedTelling>('tellings');
+// Generously capped and never tightened casually: these entries cost
+// free-tier quota to make, and the durable store is the real home
+const cache = diskBackedMap<CachedTelling>('tellings', { ttlMs: TtlMs, maxEntries: 2000 });
 // One generation per key at a time: concurrent opens of the same story
 // join the in-flight call instead of each spending a free-tier unit.
 const inFlight = new Map<string, Promise<string>>();

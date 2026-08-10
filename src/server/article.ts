@@ -157,8 +157,18 @@ const LightTtlMs = 15 * 60 * 1000;
 // a light result cached with images: [] would read as tried-and-
 // found-none and hide the gallery for a week (couldn't-try ≠
 // tried-and-failed), hence the separate short-lived light key.
-const cache = diskBackedMap<{ article: Article; at: number }>('articles-v2');
-const lightCache = diskBackedMap<{ article: Article; at: number }>('articles-light-v1');
+// Measured before the caps landed (#246): 63 full articles at 672KB
+// with 57 of them past the week, and 44 light ones at 532KB with ALL
+// 44 past their fifteen minutes — the light store is pure churn
+// without a bound. ~11KB an entry, so these caps are ~3MB and ~1MB.
+const cache = diskBackedMap<{ article: Article; at: number }>('articles-v2', {
+  ttlMs: ArticleTtlMs,
+  maxEntries: 300,
+});
+const lightCache = diskBackedMap<{ article: Article; at: number }>('articles-light-v1', {
+  ttlMs: LightTtlMs,
+  maxEntries: 100,
+});
 // Single-flight (mirrors retold.ts): concurrent /api/article and
 // /api/retold cold-opens share one upstream fetch per title
 const inFlight = new Map<string, Promise<Article | null>>();

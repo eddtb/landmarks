@@ -26,13 +26,25 @@ const HourMs = 60 * 60 * 1000;
 // sparse-area change applies to persisted entries identically — a
 // bare-array entry predates sparse and must not replay as a feed.
 //
+// EACH FEED ITEM IS PERSISTED ONCE, in its feed. Until #246 a new
+// bucket wrote every item twice — once inside the ~124KB feed blob,
+// once individually — and each `set` schedules its own debounced
+// write-back, so ~1s after every new bucket TWO write-backs fired,
+// each stringifying its whole map (~1MB apiece) on the same JS thread
+// that renders the map, at the ~100-170ms measured above. The second
+// copy bought nothing: getCachedHistoryItem now reads the feeds, the
+// way getStoriesAround always has.
+//
+// itemCache therefore holds only what no feed contains: deep-link
+// arrivals from fetchStory, a story at a time.
+//
 // Caps (see persisted-cache's maxEntries): 8 feed buckets is a whole
 // walk's worth at 3 dp (~900m of latitude each) while one ~124KB
 // Greenwich-sized feed × 8 stays well under Android AsyncStorage's
-// ~6MB ceiling; 500 items keeps several walks of detail-screen
-// material at ~2KB apiece for ~1MB worst case.
+// ~6MB ceiling; 100 deep-linked stories at ~2KB apiece is far more
+// than anyone opens from a share in a week.
 const FeedBucketCap = 8;
-const ItemCap = 500;
+const ItemCap = 100;
 // v2: items may carry event:true (events-are-history ruling) — a
 // pre-flag persisted feed would keep leaking events into Nearby
 const listCache = persistedMap<HistoryFeed>('history-feed-v2', HourMs, {
@@ -184,10 +196,9 @@ async function requestFeed(
     // `dressing` and fires the one-shot upgrade (useHistory), so a
     // flagged bucket can never quietly masquerade as the dressed
     // verdict for its whole TTL.
+    // One write, one map: the items are IN this feed, and the detail
+    // screen reads them back out of it (getCachedHistoryItem)
     listCache.set(key, feed);
-    for (const item of body.items) {
-      itemCache.set(String(item.pageId), item);
-    }
     return feed; // same object the cache holds — see the cache-hit note
   } catch (error) {
     // Offline path: saved stories for this exact bucket (even expired)
@@ -202,7 +213,27 @@ async function requestFeed(
   }
 }
 
+/**
+ * One story from what the device already holds, for a detail screen
+ * opening instantly instead of spinning.
+ *
+ * The feeds are asked first and they are where almost every answer
+ * lives — a story is on screen because a feed put it there. Expired
+ * buckets count (peekValues, like getStoriesAround): offline, the feed
+ * on screen IS an expired bucket, and tapping a card from it must not
+ * suddenly find nothing. itemCache holds the remainder — deep-link
+ * arrivals fetchStory brought in, which belong to no feed.
+ */
 export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {
+  const feeds = listCache.peekValues();
+  // Reversed: insertion order tracks minting order, so the newest
+  // bucket — the one the user is standing in — answers first
+  for (let index = feeds.length - 1; index >= 0; index--) {
+    const found = feeds[index].items.find((item) => item.pageId === pageId);
+    if (found) {
+      return found;
+    }
+  }
   return itemCache.get(String(pageId));
 }
 
