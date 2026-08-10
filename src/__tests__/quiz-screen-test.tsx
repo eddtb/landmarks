@@ -552,15 +552,19 @@ describe('<QuizScreen />', () => {
       expect(mockBackToNearMe).toHaveBeenCalled();
     });
 
-    test('a failure offers Try again, never a blank tab', async () => {
+    test('a failure names the quiz and offers to set it again, never a blank tab', async () => {
       mockFetchQuiz.mockRejectedValue(new Error('breaker open'));
       await render(<QuizScreen />);
 
       expect(await screen.findByTestId('quiz-error')).toBeOnTheScreen();
-      expect(screen.getByText('Couldn’t set the quiz right now.')).toBeOnTheScreen();
+      expect(screen.getByText('The quiz didn’t come back')).toBeOnTheScreen();
+      // The retry word is the verb of the thing — "Try again" was a
+      // placeholder that shipped to four screens (#291)
+      expect(screen.getByText('Set the quiz again')).toBeOnTheScreen();
+      expect(screen.queryByText(/right now/)).not.toBeOnTheScreen();
 
       mockFetchQuiz.mockResolvedValue(quiz);
-      fireEvent.press(screen.getByTestId('quiz-retry'));
+      fireEvent.press(screen.getByTestId('retry-quiz'));
 
       expect(await screen.findByTestId('quiz-start')).toBeOnTheScreen();
     });

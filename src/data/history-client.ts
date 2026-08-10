@@ -1,6 +1,7 @@
 import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
+import { ApiError } from '@/data/cached-get';
 import { persistedMap } from '@/data/persisted-cache';
 import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
@@ -67,6 +68,10 @@ function cacheKey(center: Coordinates): string {
 export type HistoryFetchResult = HistoryFeed & {
   /** A network failure forced serving saved stories — the UI may say so. */
   stale?: boolean;
+  /** When that saved copy was written. The offline line names the day,
+   * because an hour-old snapshot and a week-old one are different
+   * things to be reading (#248). */
+  savedAt?: number;
   /** Present when items are an expired persisted bucket shown instantly
    * as a placeholder; resolves with the fresh (or offline-stale) result. */
   revalidate?: Promise<HistoryFetchResult>;
@@ -174,7 +179,10 @@ async function requestFeed(
   try {
     const response = await fetch(apiUrl(`/api/history?${params}`));
     if (!response.ok) {
-      throw new Error(`History request failed with status ${response.status}`);
+      // ApiError, carrying the status: the feed's failure panel says
+      // whether an answer came back broken or never came back at all,
+      // and only an ApiError knows which (#291).
+      throw new ApiError('History', response.status);
     }
 
     const body = (await response.json()) as HistoryFeed;
@@ -207,7 +215,7 @@ async function requestFeed(
     await listCache.hydrated;
     const saved = listCache.peek(key);
     if (saved) {
-      return { ...saved.value, stale: true };
+      return { ...saved.value, stale: true, savedAt: saved.at };
     }
     throw error;
   }

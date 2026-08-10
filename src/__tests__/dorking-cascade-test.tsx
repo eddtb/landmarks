@@ -180,13 +180,13 @@ describe('the Dorking case (ward 404 → the cascade finds the town)', () => {
 
     // …and it says the place's NAME, which the header above it now
     // always shows — "this area" was the copy of a screen that couldn't
-    // be sure what area it was on (#292)
-    expect(
-      await screen.findByText(
-        'No story of Atlantis Ward is written down yet — but its ground is not empty.'
-      )
-    ).toBeOnTheScreen();
+    // be sure what area it was on (#292). A 404 from both legs is the
+    // one verdict allowed to make this claim (#291), and it makes it
+    // without a panel and without a retry.
+    expect(await screen.findByText('Wikipedia has no article for Atlantis Ward')).toBeOnTheScreen();
+    expect(screen.getByText('One relic stands on this ground anyway. It’s below.')).toBeOnTheScreen();
     expect(screen.getByText('Sunken Boundary Stone')).toBeOnTheScreen();
+    expect(screen.queryByTestId('load-failed-area-article')).not.toBeOnTheScreen();
   });
 });
 

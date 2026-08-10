@@ -30,12 +30,19 @@ import {
 } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
 import { ImageViewer } from '@/components/image-viewer';
+import {
+  absentRecordCopy,
+  FailureCause,
+  FailurePanel,
+  LoadFailure,
+  SavedCopyLine,
+} from '@/components/load-failure';
 import { TellingLead, TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
-import { WanderLine } from '@/components/wander-line';
+import { DrawingWanderLine, WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
 import { fetchArticle, fetchArticleLight } from '@/data/article-client';
-import { ApiError } from '@/data/cached-get';
+import { LoadVerdict, loadVerdict, worstOf } from '@/data/load-verdict';
 import { fetchRetold } from '@/data/retold-client';
 import { Article, ArticleImage } from '@/types/article';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
@@ -81,12 +88,19 @@ const partViewability = { itemVisiblePercentThreshold: 25 };
 export type GazetteerRow =
   | { kind: 'ai-label'; key: string }
   | { kind: 'no-story'; key: string; copy: string }
+  /** The record is empty and we know it: a 404 from BOTH article legs.
+   * No panel and no retry — that grammar belongs to failure. */
+  | { kind: 'absent-record'; key: string; name: string | null; relics: number }
+  /** The ask failed. Venture's fact, not the record's. */
+  | { kind: 'load-failed'; key: string; cause: FailureCause }
+  /** The phone is offline and this is the saved copy. One grey line. */
+  | { kind: 'offline'; key: string; name: string | null; savedAt?: number }
   | { kind: 'record-story'; key: string }
   | { kind: 'brief'; key: string; lines: string[] }
   | { kind: 'timeline'; key: string; stops: TimelineStop[] }
   | { kind: 'part'; key: string; part: RetoldPart; index: number }
-  | { kind: 'retelling-pending'; key: string }
-  | { kind: 'retelling-halted'; key: string }
+  | { kind: 'retelling-pending'; key: string; name: string | null; partsSoFar: number }
+  | { kind: 'retelling-halted'; key: string; partsSoFar: number }
   | { kind: 'telling-lead'; key: string }
   | { kind: 'source-link'; key: string }
   | { kind: 'section'; key: string; title: string }
@@ -156,12 +170,30 @@ export function emptyGazetteerCopy(name?: string | null): string {
 /** How many neighbours a dead end is worth: three, and the walk decides. */
 const NearbyOffered = 3;
 
+/** The longest wait in the app, and until #248 it was bare grey text. */
+function pendingRow(name: string | null, partsSoFar: number): GazetteerRow {
+  return { kind: 'retelling-pending', key: 'retelling-pending', name, partsSoFar };
+}
+
 /** Pure and unit-tested: the whole scroll as data. */
 export function buildGazetteerRows(options: {
   hasArticle: boolean;
-  /** Probed and genuinely absent (never while loading): the area has a
-   * name, but no article answers to it. */
+  /**
+   * Probed and genuinely absent (never while loading, and never after a
+   * failure): the area has a name, and a 404 came back from BOTH
+   * article legs. Until #291 this was set by every failure too, so a
+   * recycling worker printed a claim about the historical record.
+   */
   storyMissing?: boolean;
+  /** The ask itself failed. Mutually exclusive with `storyMissing` —
+   * that is the whole of the bug this pair exists to keep fixed. */
+  articleFailure?: FailureCause;
+  /** The feed is serving its saved copy, so the phone is offline. This
+   * OUTRANKS both of the above: with no request on the wire we know
+   * nothing about the record and must not describe it. */
+  offline?: boolean;
+  /** When that saved copy was written — the offline line names the day. */
+  savedAt?: number;
   retoldStatus: RetoldStatus;
   retold: Retold | null;
   /** Complete parts landed so far by a live (or halted) stream. */
@@ -211,6 +243,28 @@ export function buildGazetteerRows(options: {
     rows.push({ kind: 'source-link', key: 'source-link' });
   };
 
+  // Offline is checked FIRST, everywhere, because it outranks: the
+  // request never left the phone, so nothing below knows anything about
+  // the record. It rides above a story that DID load too — the History
+  // tab used to serve cached stories with no admission at all while
+  // Nearby, on the same flag from the same hook, said "you're offline"
+  // (#248).
+  if (options.offline) {
+    rows.push({
+      kind: 'offline',
+      key: 'offline',
+      name: options.name ?? null,
+      savedAt: options.savedAt,
+    });
+  }
+  // Venture's own failure, in the grammar absence is never given: a
+  // panel, a cause, and a retry. Withheld when offline — the line above
+  // has already said the truer thing, and a retry with no signal is a
+  // tap that does nothing.
+  if (!hasArticle && !options.offline && options.articleFailure) {
+    rows.push({ kind: 'load-failed', key: 'load-failed', cause: options.articleFailure });
+  }
+
   if (!hasArticle && record) {
     /**
      * A PLACE with no article of its own — the case #292 was filed for.
@@ -226,7 +280,11 @@ export function buildGazetteerRows(options: {
     if (record.extract?.trim()) {
       rows.push({ kind: 'record-story', key: 'record-story' });
     }
-    const line = recordLine(record, nearby.length > 0);
+    // The measured line is a claim about how much the RECORD holds, so
+    // it may only be made when the ask actually succeeded and came back
+    // empty. After a failure the panel above speaks instead, and
+    // "nobody has written the rest down" stays unsaid.
+    const line = storyMissing ? recordLine(record, nearby.length > 0) : null;
     if (line) {
       rows.push({ kind: 'no-story', key: 'no-story', copy: line });
     }
@@ -249,11 +307,10 @@ export function buildGazetteerRows(options: {
     // is the fuller answer, and it can only be reached if nothing else
     // claims the list.
     rows.push({
-      kind: 'no-story',
+      kind: 'absent-record',
       key: 'no-story',
-      copy: options.name
-        ? `No story of ${options.name} is written down yet — but its ground is not empty.`
-        : 'No recorded story for this area yet — its relics are below.',
+      name: options.name ?? null,
+      relics: relics.length,
     });
   }
 
@@ -290,7 +347,7 @@ export function buildGazetteerRows(options: {
       // arrived and offers the rest.
       if (streamedParts.length === 0) {
         if (retoldStatus === 'streaming') {
-          rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
+          rows.push(pendingRow(options.name ?? null, 0));
         } else {
           pushOwnStory();
         }
@@ -303,12 +360,12 @@ export function buildGazetteerRows(options: {
         );
         rows.push(
           retoldStatus === 'streaming'
-            ? { kind: 'retelling-pending', key: 'retelling-pending' }
-            : { kind: 'retelling-halted', key: 'retelling-halted' }
+            ? pendingRow(options.name ?? null, streamedParts.length)
+            : { kind: 'retelling-halted', key: 'retelling-halted', partsSoFar: streamedParts.length }
         );
       }
     } else if (retoldStatus === 'pending') {
-      rows.push({ kind: 'retelling-pending', key: 'retelling-pending' });
+      rows.push(pendingRow(options.name ?? null, 0));
     } else {
       // No retelling exists: our telling is the story, the source is cited
       pushOwnStory();
@@ -327,6 +384,56 @@ export function buildGazetteerRows(options: {
 /** Where a timeline stop's part lives in the rows, or -1. */
 export function partRowIndex(rows: GazetteerRow[], partNumber: number): number {
   return rows.findIndex((row) => row.kind === 'part' && row.index === partNumber - 1);
+}
+
+/**
+ * One article leg, with its failure kept rather than flattened.
+ *
+ * Module-level and deliberately conditional-free inside the `try`: a
+ * conditional in a try/catch de-optimises the WHOLE enclosing component
+ * under the React Compiler, and this work used to sit inside
+ * `AreaGazetteer` (AGENTS.md — "extract it into a module-level async
+ * helper that returns a verdict").
+ */
+type ArticleLeg = { article: Article | null; verdict: LoadVerdict | null };
+
+async function askLeg(ask: Promise<Article>): Promise<ArticleLeg> {
+  try {
+    return { article: await ask, verdict: null };
+  } catch (error) {
+    return { article: null, verdict: loadVerdict(error) };
+  }
+}
+
+/** What the article status is once it stops being pending or ready:
+ * the honest verdict, never a flat "none". */
+type ArticleStatus = 'pending' | 'ready' | LoadVerdict;
+
+/**
+ * The retelling ask, folded into one verdict — and module-level for the
+ * same reason as `askLeg`. The `loaded ? 'ready' : 'none'` that used to
+ * sit inside this try/catch was de-optimising the WHOLE of
+ * `AreaGazetteer`: the compiler bails silently, and the heaviest screen
+ * in the app was paying per-render for it.
+ */
+type RetoldAsk =
+  | { status: 'ready'; retold: Retold }
+  | { status: 'none' }
+  | { status: 'failed'; verdict: LoadVerdict };
+
+function settledRetold(loaded: Retold | null): RetoldAsk {
+  return loaded ? { status: 'ready', retold: loaded } : { status: 'none' };
+}
+
+async function askRetold(
+  name: string,
+  onPart: (part: RetoldPart, index: number) => void
+): Promise<RetoldAsk> {
+  try {
+    return settledRetold(await fetchRetold(name, onPart));
+  } catch (error) {
+    return { status: 'failed', verdict: loadVerdict(error) };
+  }
 }
 
 function Hero({
@@ -449,6 +556,8 @@ export function AreaGazetteer({
   allStories,
   refreshing,
   onRefresh,
+  stale,
+  savedAt,
   lead,
   record,
   sourceUrl,
@@ -473,6 +582,13 @@ export function AreaGazetteer({
   allStories: HistoryItem[];
   refreshing: boolean;
   onRefresh: () => void;
+  /** The feed reaching this screen is the phone's saved copy — the
+   * network is gone. The tab admits it in one grey line (#248): Nearby
+   * has said "you're offline" for months on this very flag, and History
+   * said nothing at all on the same data from the same hook. */
+  stale?: boolean;
+  /** When that saved copy was written. */
+  savedAt?: number;
   /** Rendered in the header under the hero — a place screen's Go row. */
   lead?: ReactNode;
   /**
@@ -600,7 +716,8 @@ export function AreaGazetteer({
   // second measurement of the content box.
   const listRef = useRef<FlatList<GazetteerRow>>(null);
   const [article, setArticle] = useState<Article | null>(null);
-  const [articleStatus, setArticleStatus] = useState<'pending' | 'ready' | 'none'>('pending');
+  const [articleStatus, setArticleStatus] = useState<ArticleStatus>('pending');
+  const [articleAttempt, setArticleAttempt] = useState(0);
   const [retold, setRetold] = useState<Retold | null>(null);
   const [retoldStatus, setRetoldStatus] = useState<RetoldStatus>('pending');
   // A cold generation streams: complete parts land here one by one.
@@ -655,32 +772,33 @@ export function AreaGazetteer({
       // cheap extract leg, the full one replaces it when the gallery
       // legs land — and a late light result may never overwrite it.
       let fullLanded = false;
-      const fullAsk = fetchArticle(areaName)
-        .catch(() => null)
-        .then((loaded) => {
-          if (active && loaded) {
-            fullLanded = true;
-            setArticle(loaded);
-            setArticleStatus('ready');
-          }
-          return loaded;
-        });
-      const light = await fetchArticleLight(areaName).catch(() => null);
-      if (active && light && !fullLanded) {
-        setArticle(light);
+      const fullAsk = askLeg(fetchArticle(areaName)).then((leg) => {
+        if (active && leg.article) {
+          fullLanded = true;
+          setArticle(leg.article);
+          setArticleStatus('ready');
+        }
+        return leg;
+      });
+      const light = await askLeg(fetchArticleLight(areaName));
+      if (active && light.article && !fullLanded) {
+        setArticle(light.article);
         setArticleStatus('ready');
       }
-      const loaded = await fullAsk;
-      if (active && !loaded && !light) {
-        // Only a double miss is "none" — a painted light article
-        // never flashes away because the image leg failed
-        setArticleStatus('none');
+      const full = await fullAsk;
+      if (active && !full.article && !light.article) {
+        // Only a double miss ends the ask — a painted light article
+        // never flashes away because the image leg failed. And only a
+        // double 404 is ABSENCE: worstOf keeps the strongest claim on
+        // the list ("history has no record here") behind unanimity,
+        // so one flaky leg can no longer speak for the record (#291).
+        setArticleStatus(worstOf(full.verdict ?? 'silent', light.verdict ?? 'silent'));
       }
     })();
     return () => {
       active = false;
     };
-  }, [areaName]);
+  }, [areaName, articleAttempt]);
 
   useEffect(() => {
     if (!areaName) {
@@ -694,32 +812,31 @@ export function AreaGazetteer({
     }
     let active = true;
     (async () => {
-      try {
-        // A server cache hit resolves in one hop; a cold generation
-        // streams — each complete part renders the moment it lands
-        const loaded = await fetchRetold(areaName, (part, index) => {
-          if (!active) {
-            return;
-          }
-          streamedRef.current = [...streamedRef.current.slice(0, index), part];
-          setStreamedParts(streamedRef.current);
-          setRetoldStatus('streaming');
-        });
-        if (active) {
-          setRetold(loaded);
-          setRetoldStatus(loaded ? 'ready' : 'none');
-        }
-      } catch (error) {
+      // A server cache hit resolves in one hop; a cold generation
+      // streams — each complete part renders the moment it lands
+      const ask = await askRetold(areaName, (part, index) => {
         if (!active) {
           return;
         }
-        // A 404 is the server's verdict ("no retelling") — fall back to
-        // the original article. Anything else mid-stream keeps what
-        // arrived and offers a retry; with nothing arrived, the
-        // original article stands, as it always has.
-        const verdict = error instanceof ApiError && error.status === 404;
-        setRetoldStatus(!verdict && streamedRef.current.length > 0 ? 'halted' : 'none');
+        streamedRef.current = [...streamedRef.current.slice(0, index), part];
+        setStreamedParts(streamedRef.current);
+        setRetoldStatus('streaming');
+      });
+      if (!active) {
+        return;
       }
+      if (ask.status === 'ready') {
+        setRetold(ask.retold);
+        setRetoldStatus('ready');
+        return;
+      }
+      // A 404 is the server's verdict ("no retelling") — fall back to
+      // the original article. Anything else mid-stream keeps what
+      // arrived and offers a retry; with nothing arrived, the
+      // original article stands, as it always has.
+      const halted =
+        ask.status === 'failed' && ask.verdict !== 'absent' && streamedRef.current.length > 0;
+      setRetoldStatus(halted ? 'halted' : 'none');
     })();
     return () => {
       active = false;
@@ -731,8 +848,17 @@ export function AreaGazetteer({
   // itself. Derived, not set: the moment a name appears, the real
   // statuses lead again.
   const areaMissing = areaName === null && areaSettled;
-  const resolvedArticleStatus = areaMissing ? 'none' : articleStatus;
+  const resolvedArticleStatus: ArticleStatus = areaMissing ? 'absent' : articleStatus;
   const resolvedRetoldStatus = areaMissing ? 'none' : retoldStatus;
+  const articleSettled = resolvedArticleStatus !== 'pending' && resolvedArticleStatus !== 'ready';
+  // Offline outranks every other verdict (the mock's rule 2): the feed
+  // on this screen is the phone's saved copy, so nothing left the phone
+  // and nothing here knows anything about the record.
+  const articleVerdict: LoadVerdict | null = !articleSettled
+    ? null
+    : stale
+      ? 'offline'
+      : resolvedArticleStatus;
 
   // Memoized from here down: renderItem's inputs must hold their
   // identity across unrelated re-renders (scroll, speech, the image
@@ -748,7 +874,16 @@ export function AreaGazetteer({
   // Whether the hero paints: the one fact the floating chips need,
   // because their material follows what they sit on and nothing else
   const onPhoto = article !== null && areaName !== null;
-  const emptyState = emptyVerdict(resolvedArticleStatus, article !== null);
+  // The three settled verdicts all mean "no article", which is the only
+  // thing the empty state ever asked. Whichever it is, a row now claims
+  // the list — so the list's own last word is reached by a genuine 404
+  // with no relics, and by nothing else.
+  const emptyState = emptyVerdict(
+    resolvedArticleStatus === 'pending' || resolvedArticleStatus === 'ready'
+      ? resolvedArticleStatus
+      : 'none',
+    article !== null
+  );
   // Where the ground thickens: the neighbourhood the feed already
   // handed us, minus this place itself. Only ever offered on a dead
   // end, so a healthy screen is untouched by #292.
@@ -761,7 +896,14 @@ export function AreaGazetteer({
     () =>
       buildGazetteerRows({
         hasArticle: article !== null,
-        storyMissing: resolvedArticleStatus === 'none' && areaName !== null,
+        // Absence, and only absence: a 404 from both legs, with a name
+        // to say it about. A 502 or a timeout now takes the branch
+        // below instead of claiming history is silent here (#291).
+        storyMissing: articleVerdict === 'absent' && areaName !== null,
+        articleFailure:
+          articleVerdict === 'silent' || articleVerdict === 'errored' ? articleVerdict : undefined,
+        offline: stale,
+        savedAt,
         retoldStatus: resolvedRetoldStatus,
         retold,
         streamedParts,
@@ -771,12 +913,14 @@ export function AreaGazetteer({
         // Never while the article is still in flight: a record line
         // that says "nobody wrote this down" during a fetch is a lie
         // with a half-second lifetime
-        record: resolvedArticleStatus === 'none' ? record : undefined,
+        record: articleVerdict !== null ? record : undefined,
         nearby,
       }),
     [
       article,
-      resolvedArticleStatus,
+      articleVerdict,
+      stale,
+      savedAt,
       areaName,
       resolvedRetoldStatus,
       retold,
@@ -855,6 +999,24 @@ export function AreaGazetteer({
             {row.copy}
           </ThemedText>
         );
+      case 'absent-record':
+        // Absence, and the grammar it keeps to itself: an eyebrow and a
+        // statement. No panel, no button — the ask WORKED, and a retry
+        // against a 404 teaches a reader that their tap does nothing.
+        return <AbsentRecord name={row.name} relics={row.relics} />;
+      case 'load-failed':
+        return (
+          <LoadFailure
+            surface="area-article"
+            cause={row.cause}
+            onRetry={() => {
+              setArticleStatus('pending');
+              setArticleAttempt((attempt) => attempt + 1);
+            }}
+          />
+        );
+      case 'offline':
+        return <SavedCopyLine name={row.name} savedAt={row.savedAt} />;
       case 'record-story':
         // The record's own words, and Venture's telling of them. This
         // is ExtractStory, folded in from the place screen (#255) — the
@@ -901,32 +1063,25 @@ export function AreaGazetteer({
           />
         );
       case 'retelling-pending':
+        // The longest wait in the app. It got bare grey text while the
+        // purpose-built, reduced-motion-aware line sat unused outside
+        // cold load (#248) — so the slowest moment is now the one that
+        // looks most like Venture, with a door out beside it.
         return (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.pending}>
-            Retelling this place…
-          </ThemedText>
+          <RetellingPending name={row.name} partsSoFar={row.partsSoFar} articleUrl={articleUrl} />
         );
       case 'retelling-halted':
-        // The stream broke: honest words, and the offer to finish —
-        // a re-ask restarts the whole generation (still one call site)
+        // The stream broke: honest words that say WHERE it stopped, and
+        // the offer to finish — a re-ask restarts the whole generation
+        // (still one call site).
         return (
-          <View style={styles.halted}>
-            <ThemedText type="small" themeColor="textSecondary">
-              The retelling stopped partway.
-            </ThemedText>
-            <Pressable
-              accessibilityRole="button"
-              testID="retell-retry"
-              onPress={() => {
-                setRetoldStatus('streaming');
-                setRetoldAttempt((attempt) => attempt + 1);
-              }}
-              hitSlop={Spacing.two}>
-              <ThemedText type="smallBold" themeColor="accent">
-                Retell the rest
-              </ThemedText>
-            </Pressable>
-          </View>
+          <RetellingHalted
+            partsSoFar={row.partsSoFar}
+            onRetry={() => {
+              setRetoldStatus('streaming');
+              setRetoldAttempt((attempt) => attempt + 1);
+            }}
+          />
         );
       case 'telling-lead':
         return tellingItem ? <TellingLead item={tellingItem} /> : null;
@@ -1178,6 +1333,104 @@ export function AreaGazetteer({
   );
 }
 
+
+/**
+ * The record is empty, said in the grammar failure never gets: an
+ * eyebrow, a statement, and the relics. No surface, no button.
+ *
+ * That difference is the fix, not decoration. If a reader cannot tell
+ * "history has no record here" from "we failed to ask" at a glance,
+ * without reading the words, #291 is still open — and a retry offered
+ * against a 404 would teach them their tap does nothing.
+ */
+function AbsentRecord({ name, relics }: { name: string | null; relics: number }) {
+  const copy = absentRecordCopy(name ?? 'this area', relics);
+  return (
+    <View style={styles.absent} testID="gazetteer-absent">
+      <ThemedText type="eyebrow" themeColor="textSecondary">
+        No record
+      </ThemedText>
+      <ThemedText type="title">{copy.title}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        {copy.line}
+      </ThemedText>
+    </View>
+  );
+}
+
+/**
+ * The AI write, instrumented. Before the first part lands it is the
+ * whole screen, so it gets the panel, the drawing wander line and a
+ * door out to the source; once parts are arriving the story is the
+ * screen and this shrinks to one line under it.
+ */
+function RetellingPending({
+  name,
+  partsSoFar,
+  articleUrl,
+}: {
+  name: string | null;
+  partsSoFar: number;
+  articleUrl?: string;
+}) {
+  const theme = useTheme();
+  if (partsSoFar > 0) {
+    return (
+      <View style={styles.pendingLine} testID="retelling-pending">
+        <DrawingWanderLine arcSpan={38} stroke={4.5} count={4} color={theme.accent} />
+        <ThemedText type="small" themeColor="textSecondary">
+          Part {PartWords[partsSoFar] ?? partsSoFar + 1}, writing…
+        </ThemedText>
+      </View>
+    );
+  }
+  return (
+    <View
+      style={[styles.pendingPanel, { backgroundColor: theme.backgroundElement }]}
+      testID="retelling-pending">
+      <ThemedText type="eyebrow" themeColor="textSecondary">
+        Retelling
+      </ThemedText>
+      <DrawingWanderLine arcSpan={38} stroke={4.5} count={4} color={theme.accent} />
+      <ThemedText type="headline">
+        {name ? `Writing the retelling of ${name}` : 'Writing the retelling'}
+      </ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        It arrives a part at a time, each one appearing as it is written.
+      </ThemedText>
+      {articleUrl && (
+        // A long wait deserves a door out, and the door is a word
+        <ExternalLink href={articleUrl as `https://${string}`} asChild>
+          <Pressable
+            accessibilityRole="link"
+            testID="retelling-read-source"
+            style={StyleSheet.flatten([styles.quietAction])}>
+            <ThemedText type="smallBold" themeColor="accent">
+              Read the Wikipedia article instead
+            </ThemedText>
+          </Pressable>
+        </ExternalLink>
+      )}
+    </View>
+  );
+}
+
+/** The stream broke. It says where, keeps what arrived, and offers the
+ * rest — the same panel every other failure wears. */
+function RetellingHalted({ partsSoFar, onRetry }: { partsSoFar: number; onRetry: () => void }) {
+  return (
+    <View style={styles.haltedWrap}>
+      <FailurePanel
+        headline={`Stopped after part ${partsSoFar}`}
+        body="The connection dropped mid-sentence. What’s written above stays."
+        action="Write the rest"
+        onAction={onRetry}
+        testID="retelling-halted"
+        actionTestID="retell-retry"
+      />
+    </View>
+  );
+}
 
 /**
  * The name, on the page instead of on a photograph — the hero's title
@@ -1542,16 +1795,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.one,
   },
-  pending: {
+  // Absence: no surface and no border. The words are the whole state.
+  absent: {
     paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.three,
+    paddingTop: Spacing.four,
+    gap: Spacing.one,
   },
-  halted: {
+  pendingPanel: {
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    borderCurve: 'continuous',
+    gap: Spacing.two,
+  },
+  pendingLine: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
+  },
+  // 44pt, left-aligned: a word on the page, not a filled button
+  quietAction: {
+    height: 44,
+    justifyContent: 'center',
+  },
+  haltedWrap: {
+    paddingBottom: Spacing.two,
   },
   article: {
     paddingHorizontal: Spacing.four,

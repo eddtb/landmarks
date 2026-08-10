@@ -257,7 +257,7 @@ describe('buildGazetteerRows', () => {
       retold: null,
       relics: [relic(1, 'Palace of Placentia')],
     });
-    expect(rows.map((row) => row.kind)).toEqual(['no-story', 'section', 'relic']);
+    expect(rows.map((row) => row.kind)).toEqual(['absent-record', 'section', 'relic']);
   });
 
   test('a missing story with no relics leaves the list empty — its empty state speaks', () => {
@@ -281,9 +281,10 @@ describe('buildGazetteerRows', () => {
       name: 'Covent Garden',
     });
     expect(rows[0]).toEqual({
-      kind: 'no-story',
+      kind: 'absent-record',
       key: 'no-story',
-      copy: 'No story of Covent Garden is written down yet — but its ground is not empty.',
+      name: 'Covent Garden',
+      relics: 1,
     });
   });
 });
