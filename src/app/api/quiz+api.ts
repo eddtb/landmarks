@@ -1,4 +1,5 @@
 import { MinStoriesToQuiz, QuizSubject, getQuiz } from '@/server/quiz';
+import { storeHealthHeaders } from '@/server/telling-store';
 
 /**
  * POST because the client sends the stories: the server holds no
@@ -64,14 +65,14 @@ export async function POST(request: Request): Promise<Response> {
   // The floor is a 200, not an error: "no quiz for this ground" is a
   // real answer the tab is built to show, not a failure to report
   if (subjects.length < MinStoriesToQuiz) {
-    return Response.json({ quiz: null });
+    return Response.json({ quiz: null }, { headers: storeHealthHeaders() });
   }
 
   try {
     const quiz = await getQuiz(area.slice(0, MaxTitleChars), subjects);
-    return Response.json({ quiz });
+    return Response.json({ quiz }, { headers: storeHealthHeaders() });
   } catch (error) {
     console.error('Quiz failed:', error);
-    return Response.json({ error: 'Quiz failed' }, { status: 502 });
+    return Response.json({ error: 'Quiz failed' }, { status: 502, headers: storeHealthHeaders() });
   }
 }

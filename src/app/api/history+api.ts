@@ -9,7 +9,7 @@ import {
 } from '@/server/heritage';
 import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
-import { lastStoreError, storeGet, storePut } from '@/server/telling-store';
+import { storeGet, storeHealthHeaders, storePut } from '@/server/telling-store';
 import { ExistenceFacts, fetchExistenceFacts } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
 import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
@@ -180,15 +180,16 @@ export async function GET(request: Request) {
     };
     // The edge runtime gives us no log to read, so the cache reports
     // its own health on the way out: whether this answer came from the
-    // durable store, and why the last write failed if it did. Cheap,
-    // and the only thing standing between a silent cache miss and a
-    // day of guessing.
-    const failure = lastStoreError();
+    // durable store, what the store is doing, and why it last refused.
+    // Cheap, and the only thing standing between a silent cache miss
+    // and a day of guessing. x-feed-store rides EVERY answer — the
+    // cache-hit paths below return without ever writing, so a
+    // post-deploy curl that lands on one used to learn nothing at all.
     return Response.json(feed, {
       headers: {
         'x-feed-cache': cacheOutcome,
         ...(breakdown ? { 'x-feed-timing': breakdown } : {}),
-        ...(failure ? { 'x-feed-store-error': failure } : {}),
+        ...storeHealthHeaders(),
       },
     });
   };
@@ -452,6 +453,9 @@ export async function GET(request: Request) {
       console.log(`[history] compose refused for ${key} — serving the stored feed instead`);
       return respond(salvaged.value.items, salvaged.value.sparse);
     }
-    return Response.json({ error: 'History lookup failed' }, { status: 502 });
+    return Response.json(
+      { error: 'History lookup failed' },
+      { status: 502, headers: storeHealthHeaders() }
+    );
   }
 }

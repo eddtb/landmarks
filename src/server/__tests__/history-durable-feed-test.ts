@@ -32,7 +32,7 @@ jest.mock('@/server/ai-cache', () => {
 jest.mock('@/server/telling-store', () => ({
   storeGet: jest.fn(async () => undefined),
   storePut: jest.fn(async () => undefined),
-  lastStoreError: jest.fn(() => null),
+  storeHealthHeaders: jest.fn(() => ({ 'x-feed-store': 'ok' })),
 }));
 jest.mock('@/server/geograph', () => ({
   dressWithPhotos: jest.fn(async (items: HistoryItem[]) => items),
@@ -54,9 +54,13 @@ jest.mock('@/server/heritage', () => {
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { findNearbyHistory } = require('@/server/wikipedia') as { findNearbyHistory: jest.Mock };
-const { storeGet, storePut } =
+const { storeGet, storePut, storeHealthHeaders } =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('@/server/telling-store') as { storeGet: jest.Mock; storePut: jest.Mock };
+  require('@/server/telling-store') as {
+    storeGet: jest.Mock;
+    storePut: jest.Mock;
+    storeHealthHeaders: jest.Mock;
+  };
 const cacheMaps = (
   jest.requireMock('@/server/ai-cache') as { __maps: Map<string, Map<string, unknown>> }
 ).__maps;
@@ -88,6 +92,7 @@ describe('the feed s durable cache', () => {
     findNearbyHistory.mockReset().mockResolvedValue(fresh);
     storeGet.mockReset().mockResolvedValue(undefined);
     storePut.mockReset().mockResolvedValue(undefined);
+    storeHealthHeaders.mockReset().mockReturnValue({ 'x-feed-store': 'ok' });
   });
 
   test('a stored feed answers without touching a single upstream', async () => {
@@ -158,6 +163,31 @@ describe('the feed s durable cache', () => {
     const response = await GET(freshRequest());
 
     expect(response.status).toBe(502);
+  });
+
+  test('a store hit reports the store — the cache-hit paths used to say nothing at all', async () => {
+    storeHealthHeaders.mockReturnValue({ 'x-feed-store': 'error', 'x-feed-store-error': 'auth' });
+    storeGet.mockResolvedValue({ value: { items: remembered }, at: Date.now() - 60_000 });
+
+    const response = await GET(freshRequest());
+
+    // This answer never writes, so the old write-only header left a
+    // post-deploy curl that landed here knowing nothing
+    expect(response.headers.get('x-feed-cache')).toBe('store-hit');
+    expect(response.headers.get('x-feed-store')).toBe('error');
+    expect(response.headers.get('x-feed-store-error')).toBe('auth');
+    expect(storePut).not.toHaveBeenCalled();
+  });
+
+  test('even the error answer says what the store is doing', async () => {
+    storeHealthHeaders.mockReturnValue({ 'x-feed-store': 'off' });
+    findNearbyHistory.mockRejectedValue(new Error('429 Too Many Requests'));
+    storeGet.mockResolvedValue(undefined);
+
+    const response = await GET(freshRequest());
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get('x-feed-store')).toBe('off');
   });
 
   test('with the store off, the route behaves exactly as it did before it existed', async () => {

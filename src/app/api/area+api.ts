@@ -1,5 +1,6 @@
 import { findNearestArea } from '@/server/area';
 import { fixturesEnabled } from '@/server/fixtures';
+import { storeHealthHeaders } from '@/server/telling-store';
 
 /**
  * GET /api/area?lat=51.4226&lng=-0.0685
@@ -34,9 +35,15 @@ export async function GET(request: Request) {
 
   try {
     const name = await findNearestArea({ latitude: lat, longitude: lng });
-    return Response.json({ name });
+    // The area cache rides the same table as the tellings — so this
+    // route reports the store's health too. It is also the cheapest
+    // URL to curl after a deploy.
+    return Response.json({ name }, { headers: storeHealthHeaders() });
   } catch (error) {
     console.error('Area name lookup failed:', error);
-    return Response.json({ error: 'Area name lookup failed' }, { status: 502 });
+    return Response.json(
+      { error: 'Area name lookup failed' },
+      { status: 502, headers: storeHealthHeaders() }
+    );
   }
 }

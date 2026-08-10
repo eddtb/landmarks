@@ -1,4 +1,5 @@
 import { getTelling } from '@/server/telling';
+import { storeHealthHeaders } from '@/server/telling-store';
 
 /**
  * POST because the client must send the extract: the server holds no
@@ -62,11 +63,22 @@ export async function POST(request: Request): Promise<Response> {
       areaName ? `area:${areaName.toLowerCase()}` : String(pageId)
     );
     if (!telling) {
-      return Response.json({ error: 'No telling came back' }, { status: 502 });
+      return Response.json(
+        { error: 'No telling came back' },
+        { status: 502, headers: storeHealthHeaders() }
+      );
     }
-    return Response.json({ telling });
+    // Every route that rides the store reports the store's health, not
+    // just the feed's. The tellings, the retellings, the quizzes and
+    // the day-ledger all live in the same table; a dead store quietly
+    // turns "300 calls a day" into 300 per isolate lifetime, and until
+    // now only /api/history could have told anyone.
+    return Response.json({ telling }, { headers: storeHealthHeaders() });
   } catch (error) {
     console.error('Telling failed:', error);
-    return Response.json({ error: 'Telling failed' }, { status: 502 });
+    return Response.json(
+      { error: 'Telling failed' },
+      { status: 502, headers: storeHealthHeaders() }
+    );
   }
 }
