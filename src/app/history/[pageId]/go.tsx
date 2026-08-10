@@ -1,5 +1,4 @@
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
-import * as Linking from 'expo-linking';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
@@ -13,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Compass } from '@/components/compass';
+import { AskForLocation, OpenSettings } from '@/components/location-ask';
 import { PointerDial } from '@/components/pointer-dial';
 import { RouteMap } from '@/components/route-map';
 import { ThemedText } from '@/components/themed-text';
@@ -20,7 +20,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { getCachedHistoryItem } from '@/data/history-client';
 import { fetchRoute } from '@/data/route-client';
-import { useLocation } from '@/hooks/use-location';
+import { useLocation, useSlowFix } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { WalkingRoute } from '@/types/route';
 import { formatDistance, formatWalkTime } from '@/utils/format';
@@ -62,6 +62,9 @@ export default function GoScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
   const { status, coordinates } = useLocation();
+  // The floor under 'locating': granted permission, no fix, and until
+  // now no end to the waiting either
+  const slowFix = useSlowFix(!coordinates && status !== 'denied' && status !== 'priming');
   const [stepsOpen, setStepsOpen] = useState(false);
   const [routeState, setRouteState] = useState<
     { status: 'loading' } | { status: 'none' } | { status: 'ready'; route: WalkingRoute }
@@ -127,19 +130,57 @@ export default function GoScreen() {
       ) : (
         <View style={styles.centered}>
           {!coordinates ? (
-            // No fix, no journey — but never a spinner that can't end:
-            // denied says what would fix it and offers the door, and
-            // the Close chrome below stays reachable throughout
+            // No fix, no journey — but never a spinner that can't end,
+            // and the comment finally covers every branch under it:
+            // each no-fix state says what would fix IT, and the Close
+            // chrome below stays reachable throughout
             status === 'denied' ? (
               <>
                 <ThemedText type="headline">Venture can’t see where you are</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.deniedCopy}>
                   Walking there needs your position. The story reads fine without it.
                 </ThemedText>
-                <Pressable accessibilityRole="button" onPress={() => Linking.openSettings()}>
-                  <ThemedText type="smallBold" themeColor="accent">
-                    Enable location in Settings
-                  </ThemedText>
+                <OpenSettings />
+              </>
+            ) : status === 'priming' ? (
+              // Never asked — the state "Not now" leaves behind, and
+              // the one this screen used to spin on forever (#290).
+              // Settings has no Location row to send anyone to yet, so
+              // the door is the ask.
+              <>
+                <PointerDial
+                  user={target}
+                  target={target}
+                  primary="Not shared"
+                  locating
+                  coach="Venture hasn’t asked where you are"
+                />
+                <ThemedText type="small" themeColor="textSecondary" style={styles.deniedCopy}>
+                  Walking there needs your position. The story reads fine without it.
+                </ThemedText>
+                <AskForLocation style={styles.askWide} />
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.back()}
+                  hitSlop={Spacing.two}
+                  style={styles.tapLine}>
+                  <ThemedText type="linkPrimary">Read the story instead</ThemedText>
+                </Pressable>
+              </>
+            ) : slowFix ? (
+              // Granted, but nothing has arrived: a spinner with no
+              // floor is the same dead end wearing a friendlier face
+              <>
+                <ThemedText type="headline">Still looking for you</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.deniedCopy}>
+                  A fix can take a while indoors. The story reads fine without it.
+                </ThemedText>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.back()}
+                  hitSlop={Spacing.two}
+                  style={styles.tapLine}>
+                  <ThemedText type="linkPrimary">Read the story instead</ThemedText>
                 </Pressable>
               </>
             ) : (
@@ -262,6 +303,15 @@ const styles = StyleSheet.create({
   deniedCopy: {
     textAlign: 'center',
     paddingHorizontal: Spacing.six,
+  },
+  // The pill stretches to the mock's width inside a centred column
+  askWide: {
+    alignSelf: 'stretch',
+    marginHorizontal: Spacing.six,
+  },
+  tapLine: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
   overlay: {
     position: 'absolute',

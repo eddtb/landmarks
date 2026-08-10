@@ -179,12 +179,22 @@ function resolveAreaName(
   return resolution;
 }
 
-export function useAreaName(center: Coordinates): AreaName {
+/** No centre, so nowhere to name — and settled, because waiting for a
+ * name that can never arrive is its own lie. */
+const Nowhere: AreaName = { name: null, label: null, settled: true };
+
+/**
+ * A null center means Venture has no honest place to name. The cascade
+ * does not run and nothing is spent on it: the fallback used to resolve
+ * a real London name and print it under a solid violet locator dot, so
+ * a reader in Cupertino was told they were in Charing Cross (#289).
+ */
+export function useAreaName(center: Coordinates | null): AreaName {
   const pin = usePin();
   // ~111m buckets (#205): an area NAME can't change inside one, and
   // effect deps finer than that re-resolved on every ~10m GPS tick.
-  const latitude = Number(center.latitude.toFixed(3));
-  const longitude = Number(center.longitude.toFixed(3));
+  const latitude = center === null ? null : Number(center.latitude.toFixed(3));
+  const longitude = center === null ? null : Number(center.longitude.toFixed(3));
   // The searched name travels with the pin, and counts only while the
   // center IS that pin (bucket-compared): back on GPS, the label no
   // longer describes this ground.
@@ -198,6 +208,9 @@ export function useAreaName(center: Coordinates): AreaName {
   const [area, setArea] = useState<AreaName>({ ...Unresolved, settled: false });
 
   useEffect(() => {
+    if (latitude === null || longitude === null) {
+      return;
+    }
     let cancelled = false;
     void resolveAreaName(latitude, longitude, searched).then((resolved) => {
       if (!cancelled) {
@@ -213,5 +226,5 @@ export function useAreaName(center: Coordinates): AreaName {
     };
   }, [latitude, longitude, searched]);
 
-  return area;
+  return center === null ? Nowhere : area;
 }

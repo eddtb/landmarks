@@ -21,14 +21,16 @@ jest.mock('expo-router', () => ({
 
 // The gate is its own tested surface — hand the body a live fix. Mutable
 // so a test can put the reader on a pin they are NOT standing at.
-const mockGate = { exploring: false, locationDenied: false };
+// `noFix` hands down a NULL centre, which is what having no location
+// means since #289: never the fallback wearing a real place's name.
+const mockGate = { exploring: false, noFix: false };
 const mockBackToNearMe = jest.fn();
 jest.mock('@/components/section-screen', () => ({
   LocationGate: ({ children }: { children: (props: Record<string, unknown>) => unknown }) =>
     children({
-      center: { latitude: 51.4826, longitude: -0.0077 },
+      center: mockGate.noFix ? null : { latitude: 51.4826, longitude: -0.0077 },
+      standing: mockGate.noFix ? 'refused' : 'located',
       exploring: mockGate.exploring,
-      locationDenied: mockGate.locationDenied,
       onBackToNearMe: mockBackToNearMe,
     }),
 }));
@@ -126,7 +128,7 @@ const next = async () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockGate.exploring = false;
-  mockGate.locationDenied = false;
+  mockGate.noFix = false;
   mockHeading.value = 45;
   mockHeadingAvailable.current = true;
   mockProgress.value = undefined;
@@ -468,7 +470,7 @@ describe('<QuizScreen />', () => {
       // The fallback center is central London. Without this state a
       // reviewer in Cupertino who tapped "Not now" was served "Test
       // yourself on Charing Cross" with no explanation.
-      mockGate.locationDenied = true;
+      mockGate.noFix = true;
 
       await render(<QuizScreen />);
 
@@ -646,7 +648,7 @@ describe('the pointing question', () => {
     // against the fallback center (Charing Cross). Now the whole tab
     // says what it needs instead.
     withAPointableStory();
-    mockGate.locationDenied = true;
+    mockGate.noFix = true;
     await render(<QuizScreen />);
 
     expect(await screen.findByTestId('quiz-denied')).toBeOnTheScreen();

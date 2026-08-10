@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import * as Location from 'expo-location';
 import { ReactNode, useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,7 +8,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +17,8 @@ import { router } from 'expo-router';
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { GlassIslandHeader, IslandBreath } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
+import { LocationInvitation, OpenSettings } from '@/components/location-ask';
+import { PlaceSearch } from '@/components/place-search';
 import { StoriesMap } from '@/components/stories-map';
 import { useOneDoorDismissed } from '@/components/one-door';
 import { OverflowMenu } from '@/components/overflow-menu';
@@ -36,10 +36,65 @@ import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { featuredStories } from '@/utils/featured';
 import { formatWalkTimeForMeters } from '@/utils/format';
-import { Coordinates, distanceMeters, FallbackCoordinates } from '@/utils/geo';
+import { Coordinates, distanceMeters } from '@/utils/geo';
 
 const PrivacyUrl = 'https://eddtb-landmarks.expo.app/privacy';
 const SupportUrl = 'https://eddtb-landmarks.expo.app/support';
+
+/**
+ * Two different facts about the world, and they have different
+ * remedies — the split #290 turns on. `denied = status === 'denied' ||
+ * status === 'priming'` collapsed them into one boolean, and every
+ * false sentence in this flow came out of that line: never-asked was
+ * told location was "off" and sent to a Settings page that has no
+ * Location row until an app has asked once.
+ */
+export type LocationStanding =
+  /** A real fix, or a place the reader deliberately pinned. */
+  | 'located'
+  /** Venture has never asked — iOS will still show its own prompt. */
+  | 'unasked'
+  /** Asked and refused — only Settings can undo it. */
+  | 'refused';
+
+/** The banner over the two tabs' no-location state. One sentence each,
+ *  and only for 'refused': never-asked has nothing to turn back on. */
+const NearbyRefusedCopy =
+  'Location is off for Venture. Turn it back on in Settings and this fills with the ground you’re standing on.';
+const HistoryRefusedCopy =
+  'Location is off for Venture. Turn it on in Settings to read the ground you’re standing on.';
+
+/** What each tab shows instead of a feed it cannot honestly compose. */
+const NearbyInvitation = {
+  unasked: {
+    heading: 'Venture hasn’t asked where you are yet',
+    lede: 'The stories on this screen are picked by the ground under your feet. Tap below and iOS will ask you — you can still say no.',
+  },
+  refused: {
+    heading: 'Or read a place you name',
+    lede: 'Venture tells you what happened anywhere it can find on a map.',
+  },
+} as const;
+
+const HistoryInvitation = {
+  unasked: {
+    heading: 'Venture hasn’t asked where you are yet',
+    lede: 'The Gazetteer is written about the ground under your feet. Tap below and iOS will ask you — you can still say no.',
+  },
+  refused: {
+    heading: 'The Gazetteer is written about a place',
+    lede: 'Name one and Venture writes it — the area’s own story, with the relics of its ground beneath.',
+  },
+} as const;
+
+/** 'located' can only reach an invitation through a bug; it reads as
+ *  refused there, which promises nothing that isn't on the screen. */
+function invitationCopy(
+  copy: typeof NearbyInvitation | typeof HistoryInvitation,
+  standing: LocationStanding
+) {
+  return standing === 'unasked' ? copy.unasked : copy.refused;
+}
 
 /** One identity for "no feed yet", so a loading render can't re-fire
  * the widget effect with a fresh [] on every tick. */
@@ -125,8 +180,13 @@ export function LocationGate({ children }: { children: (props: GateProps) => Rea
   // OneDoorGate owns this state and covers everything, tab pill
   // included — beneath it this gate just holds a quiet loading. Once
   // the flag says dismissed, undetermined falls through to the
-  // denied-state UI (banner + search) below instead.
-  if (status === 'priming' && dismissed !== true) {
+  // never-asked invitation below instead.
+  //
+  // 'loading' holds here too: until the permission read lands the app
+  // does not know WHICH state this is, and it used to answer that by
+  // handing the feed central London. A brief hold is the honest
+  // answer to "we don't know yet" — and it ends, because the read does.
+  if (status === 'loading' || (status === 'priming' && dismissed !== true)) {
     return (
       <ThemedView style={styles.centered}>
         <ActivityIndicator />
@@ -145,15 +205,21 @@ export function LocationGate({ children }: { children: (props: GateProps) => Rea
     );
   }
 
-  // Past the door, 'priming' means the user chose "Not now": the
-  // permission is still undetermined but the UI is the denied state —
-  // banner + search, from which search enters Exploring mode
-  const denied = status === 'denied' || status === 'priming';
-  const center = activePin?.center ?? coordinates ?? FallbackCoordinates;
+  // Past the door, 'priming' means the user chose "Not now" — never
+  // asked, and iOS will still prompt. 'denied' is the other fact
+  // entirely. A pin is a place the reader chose, so it stands as a
+  // centre whichever of the two holds behind it.
+  const standing: LocationStanding =
+    status === 'denied' ? 'refused' : status === 'priming' ? 'unasked' : 'located';
+  // Null, never the fallback: a centre nobody downstream can mistake
+  // for a position. Charing Cross used to flow from here into walk
+  // times, the map, the area name and the locator dot (#289) — the
+  // type now forbids it.
+  const center = activePin?.center ?? coordinates ?? null;
 
   return children({
     center,
-    locationDenied: denied && !activePin,
+    standing,
     exploring: activePin !== null,
     onManualCenter,
     onBackToNearMe,
@@ -161,8 +227,11 @@ export function LocationGate({ children }: { children: (props: GateProps) => Rea
 }
 
 export type GateProps = {
-  center: Coordinates;
-  locationDenied: boolean;
+  /** Null when Venture has no honest centre — no fix and no pin. */
+  center: Coordinates | null;
+  /** Never-asked and refused are different facts with different
+   *  remedies; nothing below may collapse them again. */
+  standing: LocationStanding;
   /** A manual pin holds the center — the header must admit it. */
   exploring: boolean;
   /** `label`: the searched place name, riding the pin so the area-name
@@ -177,46 +246,53 @@ export type GateProps = {
  * there — and one worded way home. */
 function SectionHeader({
   center,
-  locationDenied,
+  standing,
   exploring,
   onManualCenter,
   onBackToNearMe,
   eyebrow,
+  refusedCopy,
   overflow,
 }: GateProps & {
   eyebrow: string;
+  /** This tab's one sentence for the refused state. */
+  refusedCopy: string;
   overflow?: boolean;
 }) {
-  const [searchText, setSearchText] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   // The cascade winner, as the user would say it — "Crystal Palace",
-  // never the borough "Bromley" nor the ward "Dorking North"
+  // never the borough "Bromley" nor the ward "Dorking North". With no
+  // centre it resolves nothing and spends nothing.
   const { label: areaLabel } = useAreaName(center);
   const theme = useTheme();
 
-  const onSearchSubmit = useCallback(async () => {
-    const query = searchText.trim();
-    if (!query) {
-      return;
-    }
-    try {
-      // On-device geocoding — free
-      const results = await Location.geocodeAsync(query);
-      const first = results[0];
-      if (first) {
-        // The RAW typed string rides the pin (trimmed): the geocode
-        // result carries coordinates, not a better name — and the
-        // typed name is the one the user expects to lead the screen
-        onManualCenter({ latitude: first.latitude, longitude: first.longitude }, query);
-        setSearchOpen(false);
-        setSearchText('');
-      }
-    } catch (error) {
-      console.warn('Geocoding failed:', error);
-    }
-  }, [searchText, onManualCenter]);
-
   const title = areaLabel ?? 'Near you';
+  // The dot means "you are here". It only fills where the app knows:
+  // hollow while exploring (you are not there) and hollow with no
+  // centre at all — a solid dot over a resolved London name told a
+  // reader in Cupertino they were standing in Charing Cross (#289).
+  const hollowDot = exploring || center === null;
+  // With no centre the invitation below owns the search, so the title
+  // is a name and nothing more — two fields on one screen is worse
+  // than none.
+  const titleGroup = (
+    <>
+      <View
+        testID="locator-dot"
+        style={[
+          styles.locatorDot,
+          hollowDot
+            ? {
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                borderColor: theme.textSecondary,
+              }
+            : { backgroundColor: theme.accent },
+        ]}
+      />
+      <ThemedText type="largeTitle">{title}</ThemedText>
+    </>
+  );
 
   return (
     <View style={styles.header}>
@@ -225,29 +301,19 @@ function SectionHeader({
       </ThemedText>
       <View style={styles.titleRow}>
         {/* The title is the search affordance: tap to pin anywhere, deliberately */}
-        <Pressable
-          testID="area-title"
-          accessibilityRole="button"
-          accessibilityLabel={`Area: ${title}`}
-          accessibilityHint="Search near another place"
-          onPress={() => setSearchOpen((open) => !open)}
-          style={styles.titleGroup}>
-          <View
-            testID="locator-dot"
-            style={[
-              styles.locatorDot,
-              exploring
-                ? // Hollow: the dot admits you are not there
-                  {
-                    backgroundColor: 'transparent',
-                    borderWidth: 2,
-                    borderColor: theme.textSecondary,
-                  }
-                : { backgroundColor: theme.accent },
-            ]}
-          />
-          <ThemedText type="largeTitle">{title}</ThemedText>
-        </Pressable>
+        {center === null ? (
+          <View style={styles.titleGroup}>{titleGroup}</View>
+        ) : (
+          <Pressable
+            testID="area-title"
+            accessibilityRole="button"
+            accessibilityLabel={`Area: ${title}`}
+            accessibilityHint="Search near another place"
+            onPress={() => setSearchOpen((open) => !open)}
+            style={styles.titleGroup}>
+            {titleGroup}
+          </Pressable>
+        )}
         {/* Housekeeping lives behind the ⋯, not in the feed: Privacy
             must stay reachable in-app (Apple 5.1.1(i)), but it was
             never a story and had no business between the count line
@@ -265,26 +331,28 @@ function SectionHeader({
         )}
       </View>
       {exploring && (
-        <Pressable accessibilityRole="button" onPress={onBackToNearMe}>
+        <Pressable accessibilityRole="button" onPress={onBackToNearMe} hitSlop={Spacing.two}>
           <ThemedText type="linkPrimary">Back to near me</ThemedText>
         </Pressable>
       )}
-      {locationDenied && (
-        <ThemedText type="small" themeColor="textSecondary" onPress={() => Linking.openSettings()}>
-          Location is off — enable it in Settings, or search a place to explore:
-        </ThemedText>
+      {/* Only the refused state is sent to Settings, and only it is
+          told anything is off. Never-asked is answered in the body,
+          where iOS can still be asked. */}
+      {!exploring && standing === 'refused' && (
+        <>
+          <ThemedText type="small" themeColor="textSecondary">
+            {refusedCopy}
+          </ThemedText>
+          <View style={styles.settingsRow}>
+            <OpenSettings />
+          </View>
+        </>
       )}
-      {(locationDenied || searchOpen) && (
-        <TextInput
-          testID="place-search"
-          value={searchText}
-          onChangeText={setSearchText}
-          onSubmitEditing={onSearchSubmit}
-          placeholder="Search near a place…"
-          placeholderTextColor={theme.textSecondary}
-          returnKeyType="search"
-          autoFocus={searchOpen}
-          style={[styles.search, { backgroundColor: theme.backgroundElement, color: theme.text }]}
+      {center !== null && searchOpen && (
+        <PlaceSearch
+          onManualCenter={onManualCenter}
+          autoFocus
+          onFound={() => setSearchOpen(false)}
         />
       )}
     </View>
@@ -304,13 +372,14 @@ export function StoriesScreen() {
             <HistoryBody
               center={gate.center}
               exploring={gate.exploring}
-              locationDenied={gate.locationDenied}
+              standing={gate.standing}
+              onManualCenter={gate.onManualCenter}
               topInset={islandHeight + IslandBreath}
             />
             {/* After the body so it paints above; the feed slides under */}
             <GlassIslandHeader onHeight={setIslandHeight}>
-              <SectionHeader {...gate} eyebrow="Nearby" overflow />
-              <FeedCountLine center={gate.center} locationDenied={gate.locationDenied} />
+              <SectionHeader {...gate} eyebrow="Nearby" refusedCopy={NearbyRefusedCopy} overflow />
+              <FeedCountLine center={gate.center} />
             </GlassIslandHeader>
           </SafeAreaView>
         </ThemedView>
@@ -326,15 +395,10 @@ export function StoriesScreen() {
  * copy's honesty rules (sparse mode, the derived horizon) are fenced
  * there.
  */
-export function FeedCountLine({
-  center,
-  locationDenied,
-}: {
-  center: Coordinates;
-  locationDenied?: boolean;
-}) {
+export function FeedCountLine({ center }: { center: Coordinates | null }) {
   const { state } = useHistory(center);
-  if (locationDenied || state.status !== 'ready') {
+  // No centre, no count: there is nothing to have counted
+  if (center === null || state.status !== 'ready') {
     return null;
   }
   const items = walkableStories(state.items);
@@ -367,12 +431,17 @@ export function HistoryArchiveScreen() {
       {(gate) => (
         <ThemedView style={styles.container}>
           <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-            {/* Denied keeps the search reachable; exploring must show the
-                header too — the mode lives there, hero or no hero */}
-            {(gate.locationDenied || gate.exploring) && (
-              <SectionHeader {...gate} eyebrow="History" />
+            {/* No centre keeps the tab's identity and its one sentence;
+                exploring must show the header too — the mode lives
+                there, hero or no hero */}
+            {(gate.center === null || gate.exploring) && (
+              <SectionHeader {...gate} eyebrow="History" refusedCopy={HistoryRefusedCopy} />
             )}
-            <GazetteerBody center={gate.center} />
+            <GazetteerBody
+              center={gate.center}
+              standing={gate.standing}
+              onManualCenter={gate.onManualCenter}
+            />
           </SafeAreaView>
         </ThemedView>
       )}
@@ -380,7 +449,15 @@ export function HistoryArchiveScreen() {
   );
 }
 
-function GazetteerBody({ center }: { center: Coordinates }) {
+function GazetteerBody({
+  center,
+  standing,
+  onManualCenter,
+}: {
+  center: Coordinates | null;
+  standing: LocationStanding;
+  onManualCenter: (center: Coordinates, label?: string) => void;
+}) {
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
   const { name: areaName, label: areaLabel, settled: areaSettled } = useAreaName(center);
@@ -390,6 +467,24 @@ function GazetteerBody({ center }: { center: Coordinates }) {
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  // A gazetteer is written ABOUT a place. With no centre there is no
+  // place, so the tab says what it needs instead of retelling the
+  // history of somewhere the reader has never been — and nothing was
+  // fetched to find that out.
+  if (center === null) {
+    const copy = invitationCopy(HistoryInvitation, standing);
+    return (
+      <View style={styles.invitation}>
+        <LocationInvitation
+          askable={standing === 'unasked'}
+          heading={copy.heading}
+          lede={copy.lede}
+          onManualCenter={onManualCenter}
+        />
+      </View>
+    );
+  }
 
   if (state.status === 'loading') {
     return <ColdLoad areaLabel={areaLabel} />;
@@ -533,13 +628,16 @@ const LegacySparseHorizonMeters = 3000;
 export function HistoryBody({
   center,
   exploring,
-  locationDenied,
+  standing = 'located',
+  onManualCenter,
   topInset = 0,
 }: {
-  center: Coordinates;
+  /** Null when there is no honest centre — the feed stands down. */
+  center: Coordinates | null;
   exploring?: boolean;
-  /** No real fix — the center is the fallback, not the user. */
-  locationDenied?: boolean;
+  /** Which no-location fact holds, and so which remedy is offered. */
+  standing?: LocationStanding;
+  onManualCenter: (center: Coordinates, label?: string) => void;
   /** Height of the floating glass island above — the scroll content
    *  starts below it and slides beneath it. */
   topInset?: number;
@@ -563,7 +661,7 @@ export function HistoryBody({
   useAreaWidget(
     widgetStories,
     areaLabel,
-    state.status === 'ready' && !exploring && !locationDenied
+    state.status === 'ready' && !exploring && center !== null
   );
 
   const onRefresh = useCallback(async () => {
@@ -571,6 +669,25 @@ export function HistoryBody({
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  // The feed's whole job is the ground under the reader's feet. With
+  // no centre it has no ground, so it stands down and becomes the
+  // invitation (#289) — rather than sorting central London's stories
+  // and printing "2 min walk" on each of them from Cupertino. Nothing
+  // was fetched for it either: useHistory never asked.
+  if (center === null) {
+    const copy = invitationCopy(NearbyInvitation, standing);
+    return (
+      <View style={[styles.invitation, { paddingTop: topInset }]}>
+        <LocationInvitation
+          askable={standing === 'unasked'}
+          heading={copy.heading}
+          lede={copy.lede}
+          onManualCenter={onManualCenter}
+        />
+      </View>
+    );
+  }
 
   if (state.status === 'loading') {
     return (
@@ -596,11 +713,11 @@ export function HistoryBody({
   const items = walkableStories(state.items);
 
   // No standing-on unless the center is a real GPS fix: while
-  // exploring the pinned center is somewhere the user is NOT, and with
-  // location denied the center is the fallback — "right here" about
-  // Charing Cross from anywhere on Earth lies (#208)
-  const standing =
-    state.status === 'ready' && !exploring && !locationDenied
+  // exploring the pinned center is somewhere the user is NOT — "right
+  // here" about a place you are not standing lies (#208). With no
+  // centre at all the feed never gets this far.
+  const underfoot =
+    state.status === 'ready' && !exploring
       ? standingOn(state.items.filter((item) => !item.area), center)
       : null;
 
@@ -621,7 +738,7 @@ export function HistoryBody({
         // everything else scrolls beneath it.
         ListHeaderComponent={
           <View style={styles.listHeader}>
-            {standing && <StandingOnIt item={standing} center={center} />}
+            {underfoot && <StandingOnIt item={underfoot} center={center} />}
             {state.stale && (
               <View style={styles.controlLine}>
                 <ThemedText type="small" themeColor="textSecondary">
@@ -629,16 +746,14 @@ export function HistoryBody({
                 </ThemedText>
               </View>
             )}
-            {/* Not with location denied: the center is the fallback, and
-                a map of Charing Cross under a NEARBY eyebrow claims a
-                place the user is not (simulator-caught). Exploring keeps
-                it — a pinned place is somewhere the user chose to look. */}
-            {!locationDenied && (
-              <View style={styles.mapCard}>
-                <StoriesMap items={items} center={center} />
-              </View>
-            )}
-            <FeaturedRail items={state.items} excludePageId={standing?.pageId} />
+            {/* The map draws a centre the screen believes in — a real
+                fix or a place the reader pinned. It used to be fenced
+                off the fallback by hand (simulator-caught); the
+                fallback is gone, so the fence went with it. */}
+            <View style={styles.mapCard}>
+              <StoriesMap items={items} center={center} />
+            </View>
+            <FeaturedRail items={state.items} excludePageId={underfoot?.pageId} />
           </View>
         }
         // The deep feed can run to ~150 stories — render the first
@@ -783,13 +898,15 @@ const styles = StyleSheet.create({
   emptyCopy: {
     textAlign: 'center',
   },
-  search: {
-    borderRadius: Spacing.three - Spacing.one,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    marginTop: Spacing.two,
-    // TextInput lives outside ThemedText's ramp — the one sanctioned
-    // inline size, between `small` and `default` for a comfy field
-    fontSize: 15,
+  // The Settings chip is a 44pt object in a stack of text lines: its
+  // own row, so nothing sits inside its target
+  settingsRow: {
+    flexDirection: 'row',
+    paddingTop: Spacing.one,
+  },
+  invitation: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: Spacing.six,
   },
 });

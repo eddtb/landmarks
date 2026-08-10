@@ -20,7 +20,14 @@ export type HistoryState =
  * re-ask — comfortably past dressWithPhotos' 1.5s response deadline. */
 const DressingUpgradeDelayMs = 4000;
 
-export function useHistory(center: Coordinates): {
+/**
+ * A null center means Venture has no honest place to ask about — no
+ * fix and no pin — and nothing is spent finding out: no fetch, no
+ * revalidate, no upgrade timer. The state stays `loading` and callers
+ * must render their own no-location answer BEFORE reading it (#289:
+ * the feed used to ask about Charing Cross on everyone's behalf).
+ */
+export function useHistory(center: Coordinates | null): {
   state: HistoryState;
   refresh: () => Promise<void>;
 } {
@@ -29,8 +36,8 @@ export function useHistory(center: Coordinates): {
   // ~10m, and effect deps finer than the bucket refired a whole feed
   // fetch per tick. The raw center never enters this hook — it keeps
   // flowing to standing-on/distance labels in the components untouched.
-  const latitude = Number(center.latitude.toFixed(3));
-  const longitude = Number(center.longitude.toFixed(3));
+  const latitude = center === null ? null : Number(center.latitude.toFixed(3));
+  const longitude = center === null ? null : Number(center.longitude.toFixed(3));
   const requestId = useRef(0);
   // The dressing upgrade: EXACTLY one delayed re-ask per bucket visit
   // (or per pull) — `done` stops a still-dressing upgrade result from
@@ -113,6 +120,9 @@ export function useHistory(center: Coordinates): {
   );
 
   useEffect(() => {
+    if (latitude === null || longitude === null) {
+      return;
+    }
     const id = ++requestId.current;
     // Loading honesty on a bucket jump: this effect only refires when
     // the BUCKET changes (walking ticks inside one don't), and if the
@@ -143,6 +153,9 @@ export function useHistory(center: Coordinates): {
   }, [latitude, longitude, applyResult, clearUpgrade]);
 
   const refresh = useCallback(async () => {
+    if (latitude === null || longitude === null) {
+      return;
+    }
     const id = ++requestId.current;
     // A pull is a fresh compose: drop any pending upgrade and let the
     // pull's own result schedule a new one if it arrives undressed

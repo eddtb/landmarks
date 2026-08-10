@@ -4,10 +4,12 @@
  * screen. It lives at the ROOT as an overlay above the tab navigator —
  * inside a tab's LocationGate the floating tab pill sat on top of it
  * (sim-caught). These pin the contract: shown only while permission is
- * undetermined and "Not now" isn't on record, Enable is the app's one
- * permission-request path, "Not now" is remembered and LocationGate
- * falls through to the denied-state UI (banner + search), and a
- * returning dismisser never sees a flash of the door.
+ * undetermined and "Not now" isn't on record, requestLocationPermission
+ * is the app's one permission-request path, "Not now" is remembered and
+ * LocationGate falls through to the NEVER-ASKED invitation (#290: not
+ * the denied banner — nothing is off, and Settings has no Location row
+ * to send anyone to), and a returning dismisser never sees a flash of
+ * the door.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
@@ -44,7 +46,8 @@ jest.mock('@/hooks/use-history', () => ({
   useHistory: (...args: unknown[]) => mockUseHistory(...args),
 }));
 
-const deniedBanner = 'Location is off — enable it in Settings, or search a place to explore:';
+/** What "Not now" leaves behind: the ask, in the room where it matters. */
+const neverAskedHeading = 'Venture hasn’t asked where you are yet';
 
 /** iOS hasn't been asked yet — the only state where the door shows. */
 function permissionUndetermined() {
@@ -225,15 +228,44 @@ describe('the root overlay (OneDoorGate)', () => {
 });
 
 describe('LocationGate beneath the door', () => {
-  test('undetermined + dismissed: falls through to the denied UI', async () => {
+  test('undetermined + dismissed: the never-asked invitation, and the ask that reopens the door', async () => {
     await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
     permissionUndetermined();
 
     const screen = await render(<StoriesScreen />);
 
-    expect(await screen.findByText(deniedBanner)).toBeOnTheScreen();
-    expect(screen.getByTestId('place-search')).toBeOnTheScreen();
+    expect(await screen.findByText(neverAskedHeading)).toBeOnTheScreen();
+    // "Not now" is no longer a one-way door: the ask has a second call
+    // site, and it is on the screen the reader is actually looking at
+    await fireEvent.press(screen.getByTestId('ask-for-location'));
+    expect(mockRequestLocationPermission).toHaveBeenCalled();
     expect(screen.queryByTestId('one-door')).toBeNull();
+  });
+
+  test('undetermined + dismissed: nothing claims location is off, and Settings is not offered', async () => {
+    // iOS shows no Location row for an app that has never requested
+    // one, so the old sentence sent the majority state to a screen
+    // with no such control (#290)
+    await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
+    permissionUndetermined();
+
+    const screen = await render(<StoriesScreen />);
+
+    await screen.findByText(neverAskedHeading);
+    expect(screen.queryByTestId('open-settings')).toBeNull();
+    expect(screen.queryByText(/Location is off/)).toBeNull();
+  });
+
+  test('undetermined + dismissed: the search waits behind a word, and opens on it', async () => {
+    await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
+    permissionUndetermined();
+
+    const screen = await render(<StoriesScreen />);
+
+    await screen.findByText(neverAskedHeading);
+    expect(screen.queryByTestId('place-search')).toBeNull();
+    await fireEvent.press(screen.getByTestId('invitation-search-instead'));
+    expect(screen.getByTestId('place-search')).toBeOnTheScreen();
   });
 
   test('undetermined + not dismissed: a quiet loading — the root door owns the screen', async () => {
@@ -244,8 +276,8 @@ describe('LocationGate beneath the door', () => {
     await waitFor(() =>
       expect(AsyncStorage.getItem).toHaveBeenCalledWith(ONE_DOOR_DISMISSED_KEY)
     );
-    // No denied banner, and no door of its own — that lives at the root
-    expect(screen.queryByText(deniedBanner)).toBeNull();
+    // No invitation, and no door of its own — that lives at the root
+    expect(screen.queryByText(neverAskedHeading)).toBeNull();
     expect(screen.queryByTestId('one-door')).toBeNull();
   });
 });

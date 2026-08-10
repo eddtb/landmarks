@@ -60,12 +60,51 @@ function ensurePermissionFetched() {
 }
 
 /**
- * THE one request path — the one-door gate's Enable and nobody else,
- * so a launch can never show two system prompts. The dialog's answer
- * lands in the shared store and every mounted hook moves on together.
+ * THE one request path: every ask in the app funnels through here, so
+ * the dialog's answer lands in the shared store and every mounted hook
+ * moves on together. Two call sites now, not one — the door's Continue
+ * and the in-app ask (src/components/location-ask.tsx) that "Not now"
+ * left no way back to (#290). iOS shows the system prompt once and
+ * answers from its own record afterwards, so a second caller cannot
+ * produce a second dialog.
  */
 export async function requestLocationPermission(): Promise<void> {
   setPermission(await Location.requestForegroundPermissionsAsync());
+}
+
+/**
+ * How long a granted permission may hunt for a fix before the screen
+ * stops promising one. A cold start indoors really can take this long,
+ * so it is a floor under the wait — not a deadline on it.
+ */
+export const SlowFixMs = 15000;
+
+/**
+ * True once `waiting` has held for {@link SlowFixMs}. `'locating'` has
+ * no natural end — a granted permission with no fix spins exactly as
+ * forever as a denied one did — so every screen that waits on a
+ * position puts this floor under the wait and says what is happening.
+ */
+export function useSlowFix(waiting: boolean): boolean {
+  const [elapsed, setElapsed] = useState(false);
+  // Adjust during render (the quiz screen's own pattern): a wait that
+  // starts or ends takes the floor with it, without an effect that
+  // would cascade a second render to say so.
+  const [waitingFor, setWaitingFor] = useState(waiting);
+  if (waitingFor !== waiting) {
+    setWaitingFor(waiting);
+    setElapsed(false);
+  }
+
+  useEffect(() => {
+    if (!waiting) {
+      return;
+    }
+    const timer = setTimeout(() => setElapsed(true), SlowFixMs);
+    return () => clearTimeout(timer);
+  }, [waiting]);
+
+  return elapsed;
 }
 
 /** The shared permission state; null while the first read is in flight. */

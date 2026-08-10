@@ -86,13 +86,8 @@ class QuizGuard extends Component<
 export function QuizScreen() {
   return (
     <LocationGate>
-      {({ center, exploring, locationDenied, onBackToNearMe }) => (
-        <QuizBody
-          center={center}
-          exploring={exploring}
-          locationDenied={locationDenied}
-          onBackToNearMe={onBackToNearMe}
-        />
+      {({ center, exploring, onBackToNearMe }) => (
+        <QuizBody center={center} exploring={exploring} onBackToNearMe={onBackToNearMe} />
       )}
     </LocationGate>
   );
@@ -101,13 +96,11 @@ export function QuizScreen() {
 function QuizBody({
   center,
   exploring,
-  locationDenied,
   onBackToNearMe,
 }: {
-  center: Coordinates;
+  /** Null when there is no honest centre — no fix and no pin. */
+  center: Coordinates | null;
   exploring?: boolean;
-  /** No real fix — the center is the fallback, not the user. */
-  locationDenied?: boolean;
   onBackToNearMe?: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -142,14 +135,13 @@ function QuizBody({
           }))
       : null;
 
-  // With location denied the center is the FALLBACK — central London —
-  // not the reader. A quiz about Charing Cross, served without comment to
-  // someone in Cupertino who tapped "Not now", is nonsense wearing a
-  // straight face (and denying location is the first thing an App Review
-  // reviewer does). Say what is needed instead, and spend nothing.
-  // Exploring is different and stays: a pinned place is somewhere the
-  // reader CHOSE, and quizzing it is the point of exploring.
-  const denied = Boolean(locationDenied);
+  // No centre, no quiz. A quiz about Charing Cross, served without
+  // comment to someone in Cupertino who tapped "Not now", is nonsense
+  // wearing a straight face (and denying location is the first thing
+  // an App Review reviewer does). Say what is needed instead, and
+  // spend nothing. Exploring is different and stays: a pinned place is
+  // somewhere the reader CHOSE, and quizzing it is the point of it.
+  const denied = center === null;
 
   // Ask only once BOTH have settled: before the area is named the quiz
   // would be keyed to a placeholder, and before the feed lands it would
@@ -202,11 +194,11 @@ function QuizBody({
   // area cache would be wrong the moment they moved.
   //
   // Only from a real fix. While exploring, the center is a place the
-  // reader is NOT, and with location denied it is the fallback — asking
-  // either of them to point at something would be asking them to point
+  // reader is NOT, and with no centre there is nowhere to point from —
+  // asking either to point at something would be asking them to point
   // from somewhere they are not standing (#208's rule).
   const pointing =
-    state.status === 'ready' && !exploring && !locationDenied
+    state.status === 'ready' && !exploring && center !== null
       ? pointableStory(state.items, center)
       : null;
 
