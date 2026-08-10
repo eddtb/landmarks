@@ -13,10 +13,10 @@ import {
   cleanQuizQuestion,
   getQuiz,
   parseQuiz,
-  quizKey,
   quizPrompt,
   resetQuizForTests,
 } from '@/server/quiz';
+import { quizCacheKey } from '@/types/quiz';
 
 const mockResearch = jest.fn();
 jest.mock('@/server/ai-router', () => ({
@@ -462,10 +462,12 @@ describe('getQuiz', () => {
     expect(mockResearch).toHaveBeenCalledTimes(1);
     // The free tier is the budget: the call is labelled and ungrounded
     expect(mockResearch.mock.calls[0][0]).toMatchObject({ label: 'quiz', grounded: false });
-    // …and written where it outlives the worker
+    // …and written where it outlives the worker, under the SHARED key —
+    // the same function the device's session cache uses, so the two can
+    // never drift into hitting and missing on the same ground (#280)
     expect(mockStorePut).toHaveBeenCalledWith(
       'quiz',
-      expect.any(String),
+      quizCacheKey('Crystal Palace'),
       expect.anything(),
       expect.any(Number)
     );
@@ -510,30 +512,83 @@ describe('getQuiz', () => {
 
     expect(quiz).toEqual({ areaName: 'Crystal Palace', questions: [] });
     expect(mockResearch).not.toHaveBeenCalled();
+    // Read under the shared key too, not just written under it
+    expect(mockStoreGet).toHaveBeenCalledWith('quiz', quizCacheKey('Crystal Palace'));
   });
 
-  test('the key binds the area AND its material — and wears the version prefix', async () => {
-    const keyA = await quizKey('Crystal Palace', subjects);
-    const keyB = await quizKey('Crystal Palace', [...subjects.slice(1), subject(6, 'A new find')]);
-    const keyC = await quizKey('Greenwich', subjects);
-
-    expect(keyA).not.toBe(keyB);
-    expect(keyA).not.toBe(keyC);
+  test('the key is the area alone, and wears the version prefix', () => {
     // The prefix retires every older slot when the CONTRACT changes:
     // v2 added kinds; v3 changed the question register (the trivia-
-    // register quizzes must not serve for 30 days under old keys).
-    // The area names the bucket, so movement always busts it.
-    expect(keyA.startsWith('v3:crystal palace:')).toBe(true);
+    // register quizzes must not serve for 30 days under old keys); v4
+    // is this key, and orphans v3's bucket-keyed entries.
+    expect(quizCacheKey('Crystal Palace')).toBe('v4:crystal palace');
+    expect(quizCacheKey('Greenwich')).not.toBe(quizCacheKey('Crystal Palace'));
+    // Case is not identity — the area name arrives from an article-title
+    // cascade, and "Crystal Palace" is the same ground as "crystal palace"
+    expect(quizCacheKey('CRYSTAL PALACE')).toBe(quizCacheKey('Crystal Palace'));
   });
 
-  test('the same twelve stories in a different order are the same key', async () => {
-    // The feed is distance-sorted from the reader's ~111m bucket, so a
-    // few paces re-orders it without changing it. An order-sensitive
-    // join spent a free-tier call on that (#280).
-    const shuffled = [subjects[3], subjects[0], subjects[4], subjects[2], subjects[1]];
+  test('walking within an area spends one call, not one per feed bucket', async () => {
+    // The nearest twelve change membership at nearly every ~111m
+    // crossing, and used to be digested into the key: a 2km walk with
+    // the tab open could spend ~18 of the shared 300 daily calls
+    // re-setting one area's quiz (#280). The stories are material now.
+    mockResearch.mockResolvedValue(fenced(threeAnchors));
 
-    expect(await quizKey('Crystal Palace', shuffled)).toBe(
-      await quizKey('Crystal Palace', subjects)
+    // Bucket 1: the reader's nearest five
+    await getQuiz('Crystal Palace', subjects);
+    // A hundred paces on — one story dropped off the back, a new one
+    // came in at the front, and the rest re-sorted by distance
+    await getQuiz('Crystal Palace', [
+      subject(6, 'Crystal Palace Station', 'The station opened in 1854 for the Palace.'),
+      subjects[2],
+      subjects[0],
+      subjects[4],
+      subjects[3],
+    ]);
+    // A hundred more, and the same twelve in yet another order
+    await getQuiz('Crystal Palace', [...subjects].reverse());
+
+    expect(mockResearch).toHaveBeenCalledTimes(1);
+  });
+
+  test('leaving the area does spend a call — the area is what the key is', async () => {
+    mockResearch.mockResolvedValue(fenced(threeAnchors));
+
+    await getQuiz('Crystal Palace', subjects);
+    await getQuiz('Sydenham', subjects);
+
+    expect(mockResearch).toHaveBeenCalledTimes(2);
+  });
+
+  test('the same twelve stories set the same prompt, whatever order they arrive in', async () => {
+    // The material is a SET. Without this the quiz an area gets would
+    // depend on which bucket happened to ask first.
+    mockResearch.mockResolvedValue(fenced(threeAnchors));
+
+    await getQuiz('Crystal Palace', subjects);
+    resetQuizForTests();
+    await getQuiz('Crystal Palace', [...subjects].reverse());
+
+    const [first, second] = mockResearch.mock.calls;
+    expect(second[0].prompt).toBe(first[0].prompt);
+  });
+
+  test('the cap is on the nearest, and the sort comes after it', async () => {
+    // Sorting before the cap would make "nearest twelve" mean "lowest
+    // twelve pageIds" — the feed arrives distance-sorted, and that is
+    // the one thing about its order that IS load-bearing.
+    const near = Array.from({ length: 14 }, (_, index) =>
+      subject(100 - index, `Place ${100 - index}`, `Place ${100 - index} was built in 1854.`)
     );
+    mockResearch.mockResolvedValue(fenced(threeAnchors));
+
+    await getQuiz('Crystal Palace', near);
+
+    const prompt = mockResearch.mock.calls[0][0].prompt as string;
+    // The nearest twelve are pageIds 100 down to 89; the two furthest
+    // (88, 87) never reach the model
+    expect(prompt).toContain('pageId 89 — Place 89');
+    expect(prompt).not.toContain('pageId 88 — Place 88');
   });
 });

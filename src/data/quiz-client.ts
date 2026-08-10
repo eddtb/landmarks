@@ -1,7 +1,7 @@
 import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
-import { Quiz, QuizQuestion } from '@/types/quiz';
+import { Quiz, QuizQuestion, quizCacheKey } from '@/types/quiz';
 
 /**
  * The quiz client: a session cache in front of one ask per area.
@@ -76,18 +76,14 @@ export function orderedByYear<Item extends { year: number }>(items: Item[]): Ite
   return [...items].sort((a, b) => a.year - b.year);
 }
 
-/** The stories are the material; the area names the cache bucket. */
+/** The stories are the material; the area IS the cache key. */
 export async function fetchQuiz(areaName: string, stories: QuizStory[]): Promise<Quiz | null> {
-  // The material is part of the identity: arriving somewhere new, or the
-  // feed widening, must be able to produce a different quiz. Sorted,
-  // because the SET is the material and the feed's order is not: it is
-  // distance-sorted from the reader's ~111m bucket, so the same twelve
-  // stories seen from a few paces away used to miss this cache and go
-  // back to the route for a quiz it already held (#280).
-  const key = `${areaName.toLowerCase()}:${stories
-    .map((story) => story.pageId)
-    .sort((a, b) => a - b)
-    .join(',')}`;
+  // The server's key, verbatim (see quizCacheKey). The two used to
+  // disagree — this side digested pageIds, that side digested pageId +
+  // title + extract — so the session cache could hit where the route
+  // would have regenerated, and both followed the feed bucket rather
+  // than the area (#280).
+  const key = quizCacheKey(areaName);
   const cached = cache.get(key);
   if (cached !== undefined) {
     return cached;

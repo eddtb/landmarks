@@ -4,8 +4,17 @@ import { MinStoriesToQuiz, QuizSubject, getQuiz } from '@/server/quiz';
  * POST because the client sends the stories: the server holds no
  * per-area state — history lists are fetched by location and cached on
  * the device, so the ground's own stories ride in with the request.
- * They are bound into the quiz's cache key (see quiz.ts), so a
- * fabricated body can only ever poison its own cache slot.
+ *
+ * Those stories used to be digested into the cache key, which meant a
+ * fabricated body could only ever poison its own slot. #280 removed the
+ * digest — the key is the area alone, because keying on the material
+ * keyed the quiz to the ~111m feed bucket and re-spent the free tier on
+ * every walk. The stories are MATERIAL now, and the guard went with the
+ * digest: a crafted body writes the slot every real client in that area
+ * reads for 30 days, and its titles render as options. That is a real
+ * regression, taken deliberately — the defect it replaces is certain and
+ * daily, this one needs an attacker — and it is tracked in #303, not
+ * buried here. Recorded in AGENTS.md's call-site table too.
  */
 
 const MaxTitleChars = 300;

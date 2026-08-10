@@ -10,7 +10,7 @@
  * any deal: the right answer is still the right answer.
  */
 import { fetchQuiz, orderedByYear, resetQuizCacheForTests } from '@/data/quiz-client';
-import { AnchorQuestion, OrderQuestion, Quiz, WhichPlaceQuestion } from '@/types/quiz';
+import { AnchorQuestion, OrderQuestion, Quiz, WhichPlaceQuestion, quizCacheKey } from '@/types/quiz';
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 const mockFetch = jest.requireMock('expo/fetch').fetch as jest.Mock;
@@ -140,9 +140,11 @@ describe('fetchQuiz deals the hand', () => {
     expect(second).toBe(first);
   });
 
-  test('the same stories in a different order still hit the session cache', async () => {
-    // Walking re-sorts the feed by distance without changing it; an
-    // order-sensitive key sent the same quiz back to the route (#280)
+  test('walking across the area — reordered, then re-membered — stays one ask', async () => {
+    // The feed is distance-sorted from the reader's ~111m bucket, so a
+    // walk both re-orders it AND changes which stories are nearest.
+    // Keyed on that, a 2km stroll with the tab open went back to the
+    // route ~18 times for a quiz it already held (#280).
     const nearest = [
       { pageId: 1, title: 'Cutty Sark', extract: 'x' },
       { pageId: 2, title: 'Queen’s House', extract: 'y' },
@@ -150,9 +152,35 @@ describe('fetchQuiz deals the hand', () => {
     ];
 
     await fetchQuiz('Greenwich', nearest);
+    // A hundred paces: the same three, re-sorted by distance
     await fetchQuiz('Greenwich', [nearest[2], nearest[0], nearest[1]]);
+    // A hundred more: one dropped off the back, a new one came in front
+    await fetchQuiz('Greenwich', [
+      { pageId: 4, title: 'Greenwich Foot Tunnel', extract: 'w' },
+      nearest[0],
+      nearest[1],
+    ]);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('the client keys on exactly what the server keys on', async () => {
+    // ONE function, both sides of the wire. They disagreed before — this
+    // side digested pageIds, that side digested pageId + title + extract
+    // — so the session cache could hit where the route would have
+    // regenerated, and the device served a quiz the store did not have.
+    const other = [{ pageId: 9, title: 'Somewhere else', extract: 'q' }];
+
+    await fetchQuiz('Greenwich', stories);
+    // Same key by the shared function: same area, any material, any case
+    expect(quizCacheKey('greenwich')).toBe(quizCacheKey('Greenwich'));
+    await fetchQuiz('greenwich', other);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // …and a DIFFERENT key is a different ask, material notwithstanding
+    expect(quizCacheKey('Deptford')).not.toBe(quizCacheKey('Greenwich'));
+    await fetchQuiz('Deptford', stories);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   test('no quiz stays no quiz', async () => {

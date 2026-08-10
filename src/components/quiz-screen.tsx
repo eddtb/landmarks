@@ -154,10 +154,13 @@ function QuizBody({
   // Ask only once BOTH have settled: before the area is named the quiz
   // would be keyed to a placeholder, and before the feed lands it would
   // be set from three stories when twelve were coming.
-  const askKey =
-    !denied && stories && areaSettled && areaName
-      ? `${areaName}:${stories.map((story) => story.pageId).join(',')}:${attempt}`
-      : null;
+  //
+  // The AREA is the ask, not its stories — the same identity the caches
+  // on both sides of the wire now use (see quizCacheKey). Carrying the
+  // pageIds here made every ~111m bucket crossing a new ask: the screen
+  // tore down a running quiz, showed "Setting the questions…", and went
+  // back for a quiz it already had (#280).
+  const askKey = !denied && stories && areaSettled && areaName ? `${areaName}:${attempt}` : null;
 
   // Adjust-during-render (the Gazetteer's own pattern): walking into a
   // new area must not leave the last area's quiz on screen while its own
@@ -192,8 +195,9 @@ function QuizBody({
     return () => {
       active = false;
     };
-    // askKey carries the area and its stories — the only things that
-    // change what quiz this is
+    // askKey carries the area and the retry count — the only things
+    // that change what quiz this is. The stories ride along as material
+    // and deliberately do not re-fire this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [askKey]);
 

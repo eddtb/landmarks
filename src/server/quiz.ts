@@ -1,7 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { research } from '@/server/ai-router';
 import { extractAnswerText } from '@/server/gemini';
-import { extractKeyPart } from '@/server/telling';
 import { storeGet, storePut } from '@/server/telling-store';
 import {
   AnchorQuestion,
@@ -11,6 +10,7 @@ import {
   QuizQuestion,
   TrueFalseQuestion,
   WhichPlaceQuestion,
+  quizCacheKey,
 } from '@/types/quiz';
 
 /**
@@ -88,35 +88,20 @@ const cache = diskBackedMap<CachedQuiz>('quiz');
 // same place join one call instead of spending two
 const inFlight = new Map<string, Promise<Quiz | null>>();
 
-/** What the client sends: the stories it has for this area. */
-export type QuizSubject = { pageId: number; title: string; extract: string };
-
 /**
- * The cache key binds the quiz to the material it was set from, exactly
- * as the telling's does: the area names the bucket (movement busts it),
- * and the source digest means a fabricated POST can only ever poison
- * its own slot, never the one real clients — who all send the same
- * stories for the same ground — read for the next 30 days.
+ * What the client sends: the stories it has for this area — MATERIAL,
+ * not identity (the key is the area alone: quizCacheKey).
  *
- * The version prefix retires every older entry at once when the
- * CONTRACT changes, not just the material: v2 added kinds (a cached
- * quiz without them is a broken screen); v3 changed the question
- * register after the first on-phone run served "how many men are on
- * the memorial" — a recorded quiz in the trivia register would keep
- * serving poor questions for 30 days under its old key.
+ * The digest that used to bind them into the key was also this route's
+ * fabrication guard, and it went with them: a crafted POST now writes
+ * the slot every real client in that area reads for 30 days, where
+ * before it could only ever poison its own. That is the price of #280 —
+ * the alternative was a cache keyed to the ~111m feed bucket, re-spending
+ * the shared free tier on every walk. Unlike retold's area key, which
+ * carries no trust because its source is fetched here, this material
+ * arrives from the client. Tracked in #303; AGENTS.md's table says so.
  */
-export async function quizKey(areaName: string, subjects: QuizSubject[]): Promise<string> {
-  // Sorted first: the SET of stories is the material, never the order
-  // the feed happened to hand them over in. The feed is distance-sorted
-  // from the reader's ~111m bucket, so the same twelve stories seen from
-  // a few paces away arrived in a different order and minted a fresh
-  // key — a free-tier call spent to re-set a quiz we already had (#280).
-  const material = [...subjects]
-    .sort((a, b) => a.pageId - b.pageId)
-    .map((s) => `${s.pageId}:${s.title}:${s.extract}`)
-    .join('\n');
-  return `v3:${areaName.toLowerCase()}:${await extractKeyPart(material)}`;
-}
+export type QuizSubject = { pageId: number; title: string; extract: string };
 
 /** Pure and unit-tested: the contract the model must write to. */
 export function quizPrompt(areaName: string, subjects: QuizSubject[]): string {
@@ -414,13 +399,21 @@ function peek(key: string): { quiz: Quiz | null } | undefined {
 export async function getQuiz(areaName: string, subjects: QuizSubject[]): Promise<Quiz | null> {
   const usable = subjects
     .filter((subject) => subject.extract.trim().length > 0 && isNamedPlace(subject.title))
-    .slice(0, MaxStories);
+    // The nearest twelve — the cap comes BEFORE the sort, or "nearest"
+    // would mean "lowest pageId", which is nothing at all
+    .slice(0, MaxStories)
+    // …then sorted, so the prompt is a function of the SET and not of
+    // the order the feed handed it over in. The feed is distance-sorted
+    // from the asker's ~111m bucket; without this, the same twelve
+    // stories asked for from a few paces away would write a different
+    // quiz into the one area slot on the next regeneration.
+    .sort((a, b) => a.pageId - b.pageId);
   // The floor, before any key or call: no stories, no quiz
   if (usable.length < MinStoriesToQuiz) {
     return null;
   }
 
-  const key = await quizKey(areaName, usable);
+  const key = quizCacheKey(areaName);
   const peeked = peek(key);
   if (peeked !== undefined) {
     return peeked.quiz;

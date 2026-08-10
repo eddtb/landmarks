@@ -5,8 +5,43 @@
  *
  * v2: questions carry a `kind`. The old single-shape quizzes live under
  * the v1 cache keys and are never served to this client — the server's
- * key prefix moved with the shape (see quizKey).
+ * key prefix moved with the shape (see quizCacheKey).
  */
+
+/**
+ * The quiz cache's key: the AREA, and nothing else — ONE truth for both
+ * sides of the wire (src/server/quiz.ts's 30-day store, src/data/
+ * quiz-client.ts's session cache), so the device can never hit where the
+ * server would have regenerated. It could before: the client digested
+ * pageIds, the server digested pageId + title + extract.
+ *
+ * The stories a quiz is set from are MATERIAL, not identity, exactly as
+ * the retold cache treats an area's article. Keying on them instead made
+ * the cache follow the ~111m feed bucket rather than the area — the
+ * nearest twelve change membership at nearly every crossing, so a 2km
+ * walk with the tab open could spend ~18 of the shared 300 daily
+ * free-tier calls re-setting one area's quiz (#280).
+ *
+ * What it costs: the twelve an area's quiz is set from are whichever
+ * twelve the first asker in that area had, for 30 days — so someone at
+ * the edge may be asked about places they are not nearest to. That is
+ * the right trade: the quiz asks about the AREA (see quizPrompt), every
+ * question carries its own title and citation from the server payload
+ * rather than the reader's feed, and the one genuinely reader-relative
+ * thing — the pointing finale — is derived on the device from where
+ * they stand and was never in this cache. It also removes the
+ * fabrication guard the digest was doubling as (#303).
+ *
+ * The version prefix retires every older slot at once when the CONTRACT
+ * changes, not just the material: v2 added kinds (a cached quiz without
+ * them is a broken screen); v3 changed the question register after the
+ * first on-phone run served "how many men are on the memorial"; v4 is
+ * this key, and orphans the bucket-keyed v3 entries rather than letting
+ * them be misread.
+ */
+export function quizCacheKey(areaName: string): string {
+  return `v4:${areaName.toLowerCase()}`;
+}
 
 type QuizQuestionBase = {
   /** The story this was set from — the citation, and the tap target. */
