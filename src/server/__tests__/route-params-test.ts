@@ -177,19 +177,25 @@ describe.each(routes)('$name coordinate validation', ({ GET, work, valid, params
     expect(work).not.toHaveBeenCalled();
   });
 
+  // Declared as a visible skip rather than silently omitted: a row with
+  // no cases is how a table-driven suite quietly stops asking.
   const nowhere = offGlobe as readonly (readonly [string, string])[];
-  (nowhere.length ? test.each(nowhere) : test.skip.each([['n/a', 'n/a']]))(
-    'a %s of %s is a 400 — finite is not the same as on Earth',
-    async (name, value) => {
-      const query = new URLSearchParams(valid.slice(1));
-      query.set(name, value);
+  if (nowhere.length === 0) {
+    test.skip('nothing here is a coordinate — this route has no globe to be off', () => {});
+  } else {
+    test.each(nowhere)(
+      'a %s of %s is a 400 — finite is not the same as on Earth',
+      async (name, value) => {
+        const query = new URLSearchParams(valid.slice(1));
+        query.set(name, value);
 
-      const response = await ask(`?${query}`);
+        const response = await ask(`?${query}`);
 
-      expect(response.status).toBe(400);
-      expect(work).not.toHaveBeenCalled();
-    }
-  );
+        expect(response.status).toBe(400);
+        expect(work).not.toHaveBeenCalled();
+      }
+    );
+  }
 
   test('a complete, numeric query does reach the work — the guard refuses nothing real', async () => {
     const response = await ask(valid);
