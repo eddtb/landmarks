@@ -525,4 +525,15 @@ describe('getQuiz', () => {
     // The area names the bucket, so movement always busts it.
     expect(keyA.startsWith('v3:crystal palace:')).toBe(true);
   });
+
+  test('the same twelve stories in a different order are the same key', async () => {
+    // The feed is distance-sorted from the reader's ~111m bucket, so a
+    // few paces re-orders it without changing it. An order-sensitive
+    // join spent a free-tier call on that (#280).
+    const shuffled = [subjects[3], subjects[0], subjects[4], subjects[2], subjects[1]];
+
+    expect(await quizKey('Crystal Palace', shuffled)).toBe(
+      await quizKey('Crystal Palace', subjects)
+    );
+  });
 });
