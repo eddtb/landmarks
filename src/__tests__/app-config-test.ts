@@ -13,10 +13,55 @@
  * That happened. This file is the fence: both policies stay explicit so
  * `eas update` has nothing to configure, and the duplication that marks
  * a written-back config fails CI instead of shipping.
+ *
+ * The second half of the fence watches what the app DECLARES, and it has
+ * to read the generated plist rather than app.json. Asserting a key is
+ * absent from the source config is worth nothing here: every key that
+ * reached build 11's Info.plist wrongly (#284) was absent from app.json
+ * and added downstream by a plugin default. So those tests call the
+ * with-honest-capabilities mod itself and check its OUTPUT.
  */
 import appJson from '../../app.json';
 
 const config = appJson.expo;
+
+type InfoPlist = Record<string, unknown>;
+type InfoPlistMod = (config: {
+  modResults: InfoPlist;
+  modRequest: Record<string, unknown>;
+}) => Promise<{ modResults: InfoPlist }>;
+
+const withHonestCapabilities = jest.requireActual<
+  (config: Record<string, unknown>) => { mods: { ios: { infoPlist: InfoPlistMod } } }
+>('../../plugins/with-honest-capabilities');
+
+/**
+ * The Info.plist of build `e6335642` — 1.1.0 (11), the binary in front of
+ * App Review — reduced to the keys that matter. Anything the plugin is
+ * supposed to strip is here; so is everything it must leave alone.
+ */
+const shippedPlist = (): InfoPlist => ({
+  CFBundleShortVersionString: '1.1.0',
+  ITSAppUsesNonExemptEncryption: false,
+  NSLocationWhenInUseUsageDescription:
+    'Venture uses your location to find the stories within a walk of you.',
+  NSLocationAlwaysUsageDescription: 'Allow $(PRODUCT_NAME) to access your location',
+  NSLocationAlwaysAndWhenInUseUsageDescription: 'Allow $(PRODUCT_NAME) to access your location',
+  NSMotionUsageDescription: 'Allow $(PRODUCT_NAME) to detect your current motion activity',
+  NSBonjourServices: ['_expo._tcp'],
+  NSLocalNetworkUsageDescription:
+    'Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer.',
+  UIBackgroundModes: ['fetch', 'location'],
+  NSSupportsLiveActivities: true,
+  NSSupportsLiveActivitiesFrequentUpdates: true,
+});
+
+/** Run the plugin's own registered mod over a plist, the way prebuild does. */
+const runInfoPlistMod = async (plist: InfoPlist): Promise<InfoPlist> => {
+  const applied = withHonestCapabilities({ name: 'Venture', slug: 'landmarks' });
+  const result = await applied.mods.ios.infoPlist({ modResults: plist, modRequest: {} });
+  return result.modResults;
+};
 
 const duplicates = (values: readonly string[]): string[] => {
   const seen = new Set<string>();
@@ -71,5 +116,72 @@ describe('app.json survives the tooling', () => {
     // Config mods run in REVERSE registration order, so the plugin whose
     // job is undoing another's default has to be registered ahead of it
     expect(config.plugins[0]).toBe('./plugins/with-honest-capabilities');
+  });
+});
+
+describe('the generated plist declares only what the app does', () => {
+  const variant = process.env.APP_VARIANT;
+
+  afterEach(() => {
+    if (variant === undefined) {
+      delete process.env.APP_VARIANT;
+    } else {
+      process.env.APP_VARIANT = variant;
+    }
+  });
+
+  test('a release build strips every capability the app never uses', async () => {
+    // Each of these reached the SUBMITTED binary. None is written in
+    // app.json; each arrives as a plugin default, and a default is not an
+    // option you can decline — deleting it from app.json only renames it.
+    delete process.env.APP_VARIANT;
+    const plist = await runInfoPlistMod(shippedPlist());
+
+    // expo-location: iOS would offer "Always" in Settings for an app that
+    // only ever asks "While Using". That is the 4.2.2 / 2.5.4 shape that
+    // already cost 1.0(3).
+    expect('NSLocationAlwaysUsageDescription' in plist).toBe(false);
+    expect('NSLocationAlwaysAndWhenInUseUsageDescription' in plist).toBe(false);
+    expect('NSMotionUsageDescription' in plist).toBe(false);
+
+    // expo-dev-client: no dev frameworks are embedded in the IPA, so this
+    // is a declared and unusable capability.
+    expect('NSBonjourServices' in plist).toBe(false);
+    expect('NSLocalNetworkUsageDescription' in plist).toBe(false);
+
+    // expo-task-manager and expo-widgets. Confirmed already absent from
+    // build 11 — this half of the plugin works, and must keep working.
+    expect('UIBackgroundModes' in plist).toBe(false);
+    expect('NSSupportsLiveActivities' in plist).toBe(false);
+    expect('NSSupportsLiveActivitiesFrequentUpdates' in plist).toBe(false);
+  });
+
+  test('the one permission the app does ask for survives untouched', async () => {
+    // A fence that strips everything would pass the test above and ship a
+    // location app that cannot locate.
+    delete process.env.APP_VARIANT;
+    const plist = await runInfoPlistMod(shippedPlist());
+
+    expect(plist.NSLocationWhenInUseUsageDescription).toBe(
+      'Venture uses your location to find the stories within a walk of you.'
+    );
+    expect(plist.ITSAppUsesNonExemptEncryption).toBe(false);
+    expect(plist.CFBundleShortVersionString).toBe('1.1.0');
+  });
+
+  test('a development client keeps the local network it genuinely uses', async () => {
+    // The dev client reaches Metro over the LAN, and iOS denies that
+    // without the usage description. Upstream strips these for Release
+    // only; so do we, on the same APP_VARIANT signal app.config.js uses.
+    process.env.APP_VARIANT = 'development';
+    const plist = await runInfoPlistMod(shippedPlist());
+
+    expect(plist.NSBonjourServices).toEqual(['_expo._tcp']);
+    expect(typeof plist.NSLocalNetworkUsageDescription).toBe('string');
+
+    // The location and motion claims are false in every variant.
+    expect('NSLocationAlwaysUsageDescription' in plist).toBe(false);
+    expect('NSMotionUsageDescription' in plist).toBe(false);
+    expect('UIBackgroundModes' in plist).toBe(false);
   });
 });

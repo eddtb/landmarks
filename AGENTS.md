@@ -67,8 +67,17 @@ carries the same test/lint/typecheck bar as anything else.
 always says "Published!" — whether any phone RECEIVES it depends on the
 runtime version matching a binary that exists, and nothing tells you
 when it doesn't. An update nobody can receive is indistinguishable from
-one everybody got. The preflight refuses a dirty tree, a red suite, or a
-fingerprint that matches no finished build on the channel.
+one everybody got. The preflight refuses a dirty tree (untracked files
+included — an untracked `app.config.js` replaces `app.json` outright), a
+red suite, a HEAD the reviewed line does not contain, and a fingerprint
+that matches no finished build on the channel.
+
+The workflow runs that same bar again on EAS — typecheck, lint, tests,
+then a fingerprint that must match a finished build — so it is enforced
+rather than remembered (#288). The script stays the fast copy, and the
+only one that can see an uncommitted file or an unlanded branch. When
+HEAD is deliberately ahead of `origin/main`, name the line being
+shipped: `PREFLIGHT_BASE_REF=origin/<branch>`.
 
 **`eas update` writes to app.json.** It auto-configures any platform
 missing a `runtimeVersion` policy, and serialises the config back out
