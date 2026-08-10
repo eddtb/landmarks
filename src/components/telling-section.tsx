@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { DrawingWanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
 import { fetchTelling } from '@/data/telling-client';
 import { useTheme } from '@/hooks/use-theme';
@@ -115,6 +116,7 @@ export function TellingSection({ item }: { item: HistoryItem }) {
  * citing 4.2.2 for that.
  */
 export function TellingLead({ item }: { item: HistoryItem }) {
+  const theme = useTheme();
   const [telling, setTelling] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -198,10 +200,16 @@ export function TellingLead({ item }: { item: HistoryItem }) {
     );
   }
   if (!telling) {
+    // The other long AI wait, and it got bare grey text too (#248).
+    // Same line as the retelling's and the cold load's: reduced-motion
+    // aware, so it holds still where a spinner would fidget.
     return (
-      <ThemedText type="small" themeColor="textSecondary" style={styles.leadPending}>
-        Writing the telling…
-      </ThemedText>
+      <View style={styles.leadPending} testID="telling-writing">
+        <DrawingWanderLine arcSpan={38} stroke={4.5} count={4} color={theme.accent} />
+        <ThemedText type="small" themeColor="textSecondary">
+          Writing the telling of {item.title}…
+        </ThemedText>
+      </View>
     );
   }
   return (
@@ -243,6 +251,9 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three - Spacing.one,
   },
   leadPending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.four,
     paddingVertical: Spacing.three,
   },

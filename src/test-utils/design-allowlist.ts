@@ -60,64 +60,30 @@ export const SanctionedColours: readonly SanctionedColour[] = [
     reason: 'The read tick rides on the card photo, inside its own dark scrim (633e4a6).',
   },
   {
+    file: 'src/components/glass-header.tsx',
+    value: '#FFFFFF',
+    reason:
+      'The glyph on a photo chip, which pins dark whatever the scheme (#313 made this THE chip, so the ink moved here with it). White holds over any sky.',
+  },
+  {
     file: 'src/app/history/[pageId]/index.tsx',
     value: '#FFFFFF',
     reason:
       'The floating back chevron and the ⋯ tint are the photo-chip pair: glass pinned dark over the hero, so the glyph is white in both schemes.',
   },
   // ---- 2. Material ---------------------------------------------------
-  {
-    file: 'src/components/glass-header.tsx',
-    value: 'rgba(20, 20, 24, 0.65)',
-    reason:
-      'Real glass ADAPTS to its backdrop and went light under white glyphs over a bright sky. The tint inks the material itself.',
-  },
-  {
-    file: 'src/components/glass-header.tsx',
-    value: 'rgba(20, 20, 24, 0.75)',
-    reason:
-      'The no-glass fallback chip: 0.75, not the tick’s 0.55, because a 40pt chip must hold a lone glyph against a bright sky.',
-  },
-  {
-    file: 'src/components/glass-header.tsx',
-    value: 'rgba(255, 255, 255, 0.30)',
-    reason: 'The fallback chip’s own hairline edge — glass draws its own, a scrim cannot.',
-  },
-  {
-    file: 'src/components/glass-header.tsx',
-    value: 'rgba(30, 30, 34, 0.86)',
-    reason:
-      'The island fallback, dark scheme. The island sits over TEXT, not imagery, so unlike the chips it keeps scheme translucency.',
-  },
-  {
-    file: 'src/components/glass-header.tsx',
-    value: 'rgba(245, 245, 247, 0.88)',
-    reason: 'The island fallback, light scheme.',
-  },
-  {
-    file: 'src/components/glass-header.tsx',
-    value: 'rgba(255, 255, 255, 0.12)',
-    reason: 'The island fallback’s hairline, dark scheme.',
-  },
-  {
-    file: 'src/components/glass-header.tsx',
-    value: 'rgba(23, 24, 26, 0.10)',
-    reason: 'The island fallback’s hairline, light scheme.',
-  },
+  //
+  // The nine glass greys that used to be listed here are GONE, and this
+  // list shrank rather than being updated: #313 gave them a home, the
+  // `Glass` token group in `theme.ts`, with the reason for their
+  // existence written above it. A material spelled in one place is no
+  // longer an exception a component is making — so there is no entry to
+  // sanction. `theme.ts` is not scanned by this fence, and does not need
+  // to be: the tokens ARE the sanction.
   {
     file: 'src/components/glass-header.tsx',
     value: '#000',
     reason: 'shadowColor — a shadow is a light source, not a palette entry.',
-  },
-  {
-    file: 'src/components/history-card.tsx',
-    value: 'rgba(22, 22, 26, 0.55)',
-    reason: 'The read tick’s translucent ink: 55% over a photo reads frosted without expo-blur.',
-  },
-  {
-    file: 'src/components/history-card.tsx',
-    value: 'rgba(255, 255, 255, 0.25)',
-    reason: 'The read tick’s hairline.',
   },
   // ---- 3. A deliberate single look ------------------------------------
   {
@@ -279,12 +245,6 @@ export const QuarantinedCompilerBails: readonly {
   category: string;
   fix: string;
 }[] = [
-  {
-    file: 'src/components/area-gazetteer.tsx',
-    component: 'AreaGazetteer',
-    category: 'Todo',
-    fix: 'the conditional inside the try/catch must leave the component — extract a module-level async helper that returns a verdict. Hoisting it out of the try does not help.',
-  },
   {
     file: 'src/components/image-viewer.tsx',
     component: 'ImageViewer',

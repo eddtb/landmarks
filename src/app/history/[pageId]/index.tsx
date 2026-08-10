@@ -6,11 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { ChromeEdgeInset, StoryBackChip } from '@/components/glass-header';
+import { failureCause, FailureCause, LoadFailure } from '@/components/load-failure';
 import { OverflowMenu } from '@/components/overflow-menu';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { fetchStory, getCachedHistoryItem, getStoriesAround } from '@/data/history-client';
+import { loadVerdict } from '@/data/load-verdict';
 import { markRead, markVisited } from '@/data/journal';
 import { toggleSaved, useSaved, useSavedItem } from '@/data/saved';
 import { useLocation } from '@/hooks/use-location';
@@ -163,7 +165,9 @@ export default function HistoryDetailScreen() {
   // null for a genuine 404 and THROWS on network trouble — a shared
   // link opened on flaky signal must offer a retry, not tell the
   // recipient the story doesn't exist.
-  const [loadFailed, setLoadFailed] = useState(false);
+  // …and now it says WHICH kind of trouble, in the class's one shape
+  // (#291): null while the ask is live or has succeeded.
+  const [loadFailed, setLoadFailed] = useState<FailureCause | null>(null);
   // The saved shelf is a peer source, not a cache: the item cache
   // evicts and expires, but a story the user chose to keep must open
   // from its snapshot forever (for synthetic heritage ids it is the
@@ -186,8 +190,8 @@ export default function HistoryDetailScreen() {
         if (story) setFetched(story);
         else setMissingPageId(numericPageId);
       })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true);
+      .catch((error: unknown) => {
+        if (!cancelled) setLoadFailed(failureCause(loadVerdict(error)));
       });
     return () => {
       cancelled = true;
@@ -196,17 +200,9 @@ export default function HistoryDetailScreen() {
 
   if (!item && loadFailed) {
     return (
-      <ThemedView style={styles.notFound}>
+      <ThemedView style={styles.failed}>
         <FloatingBack />
-        <ThemedText themeColor="textSecondary">Couldn’t load this story right now.</ThemedText>
-        <Pressable
-          accessibilityRole="button"
-          testID="story-retry"
-          onPress={() => setLoadFailed(false)}>
-          <ThemedText type="smallBold" themeColor="accent">
-            Try again
-          </ThemedText>
-        </Pressable>
+        <LoadFailure surface="story" cause={loadFailed} onRetry={() => setLoadFailed(null)} />
       </ThemedView>
     );
   }
@@ -326,6 +322,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.three,
+  },
+  // The panel brings its own surface and margins; it sits below the
+  // floating back chip rather than centred behind it
+  failed: {
+    flex: 1,
+    paddingTop: Spacing.six + Spacing.four,
   },
   leadBlock: {
     paddingHorizontal: Spacing.four,

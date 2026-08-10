@@ -17,6 +17,7 @@ import { router } from 'expo-router';
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { GlassIslandHeader, useIslandInset } from '@/components/glass-header';
 import { HistoryCard } from '@/components/history-card';
+import { failureCause, LoadFailure } from '@/components/load-failure';
 import { LocationInvitation, OpenSettings } from '@/components/location-ask';
 import { PlaceSearch } from '@/components/place-search';
 import { StoriesMap } from '@/components/stories-map';
@@ -540,13 +541,8 @@ function GazetteerBody({
   if (state.status === 'error') {
     return (
       <BelowTheNotch>
-        <View style={styles.centered}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Couldn&apos;t load stories right now.
-          </ThemedText>
-          <Pressable accessibilityRole="button" onPress={refresh}>
-            <ThemedText type="linkPrimary">Try again</ThemedText>
-          </Pressable>
+        <View style={styles.failure}>
+          <LoadFailure surface="feed" cause={failureCause(state.verdict)} onRetry={refresh} />
         </View>
       </BelowTheNotch>
     );
@@ -578,6 +574,15 @@ function GazetteerBody({
           </View>
         ) : undefined
       }
+      // The flag was on the hook all along and only Nearby read it: the
+      // History tab served cached stories offline with no admission at
+      // all (#248). It travels as a FACT rather than as an element,
+      // because the same flag also decides the article's verdict —
+      // offline outranks absence and failure both, and a line rendered
+      // here while the verdict was decided there is exactly the split
+      // that let #291 happen.
+      stale={state.stale}
+      savedAt={state.savedAt}
     />
   );
 }
@@ -763,13 +768,8 @@ export function HistoryBody({
 
   if (state.status === 'error') {
     return (
-      <View style={[styles.centered, { paddingTop: topInset }]}>
-        <ThemedText type="small" themeColor="textSecondary">
-          Couldn&apos;t load stories right now.
-        </ThemedText>
-        <Pressable accessibilityRole="button" onPress={refresh}>
-          <ThemedText type="linkPrimary">Try again</ThemedText>
-        </Pressable>
+      <View style={[styles.failure, { paddingTop: topInset }]}>
+        <LoadFailure surface="feed" cause={failureCause(state.verdict)} onRetry={refresh} />
       </View>
     );
   }
@@ -855,6 +855,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.three,
+  },
+  // The panel carries its own surface and margins; the screen only
+  // decides where down the page it starts
+  failure: {
+    flex: 1,
   },
   header: {
     paddingHorizontal: Spacing.four,

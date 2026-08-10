@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchNearbyHistory, hasCachedFeed, HistoryFetchResult } from '@/data/history-client';
+import { LoadVerdict, loadVerdict } from '@/data/load-verdict';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 export type HistoryState =
   | { status: 'loading' }
-  | { status: 'error' }
+  /** Why it failed, so the screen can say what came back rather than
+   * "right now" (#291). Never 'absent': a feed has no 404. */
+  | { status: 'error'; verdict: LoadVerdict }
   | {
       status: 'ready';
       items: HistoryItem[];
@@ -14,6 +17,8 @@ export type HistoryState =
       /** Meters the sparse search actually reached — the copy's truth. */
       horizon?: number;
       stale?: boolean;
+      /** When the saved copy being served was written. */
+      savedAt?: number;
     };
 
 /** How long the server's photo leg gets before the one-shot upgrade
@@ -68,7 +73,8 @@ export function useHistory(center: Coordinates | null): {
           prev.items === next.items &&
           prev.sparse === next.sparse &&
           prev.horizon === next.horizon &&
-          prev.stale === next.stale
+          prev.stale === next.stale &&
+          prev.savedAt === next.savedAt
             ? prev
             : {
                 status: 'ready',
@@ -76,6 +82,7 @@ export function useHistory(center: Coordinates | null): {
                 sparse: next.sparse,
                 horizon: next.horizon,
                 stale: next.stale,
+                savedAt: next.savedAt,
               }
         );
         // A dressing feed (fresh from the server, or a persisted flagged
@@ -140,7 +147,7 @@ export function useHistory(center: Coordinates | null): {
       } catch (error) {
         console.warn('Failed to load history:', error);
         if (id === requestId.current) {
-          setState({ status: 'error' });
+          setState({ status: 'error', verdict: loadVerdict(error) });
         }
       }
     })();
@@ -167,7 +174,7 @@ export function useHistory(center: Coordinates | null): {
     } catch (error) {
       console.warn('Failed to refresh history:', error);
       if (id === requestId.current) {
-        setState({ status: 'error' });
+        setState({ status: 'error', verdict: loadVerdict(error) });
       }
     }
   }, [latitude, longitude, applyResult, clearUpgrade]);

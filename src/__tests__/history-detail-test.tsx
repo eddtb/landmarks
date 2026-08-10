@@ -2,12 +2,19 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import HistoryDetailScreen from '@/app/history/[pageId]';
 import { fetchArticle } from '@/data/article-client';
+import { ApiError } from '@/data/cached-get';
 import { cacheHistoryItems, fetchNearbyHistory } from '@/data/history-client';
 import { fetchRetold } from '@/data/retold-client';
 import { HistoryItem } from '@/types/history';
 
 const mockUseLocalSearchParams = jest.fn();
 const mockPush = jest.fn();
+
+/** A place with no article of its own — the server's own answer, and
+ * the only one that means it: a 404. */
+const noArticle = async (): Promise<never> => {
+  throw new ApiError('Article', 404);
+};
 
 jest.mock('expo-router', () => {
   const actual = jest.requireActual('expo-router');
@@ -23,9 +30,12 @@ jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 const mockExpoFetch = jest.requireMock('expo/fetch').fetch as jest.Mock;
 
 jest.mock('@/data/article-client', () => ({
-  // A light miss: the screen must not depend on the chapters-first
-  // fast path — the full article alone still paints everything
-  fetchArticleLight: jest.fn(async () => null),
+  // A light miss, said the way the server says it: a 404. These clients
+  // never resolve null — they throw, and #291 is precisely the bug that
+  // came of a caller flattening that throw into "nothing is there".
+  fetchArticleLight: jest.fn(async () => {
+    throw new (jest.requireActual('@/data/cached-get').ApiError)('Light article', 404);
+  }),
   fetchArticle: jest.fn(async () => ({
     minutes: 3,
     images: [],
@@ -174,12 +184,15 @@ describe('<HistoryDetailScreen />', () => {
     // left under the pills to wrap)
   });
 
-  test('a network failure offers Try again — never "could not be found"', async () => {
+  test('a network failure names the cause and offers the ask again — never "could not be found"', async () => {
     mockUseLocalSearchParams.mockReturnValue({ pageId: '4242' }); // not in any cache
     mockExpoFetch.mockRejectedValueOnce(new Error('flaky tunnel'));
     await render(<HistoryDetailScreen />);
 
-    expect(await screen.findByText('Couldn’t load this story right now.')).toBeOnTheScreen();
+    expect(await screen.findByText('This story didn’t come back')).toBeOnTheScreen();
+    // What came back, not "right now" — which stands in for a cause
+    expect(screen.getByText('The link is good — the request wasn’t.')).toBeOnTheScreen();
+    expect(screen.queryByText(/right now/)).not.toBeOnTheScreen();
     expect(screen.queryByText('This story could not be found.')).not.toBeOnTheScreen();
 
     // The retry refetches — this time the story answers
@@ -198,17 +211,22 @@ describe('<HistoryDetailScreen />', () => {
         },
       }),
     });
-    fireEvent.press(screen.getByTestId('story-retry'));
-    expect(await screen.findByText('Marshalsea')).toBeOnTheScreen();
+    fireEvent.press(screen.getByTestId('retry-story'));
+    // A press, a refetch and a whole gazetteer mount: RNTL's 1s default
+    // is tight for that once the suite is running in parallel
+    expect(await screen.findByText('Marshalsea', {}, { timeout: 5000 })).toBeOnTheScreen();
   });
 
-  test('a true 404 still says the story could not be found', async () => {
+  test('a true 404 still says the story could not be found — and offers no retry', async () => {
     mockUseLocalSearchParams.mockReturnValue({ pageId: '4243' });
     mockExpoFetch.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) });
     await render(<HistoryDetailScreen />);
 
     expect(await screen.findByText('This story could not be found.')).toBeOnTheScreen();
-    expect(screen.queryByTestId('story-retry')).not.toBeOnTheScreen();
+    // Absence keeps its own grammar: no panel, and no button to press
+    // against an answer that will not change
+    expect(screen.queryByTestId('retry-story')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('load-failed-story')).not.toBeOnTheScreen();
   });
 
   test('the Compass button opens the story compass modal', async () => {
@@ -224,7 +242,7 @@ describe('<HistoryDetailScreen />', () => {
   });
 
   test('a place with NO article of its own is still NAMED, and keeps the record story', async () => {
-    (fetchArticle as jest.Mock).mockResolvedValueOnce(null);
+    (fetchArticle as jest.Mock).mockImplementationOnce(noArticle);
     mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
     await render(<HistoryDetailScreen />);
 
@@ -290,7 +308,7 @@ describe('<HistoryDetailScreen />', () => {
       }),
     });
     await fetchNearbyHistory({ latitude: 51.51302, longitude: -0.14609 });
-    (fetchArticle as jest.Mock).mockResolvedValue(null);
+    (fetchArticle as jest.Mock).mockImplementation(noArticle);
 
     mockUseLocalSearchParams.mockReturnValue({ pageId: '3000000595' });
     await render(<HistoryDetailScreen />);
@@ -685,7 +703,7 @@ describe('a story screen names what it is about — every shape', () => {
 
   test('in dark, the page chip follows the app rather than the photograph', async () => {
     mockScheme.mockReturnValue('dark');
-    (fetchArticle as jest.Mock).mockResolvedValue(null);
+    (fetchArticle as jest.Mock).mockImplementation(noArticle);
     mockUseLocalSearchParams.mockReturnValue({ pageId: String(shapes[3].item.pageId) });
     await render(<HistoryDetailScreen />);
     await screen.findByTestId('gazetteer-title');
@@ -724,7 +742,7 @@ describe('Go, on the violet', () => {
       status: 'ready',
       coordinates: { latitude: 51.5012, longitude: -0.0921 },
     });
-    (fetchArticle as jest.Mock).mockResolvedValue(null);
+    (fetchArticle as jest.Mock).mockImplementation(noArticle);
     mockUseLocalSearchParams.mockReturnValue({ pageId: '5100' });
   });
 

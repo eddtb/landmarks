@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassIslandHeader, IslandTitle, useIslandInset } from '@/components/glass-header';
+import { failureCause, FailureCause, LoadFailure } from '@/components/load-failure';
 import { QuizRun, RunStage } from '@/components/quiz-run';
 import { LocationGate } from '@/components/section-screen';
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
 import { fetchQuiz } from '@/data/quiz-client';
+import { loadVerdict } from '@/data/load-verdict';
 import { rankFor, useAreaProgress } from '@/data/quiz-progress';
 import { useAreaName } from '@/hooks/use-area-name';
 import { useHistory } from '@/hooks/use-history';
@@ -106,6 +108,9 @@ function QuizBody({
   const { name: areaName, label: areaLabel, settled: areaSettled } = useAreaName(center);
 
   const [phase, setPhase] = useState<Phase>('loading');
+  // What broke, when phase is 'error': the panel says whether an answer
+  // came back an error or never came back at all (#291).
+  const [failure, setFailure] = useState<FailureCause>('silent');
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempt, setAttempt] = useState(0);
   // Lifted from the run: while a run is up the screen header stands
@@ -168,8 +173,9 @@ function QuizBody({
         setQuiz(next);
         setPhase(next ? 'ready' : 'none');
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (active) {
+          setFailure(failureCause(loadVerdict(error)));
           setPhase('error');
         }
       });
@@ -248,13 +254,8 @@ function QuizBody({
           )}
 
           {!denied && resolved === 'error' && (
-            <View style={styles.centered} testID="quiz-error">
-              <ThemedText type="small" themeColor="textSecondary">
-                Couldn’t set the quiz right now.
-              </ThemedText>
-              <Pressable accessibilityRole="button" testID="quiz-retry" onPress={retry}>
-                <ThemedText type="linkPrimary">Try again</ThemedText>
-              </Pressable>
+            <View style={styles.failure} testID="quiz-error">
+              <LoadFailure surface="quiz" cause={failure} onRetry={retry} />
             </View>
           )}
 
@@ -359,5 +360,11 @@ const styles = StyleSheet.create({
   },
   emptyCopy: {
     textAlign: 'center',
+  },
+  // The screen already pads its content; the panel's own margins would
+  // double it, so this cancels them back out
+  failure: {
+    marginHorizontal: -Spacing.four,
+    paddingTop: Spacing.three,
   },
 });
