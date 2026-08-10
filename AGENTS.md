@@ -181,9 +181,21 @@ node scripts/react-compiler-scan.js
 It runs the real pipeline (`babel-preset-expo` with
 `supportsReactCompiler`, Metro's production caller) over every `.tsx` in
 `src/components` and `src/app`, and prints what compiled, what bailed
-and why. A component absent from the compiled list is not compiled;
-adding a derivation to it costs per-render work that nothing will
-report. `src/__tests__/react-compiler-test.ts` runs the same scan in CI.
+and why — the reason is the compiler's own, from its logger, not a guess
+read off the output. A component absent from the compiled list is not
+compiled; adding a derivation to it costs per-render work that nothing
+will report. `src/__tests__/react-compiler-test.ts` runs the same scan in
+CI, and fails on a new bail.
+
+**Do not hand-roll this.** This file used to recommend
+`npx babel <file> --presets babel-preset-expo | grep '_c('`. There is no
+`@babel/cli` in this tree, so `npx babel` fetches the abandoned babel@6
+shim and throws. A `@babel/core` one-liner does not work either: without
+`caller.supportsReactCompiler` the preset never adds the compiler plugin
+at all, and the file transforms clean with zero `_c(` — indistinguishable
+from "nothing compiled". That is how `glass-header.tsx` was read as
+compiling nothing when it compiles three components. Grepping for `_c(`
+also cannot say WHICH function bailed, or why. Run the script.
 
 
 # Design rules that enforce themselves
