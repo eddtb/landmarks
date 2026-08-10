@@ -10,6 +10,7 @@
  * the options, or the cache slot (#303), and the slot is the area
  * rather than the ~111m bucket the reader happens to be in (#280).
  */
+import { diskMapPolicies } from '@/server/ai-cache';
 import {
   MinQuestions,
   MinStoriesToQuiz,
@@ -639,6 +640,65 @@ describe('getQuiz derives its own ground', () => {
 
     await expect(getQuiz(bowl)).rejects.toThrow('429');
     expect(mockStorePut).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The quiz keeps TWO clocks — 30 days for a quiz, 7 for a "nothing to
+ * ask about here" verdict — and #309 gave the disk map a THIRD job,
+ * pruning. Which of the two the prune takes is the whole decision, and
+ * getting it wrong is silent: pruning at 7 days drops told quizzes that
+ * the read would still have served, and every one of them costs a
+ * free-tier call to write again.
+ */
+describe('the quiz cache keeps its two clocks', () => {
+  const Days = 24 * 60 * 60 * 1000;
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  test('the map prunes on the LONGER clock — the read’s shorter one is peek’s job', () => {
+    const policy = diskMapPolicies().get('quiz');
+
+    expect(policy).toEqual({ ttlMs: 30 * Days, maxEntries: 1000 });
+    // Said twice on purpose: this is the number a future edit would
+    // "tidy" to 7 to match the verdict TTL, and nothing else would say so
+    expect(policy!.ttlMs).toBeGreaterThan(7 * Days);
+  });
+
+  test('a told quiz is still served ten days on, without a second call', async () => {
+    mockResearch.mockResolvedValue(fenced(threeAnchors));
+    const told = await getQuiz(bowl);
+    expect(told?.questions).toHaveLength(3);
+
+    const tenDaysOn = Date.now() + 10 * Days;
+    jest.spyOn(Date, 'now').mockReturnValue(tenDaysOn);
+
+    expect(await getQuiz(bowl)).toEqual(told);
+    expect(mockResearch).toHaveBeenCalledTimes(1);
+  });
+
+  test('…while a no-quiz verdict has expired by then, and the ground is asked again', async () => {
+    mockFindNearbyHistory.mockResolvedValue([place(1, 'One'), place(2, 'Two')]);
+    expect(await getQuiz(bowl)).toBeNull();
+    // Thin ground widens once on the feed's own rule, so the count is
+    // "however many that took", not one
+    const asked = mockFindNearbyHistory.mock.calls.length;
+    expect(asked).toBeGreaterThan(0);
+
+    // Today: the verdict answers and nothing is re-fetched
+    expect(await getQuiz(bowl)).toBeNull();
+    expect(mockFindNearbyHistory).toHaveBeenCalledTimes(asked);
+
+    const tenDaysOn = Date.now() + 10 * Days;
+    jest.spyOn(Date, 'now').mockReturnValue(tenDaysOn);
+
+    // A quiet corner may have grown a story in a week — the 7-day
+    // verdict is a promise not to re-ask TOO often, not never again
+    expect(await getQuiz(bowl)).toBeNull();
+    expect(mockFindNearbyHistory.mock.calls.length).toBeGreaterThan(asked);
+    expect(mockResearch).not.toHaveBeenCalled();
   });
 });
 
