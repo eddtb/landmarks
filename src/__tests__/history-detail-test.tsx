@@ -627,8 +627,14 @@ describe('a story screen names what it is about — every shape', () => {
     },
   ];
 
+  // Once, not once per test: caching an item persists it, and doing
+  // that inside two `each` tables is churn on the same thread the
+  // render runs on
+  beforeAll(() => {
+    cacheHistoryItems(shapes.map((shape) => shape.item));
+  });
+
   test.each(shapes)('$what', async ({ item, article, name, block }) => {
-    cacheHistoryItems([item]);
     (fetchArticle as jest.Mock).mockResolvedValue(
       article ? { minutes: 3, images: [], chapters: [] } : null
     );
@@ -655,7 +661,6 @@ describe('a story screen names what it is about — every shape', () => {
     article,
     block,
   }) => {
-    cacheHistoryItems([item]);
     (fetchArticle as jest.Mock).mockResolvedValue(
       article ? { minutes: 3, images: [], chapters: [] } : null
     );
@@ -680,7 +685,6 @@ describe('a story screen names what it is about — every shape', () => {
 
   test('in dark, the page chip follows the app rather than the photograph', async () => {
     mockScheme.mockReturnValue('dark');
-    cacheHistoryItems([shapes[3].item]);
     (fetchArticle as jest.Mock).mockResolvedValue(null);
     mockUseLocalSearchParams.mockReturnValue({ pageId: String(shapes[3].item.pageId) });
     await render(<HistoryDetailScreen />);
