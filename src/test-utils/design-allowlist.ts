@@ -142,29 +142,6 @@ export const QuarantinedColours: readonly QuarantinedColour[] = [
     reason:
       'A navy behind the hero with no comment and no palette provenance — the one genuinely rogue literal the audit found.',
   },
-  {
-    file: 'src/components/animated-icon.tsx',
-    value: '#8B6FF0',
-    issue: '#299 (item 9)',
-    fix: 'delete AnimatedIcon — main already did, in #234',
-    reason:
-      'Expo-template residue: the gradient of a component imported nowhere, rendering expo-logo.png.',
-  },
-  {
-    file: 'src/components/animated-icon.tsx',
-    value: '#5A3BC9',
-    issue: '#299 (item 9)',
-    fix: 'delete AnimatedIcon — main already did, in #234',
-    reason: 'The other half of the dead gradient.',
-  },
-  {
-    file: 'src/components/animated-icon.tsx',
-    value: '#6A4BDB',
-    issue: '#299 (item 10)',
-    fix: 'BrandPurple from @/constants/theme',
-    reason:
-      'The splash overlay’s ground IS the accent, spelled out. Right colour, wrong spelling: change the accent token and the splash silently keeps the old violet. (The value must also stay equal to app.json’s splash backgroundColor — palette-test asserts that too.)',
-  },
 ];
 
 /** An inline `fontSize` outside ThemedText's ramp, and why it earns one. */
