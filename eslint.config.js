@@ -22,7 +22,6 @@ const FilesWithSanctionedColourLiterals = [
   // Escaped: ESLint globs with minimatch, where [pageId] is a character
   // class matching one of p/a/g/e/I/d — not a directory called [pageId].
   'src/app/history/\\[pageId\\]/index.tsx',
-  'src/components/animated-icon.tsx',
   'src/components/area-gazetteer.tsx',
   'src/components/glass-header.tsx',
   'src/components/history-card.tsx',
