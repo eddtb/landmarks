@@ -20,6 +20,11 @@ concurrency:
 
 jobs:
   checks:
+    # This name is the string the protect-main ruleset requires, so it
+    # is load-bearing and NOT free to edit — it now undersells the job,
+    # which also bundles. Renaming it silently retires the only required
+    # check and every PR merges unguarded, so the rename is a two-place
+    # change (ruleset first, then here) and not worth doing for tidiness.
     name: Typecheck, lint & test
     runs-on: ubuntu-latest
     steps:
@@ -44,6 +49,40 @@ jobs:
 
       - name: Lint
         run: npm run lint -- --max-warnings 0
+
+      # The only step that resolves the real module graph.
+      #
+      # Paid for on 2026-08-12 (#315): a merge deleted logo-glow.png and
+      # left a require() of it in animated-icon.tsx. The app could not
+      # bundle — `expo run:ios` died on it — and typecheck, lint and
+      # 1,010 tests were all green, because tsc never resolves a
+      # require() of a PNG, eslint has no opinion, and jest's
+      # moduleNameMapper stubs anything under assets/ without looking.
+      # Only Metro finds out, and Metro ran nowhere in CI. #315's
+      # asset-references-test fenced the specific case; this fences the
+      # class — any unresolvable import, bad path alias, broken @/
+      # mapping, or platform-specific resolution failure.
+      #
+      # ios AND web, and neither is decoration. iOS is the binary and
+      # every OTA. web is the API routes on EAS Hosting — the third
+      # road, which reaches every client at once, binary or not — and
+      # it is the only platform that resolves the .web.tsx/.web.ts
+      # variants (animated-icon.web.tsx, use-color-scheme.web.ts) that
+      # an iOS bundle never looks at. android is deliberately absent:
+      # there is no .android.* file in the tree, no Android submit
+      # profile in eas.json, and every .eas workflow — build, submit,
+      # update — is platform: ios. Nothing Android ships, so nothing
+      # Android is gated. Add `-p android` the day either changes.
+      #
+      # Keyless by construction: export bundles the route handlers, it
+      # never runs them, so no TURSO_DATABASE_URL, no AI key and no
+      # REPLAY_ONLY is needed for this to mean something. The one
+      # outbound call export would otherwise make is CLI telemetry,
+      # switched off below — the step touches the network not at all.
+      - name: Bundle (Metro resolves the real module graph)
+        env:
+          EXPO_NO_TELEMETRY: '1'
+        run: npx expo export --output-dir "$RUNNER_TEMP/ci-bundle" -p ios -p web
 
       # `shell: bash` is load-bearing, not decoration. The default `run:` shell
       # is `bash -e {0}` with NO pipefail, so a pipe reports tee's exit status
