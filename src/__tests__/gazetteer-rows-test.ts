@@ -206,18 +206,37 @@ describe('buildGazetteerRows', () => {
     expect(rows.map((row) => row.kind)).toEqual(['telling-lead', 'source-link']);
   });
 
-  test('no row anywhere renders the source article body', () => {
-    // The rule, fenced: whatever the state, the app shows its own writing
-    // and a citation — never a copy of the page it read
+  /**
+   * The 4.2.2 fence used to live here as
+   * `expect(kinds).not.toContain('fallback-article')`. That kind was
+   * deleted from the union by the same commit that fixed the bug
+   * (daca00f), so the assertion could not fire on the day it was
+   * written — and the rule it names is not about a kind anyway, but
+   * about what is drawn. It is now `no-republication-test.tsx`, which
+   * renders the screen in every retelling state and reads it.
+   *
+   * What DOES belong here is the row plan's half of the same rule:
+   * whichever state the screen is in, the story rows are Venture's own
+   * writing, and the source appears as a citation rather than a body.
+   */
+  test('every state plans OUR writing and a citation — never a row of the source', () => {
+    const StoryRows = ['telling-lead', 'part', 'record-story'];
     for (const retoldStatus of ['pending', 'streaming', 'ready', 'halted', 'none'] as const) {
       const rows = buildGazetteerRows({
         hasArticle: true,
         retoldStatus,
-        retold: retoldStatus === 'ready' ? { parts: [], minutes: 1, timeline: [], brief: [] } : null,
+        retold: retoldStatus === 'ready' ? retold : null,
+        streamedParts: retoldStatus === 'streaming' ? retold.parts.slice(0, 1) : [],
         relics: [],
         tellingLead: true,
       });
-      expect(rows.map((row) => row.kind)).not.toContain('fallback-article');
+      const kinds = rows.map((row) => row.kind);
+      // Something is always being told, or is on its way
+      expect(
+        kinds.some((kind) => StoryRows.includes(kind) || kind === 'retelling-pending')
+      ).toBe(true);
+      // …and the source is cited at most once, never twice
+      expect(kinds.filter((kind) => kind === 'source-link').length).toBeLessThanOrEqual(1);
     }
   });
 

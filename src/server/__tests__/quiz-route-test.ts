@@ -222,6 +222,83 @@ describe('GET /api/quiz', () => {
     expect((await realReader()).status).toBe(502);
   });
 
+  /**
+   * Deptford, again (299187d). The tab said "Couldn't set the quiz right
+   * now" on a phone standing in an area with 96 stories, and the route
+   * tested clean throughout — because it was only ever exercised against
+   * a hand-made handful of tidy places, which is still all `realGround`
+   * above is. The failure lived entirely in the gap between what the
+   * route was tested with and what the ground actually hands it.
+   *
+   * The trust rewrite (#303) moved that ground from the request to the
+   * server, so the gap moved with it: `quizGround` now does the
+   * filtering the client's `.slice(0, 12)` used to. A deep, MESSY feed
+   * is therefore the case to fence — plaques whose "title" is a whole
+   * inscription, listed buildings with no extract at all, and the
+   * nearest dozen full of both.
+   */
+  describe('a real feed, not a hand-made one', () => {
+    /** What Wikipedia and the heritage sources actually return: the
+     *  unquizzable records are the NEAREST ones, as they were in
+     *  Deptford (a plaque is on the wall you are standing at). */
+    const deptfordGround: HistoryItem[] = [
+      // A dozen records that cannot become questions, all closer than
+      // any article: this is a wall of plaques and a terrace of listed
+      // frontages, which is what the first hundred metres of an old
+      // London high street actually is
+      ...Array.from({ length: 6 }, (_, index) =>
+        place(
+          800 + index,
+          'This tablet commemorates the officers and men of the Royal Navy who fell in…',
+          'An inscription, which is the whole of the record.'
+        )
+      ),
+      ...Array.from({ length: 6 }, (_, index) => ({
+        ...place(850 + index, `Listed building ${index}`),
+        extract: undefined,
+      })),
+      // …and the stories Deptford is actually full of
+      ...Array.from({ length: 84 }, (_, index) =>
+        place(
+          900 + index,
+          `Deptford story ${index}`,
+          `The story of Deptford story ${index}, which stood here from 18${10 + (index % 80)}.`
+        )
+      ),
+    ];
+
+    test('96 stories, most of them unquizzable, still set a quiz', async () => {
+      mockFindNearestArea.mockResolvedValue('Deptford');
+      mockFindNearbyHistory.mockResolvedValue(deptfordGround);
+
+      const response = await realReader();
+      const served = await response.json();
+
+      expect(response.status).toBe(200);
+      // The failure this replaces was a 200 carrying `{quiz: null}` —
+      // indistinguishable from thin ground, and the tab says so
+      expect(served.quiz).not.toBeNull();
+      expect(served.quiz.questions.length).toBeGreaterThanOrEqual(3);
+    });
+
+    test('…and every question it sets cites a place with a NAME', async () => {
+      mockFindNearestArea.mockResolvedValue('Deptford');
+      mockFindNearbyHistory.mockResolvedValue(deptfordGround);
+
+      const served = await (await realReader()).json();
+
+      for (const question of served.quiz.questions) {
+        // Not an inscription cut off mid-sentence, which is what the
+        // citation link under the question would otherwise read
+        expect(question.title).toMatch(/^Deptford story \d+$/);
+      }
+      // The unusable records never reached the model either
+      const prompt = mockResearch.mock.calls[0][0].prompt as string;
+      expect(prompt).not.toContain('This tablet commemorates');
+      expect(prompt).not.toContain('Listed building');
+    });
+  });
+
   test('every answer says what the durable store is doing', async () => {
     delete process.env.TURSO_DATABASE_URL;
 

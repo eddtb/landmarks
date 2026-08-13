@@ -194,17 +194,25 @@ describe('the root overlay (OneDoorGate)', () => {
     expect(screen.queryByTestId('one-door')).toBeNull();
   });
 
-  test('a determined permission never shows the door', async () => {
+  test('a determined permission never shows the door, and the app is reachable', async () => {
     permissionDetermined('granted');
     const screen = await render(atRoot());
     await waitFor(() =>
       expect(AsyncStorage.getItem).toHaveBeenCalledWith(ONE_DOOR_DISMISSED_KEY)
     );
     expect(screen.queryByTestId('one-door')).toBeNull();
+    // Not merely "no door": the app behind it is in the accessibility
+    // tree, which a door that failed to render would also satisfy
+    expect(screen.getByText('the app underneath')).toBeOnTheScreen();
+    expect(screen.getByTestId('one-door-backdrop')).toHaveProp(
+      'accessibilityElementsHidden',
+      false
+    );
 
     permissionDetermined('denied');
     await screen.rerender(atRoot());
     expect(screen.queryByTestId('one-door')).toBeNull();
+    expect(screen.getByText('the app underneath')).toBeOnTheScreen();
   });
 
   test('no flash of the door while the flag is still loading', async () => {
@@ -269,6 +277,11 @@ describe('LocationGate beneath the door', () => {
   });
 
   test('undetermined + not dismissed: a quiet loading — the root door owns the screen', async () => {
+    // Three `toBeNull`s and a mock call stood here. Absence is the
+    // cheapest thing a screen can satisfy: return null from this branch
+    // of LocationGate and a first-run reader gets a blank tab under the
+    // door — every assertion still green. So the wait is asserted as a
+    // thing that is THERE.
     permissionUndetermined();
 
     const screen = await render(<StoriesScreen />);
@@ -276,8 +289,22 @@ describe('LocationGate beneath the door', () => {
     await waitFor(() =>
       expect(AsyncStorage.getItem).toHaveBeenCalledWith(ONE_DOOR_DISMISSED_KEY)
     );
+    expect(screen.getByTestId('gate-waiting')).toBeOnTheScreen();
     // No invitation, and no door of its own — that lives at the root
     expect(screen.queryByText(neverAskedHeading)).toBeNull();
     expect(screen.queryByTestId('one-door')).toBeNull();
+  });
+
+  test('the gate lets go the moment the flag says dismissed', async () => {
+    // The other half of the same fact: the quiet wait is a WAIT, not a
+    // resting state. Behind the door it holds; past the door the tab
+    // shows the invitation, on the same permission status.
+    await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
+    permissionUndetermined();
+
+    const screen = await render(<StoriesScreen />);
+
+    expect(await screen.findByText(neverAskedHeading)).toBeOnTheScreen();
+    expect(screen.queryByTestId('gate-waiting')).toBeNull();
   });
 });
