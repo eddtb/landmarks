@@ -193,7 +193,9 @@ export function LocationGate({ children }: { children: (props: GateProps) => Rea
   // answer to "we don't know yet" — and it ends, because the read does.
   if (status === 'loading' || (status === 'priming' && dismissed !== true)) {
     return (
-      <ThemedView style={styles.centered}>
+      // Named so a test can ask for it. It was asserted only by the
+      // absence of everything else, which a blank screen satisfies too.
+      <ThemedView style={styles.centered} testID="gate-waiting">
         <ActivityIndicator />
       </ThemedView>
     );

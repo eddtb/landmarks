@@ -80,6 +80,39 @@ const SourceCharsPerStory = 1200;
  */
 const MaxTitleChars = 70;
 
+/**
+ * The REGISTER rule, enforced rather than merely requested.
+ *
+ * "NEVER ask for a count, a measurement, or a bare year — a memorised
+ * figure is trivia, not knowledge of the ground" has been in the prompt
+ * since v3, put there after the first on-phone run served "how many men
+ * are commemorated on the memorial". It was only ever in the prompt:
+ * nothing dropped such a question if the model wrote one anyway, and
+ * the test that guarded the rule read the sentence back out of the
+ * prompt it had just built. A model is not a validator.
+ *
+ * Two signals, both of them about the ANSWER a reader must produce:
+ *
+ *  - every option is a bare figure. A hand of "1854 / 1865 / 1901 /
+ *    1936", or "24 / 36 / 48 / 60", is a recall test whatever the
+ *    question says. Separators count as figure, so "1790-91" and
+ *    "1,200" are caught; "Five hours" and "A fortnight" are not, and
+ *    "how long did the fire burn" stays a perfectly good question.
+ *  - the question asks "how many". There is no reading of that phrase
+ *    which is not a count.
+ *
+ * Dropped, not rewritten — the file's standing rule. A shorter quiz
+ * beats a question that tests memory instead of the ground.
+ */
+const BareFigure = /^[\d][\d,.–—/-]*$/;
+
+function asksForAFigure(question: string, options: string[]): boolean {
+  if (/\bhow many\b/i.test(question)) {
+    return true;
+  }
+  return options.every((option) => BareFigure.test(option.replace(/\s/g, '')));
+}
+
 /** A name is not a sentence that ran out of room. */
 function isNamedPlace(title: string): boolean {
   const trimmed = title.trim();
@@ -263,6 +296,11 @@ function cleanAnchor(
     answerIndex < 0 ||
     answerIndex > 3
   ) {
+    return null;
+  }
+  // The register rule (see asksForAFigure): the prompt asks for a fact
+  // a stranger could reason out, and this is what makes the asking bind
+  if (asksForAFigure(question, cleanOptions)) {
     return null;
   }
   return {
