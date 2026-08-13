@@ -79,10 +79,20 @@ jobs:
       # REPLAY_ONLY is needed for this to mean something. The one
       # outbound call export would otherwise make is CLI telemetry,
       # switched off below — the step touches the network not at all.
+      #
+      # --no-minify --no-bytecode buys back 42% of the runtime — 78s to
+      # 45s on this runner — and costs nothing this step is for.
+      # Resolution happens while Metro walks the graph; minification and
+      # Hermes bytecode are serialisation of a bundle that has ALREADY
+      # resolved. Every failing case below was re-proved with these
+      # flags on and the errors are identical. The artifact is thrown
+      # away — what ships is compiled properly by eas build.
       - name: Bundle (Metro resolves the real module graph)
         env:
           EXPO_NO_TELEMETRY: '1'
-        run: npx expo export --output-dir "$RUNNER_TEMP/ci-bundle" -p ios -p web
+        run: |
+          npx expo export --output-dir "$RUNNER_TEMP/ci-bundle" \
+            -p ios -p web --no-minify --no-bytecode
 
       # `shell: bash` is load-bearing, not decoration. The default `run:` shell
       # is `bash -e {0}` with NO pipefail, so a pipe reports tee's exit status
