@@ -1,0 +1,16 @@
+name: Build iOS preview
+
+# Delivery begins only after the existing protected-main CI has allowed a
+# change to land. This creates an installable ad hoc build; it does not submit
+# anything to App Store Connect or release anything to users.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build_ios_preview:
+    name: Build iOS preview
+    type: build
+    params:
+      platform: ios
+      profile: preview

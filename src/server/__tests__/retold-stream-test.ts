@@ -36,7 +36,7 @@ function loadRetold(options: { streamImpl?: () => AsyncGenerator<string, void, v
   );
   const getArticle = jest.fn(async () => ({ minutes: 3, images: [], chapters: richChapters }));
   const backing = new Map<string, unknown>();
-  jest.doMock('@/server/anthropic', () => ({ researchStream }));
+  jest.doMock('@/server/ai-router', () => ({ researchStream }));
   jest.doMock('@/server/article', () => ({ getArticle }));
   jest.doMock('@/server/ai-cache', () => ({ diskBackedMap: () => backing }));
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -141,7 +141,7 @@ describe('startRetoldStream (the cold path, streamed)', () => {
     expect(done.retold?.parts).toHaveLength(3);
     expect(done.retold?.timeline).toHaveLength(1);
     // Cache-on-complete: written once, as the 30-day verdict
-    expect(backing.get('greenwich')).toMatchObject({ retold: { minutes: 1 } });
+    expect(backing.get('v4:greenwich')).toMatchObject({ retold: { minutes: 1 } });
     // …and the next open is a cache hit, no second call
     expect(retold.peekRetold('Greenwich')?.retold).toEqual(done.retold);
   });
@@ -191,7 +191,7 @@ describe('startRetoldStream (the cold path, streamed)', () => {
     }
     const events = (await collect(started.events)) as { kind: string; reason?: string }[];
     expect(events.at(-1)).toEqual({ kind: 'failed', reason: 'invalid' });
-    expect(backing.get('greenwich')).toMatchObject({ retold: null });
+    expect(backing.get('v4:greenwich')).toMatchObject({ retold: null });
   });
 
   test('while one stream writes, a second ask JOINS it — never a second call', async () => {
@@ -219,6 +219,34 @@ describe('startRetoldStream (the cold path, streamed)', () => {
     }
     expect((await shared)?.parts).toHaveLength(3);
     expect(researchStream).toHaveBeenCalledTimes(1);
+  });
+
+  test("a JOINER hears an interruption as an ERROR, never as 'no retelling exists'", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { retold, backing } = loadRetold({
+      streamImpl: async function* () {
+        yield validRetoldText.slice(0, 40);
+        await gate;
+        throw new Error('socket reset'); // the wire dies AFTER the join
+      },
+    });
+    const first = await retold.startRetoldStream('Greenwich');
+    if (first.kind !== 'stream') {
+      throw new Error(`expected stream, got ${first.kind}`);
+    }
+    const shared = retold.getRetold('Greenwich');
+    release();
+    await collect(first.events);
+
+    // The joined ask must surface as a 502-shaped error (retryable),
+    // not resolve null — null is the route's permanent 404 verdict,
+    // and the client would silently bury the story under it
+    await expect(shared).rejects.toThrow(/interrupted/);
+    expect(backing.size).toBe(0);
+    expect(retold.retellingInFlight('Greenwich')).toBe(false);
   });
 
   test('an ABANDONED stream (client disconnect) frees the slot and caches nothing', async () => {

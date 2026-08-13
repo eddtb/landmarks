@@ -18,7 +18,6 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 concurrency:
   group: merge-chain
@@ -35,8 +34,17 @@ jobs:
           # produced check-less heads that auto-merge waited on forever.
           # PAT pushes fire pull_request CI natively. Expires like the
           # review token — the canary watches it.
-          GH_TOKEN: ${{ secrets.CHAIN_TOKEN || github.token }}
+          #
+          # No `|| github.token` fallback. Falling back reinstates the
+          # exact bug the PAT was minted to fix, and does it silently:
+          # green runs, updated heads, no checks, PRs stalled forever.
+          # A missing token has to be loud.
+          GH_TOKEN: ${{ secrets.CHAIN_TOKEN }}
         run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::CHAIN_TOKEN is unset or expired, and the chain will not run on GITHUB_TOKEN — its pushes fire no workflows, so armed PRs would get check-less heads and wait forever. Mint a fine-grained PAT (this repo only, Contents + Pull requests read/write) and run: gh secret set CHAIN_TOKEN"
+            exit 1
+          fi
           pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open \
             --json number,autoMergeRequest,createdAt \
             --jq '[.[] | select(.autoMergeRequest != null)] | sort_by(.createdAt) | .[0].number // empty')
@@ -45,5 +53,25 @@ jobs:
             exit 0
           fi
           echo "Advancing the chain: updating PR #$pr"
-          # Already up to date is fine — auto-merge will take it from here
-          gh pr update-branch "$pr" --repo "$GITHUB_REPOSITORY" || true
+          if out=$(gh pr update-branch "$pr" --repo "$GITHUB_REPOSITORY" 2>&1); then
+            printf '%s\n' "$out"
+            exit 0
+          fi
+          printf '%s\n' "$out"
+          # An already-current head is the one benign failure: main moved
+          # and this PR was rebuilt on it before we got here, so auto-merge
+          # takes it from here. A dead token, a merge conflict, a fork head
+          # and a rate limit all land in the other branch — each of them
+          # stops the chain dead, and `|| true` used to hide every one.
+          # Both patterns keep "already": gh's own text is "PR branch
+          # already up-to-date", while "not up to date with the base
+          # branch" is a real failure a bare up-to-date glob would swallow.
+          case "$(printf '%s' "$out" | tr '[:upper:]' '[:lower:]')" in
+            *"already up to date"* | *"already up-to-date"*)
+              echo "PR #$pr was already current — auto-merge takes it from here."
+              ;;
+            *)
+              echo "::error::gh pr update-branch failed for PR #$pr — the merge chain is stalled and every armed PR behind it will sit unmerged. See the output above."
+              exit 1
+              ;;
+          esac

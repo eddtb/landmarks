@@ -1,3 +1,4 @@
+import { UserAgent } from '@/server/user-agent';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
 
@@ -7,9 +8,6 @@ import { Coordinates, distanceMeters } from '@/utils/geo';
  * match — the nearest article is often about something else that happened
  * at the same spot.
  */
-
-// Wikipedia asks API clients to identify themselves
-const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
 
 export type StoryResult = {
   story: string;
@@ -85,10 +83,6 @@ export function pickBestArticle(placeName: string, candidateTitles: string[]): s
   return best && best.score >= 0.5 ? best.title : null;
 }
 
-type GeosearchResponse = {
-  query?: { geosearch?: { title: string }[] };
-};
-
 type SummaryResponse = {
   type?: string;
   title?: string;
@@ -101,16 +95,8 @@ export async function findStory(
   placeName: string,
   coordinates: Coordinates
 ): Promise<StoryResult | null> {
-  const geoUrl =
-    'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
-    `&gscoord=${coordinates.latitude}%7C${coordinates.longitude}&gsradius=250&gslimit=10`;
-
-  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
-  if (!geoResponse.ok) {
-    throw new Error(`Wikipedia geosearch failed with status ${geoResponse.status}`);
-  }
-  const geo = (await geoResponse.json()) as GeosearchResponse;
-  const candidates = geo.query?.geosearch?.map((entry) => entry.title) ?? [];
+  const entries = await geosearchEntries(coordinates, 250, 10);
+  const candidates = entries.map((entry) => entry.title);
 
   const title = pickBestArticle(placeName, candidates);
   if (!title) {
@@ -148,13 +134,46 @@ type GeosearchEntry = {
   lon: number;
 };
 
+/**
+ * Wikipedia articles with coordinates near a point, NEAREST FIRST —
+ * the one geosearch every caller shares: the feed's backbone, the
+ * plaque-subject probe, and the area-name resolver. The ordering is
+ * the API's own and is load-bearing for the resolver, which takes the
+ * first area-classed title as the nearest one.
+ */
+export async function geosearchEntries(
+  center: Coordinates,
+  radius: number,
+  limit: number
+): Promise<GeosearchEntry[]> {
+  const url =
+    'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
+    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=${limit}`;
+
+  const response = await fetch(url, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
+  if (!response.ok) {
+    throw new Error(`Wikipedia geosearch failed with status ${response.status}`);
+  }
+  const body = (await response.json()) as { query?: { geosearch?: GeosearchEntry[] } };
+  return body.query?.geosearch ?? [];
+}
+
 type BatchPage = {
   pageid: number;
   title: string;
   extract?: string;
   thumbnail?: { source?: string };
   fullurl?: string;
+  /** The batch request asks only for categories that positively identify
+   * broad London areas; buildings in those areas do not carry them. */
+  categories?: { title: string }[];
 };
+
+const BroadAreaCategories = [
+  'Category:Areas of London',
+  'Category:District centres of London',
+  'Category:Districts of London on the River Thames',
+];
 
 /**
  * Register gate: geosearch mixes genuine stories (vanished palaces,
@@ -196,6 +215,7 @@ export function buildHistoryItems(
         thumbnailUrl: page?.thumbnail?.source,
         url: page?.fullurl ?? `https://en.wikipedia.org/?curid=${entry.pageid}`,
         source: 'Wikipedia',
+        ...(page?.categories?.length ? { area: true as const } : {}),
       };
     })
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
@@ -270,16 +290,7 @@ export async function findNearbyHistory(
   // byte-identical results, all within 1212m, silently amputating the
   // last 4 walking minutes (21 stories) of the promised 19-min walk.
   // (And not 20: Queen's House once sat 27th — the treasure ranks low.)
-  const geoUrl =
-    'https://en.wikipedia.org/w/api.php?action=query&list=geosearch&format=json' +
-    `&gscoord=${center.latitude}%7C${center.longitude}&gsradius=${radius}&gslimit=200`;
-
-  const geoResponse = await fetch(geoUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
-  if (!geoResponse.ok) {
-    throw new Error(`Wikipedia geosearch failed with status ${geoResponse.status}`);
-  }
-  const geo = (await geoResponse.json()) as { query?: { geosearch?: GeosearchEntry[] } };
-  const entries = geo.query?.geosearch ?? [];
+  const entries = await geosearchEntries(center, radius, 200);
   if (entries.length === 0) {
     return [];
   }
@@ -296,8 +307,9 @@ export async function findNearbyHistory(
       const batchUrl =
         'https://en.wikipedia.org/w/api.php?action=query&format=json' +
         `&pageids=${chunk.join('|')}` +
-        '&prop=pageimages%7Cextracts%7Cinfo&exintro=1&explaintext=1&exlimit=max' +
-        '&pithumbsize=800&pilimit=max&inprop=url';
+        '&prop=pageimages%7Cextracts%7Cinfo%7Ccategories&exintro=1&explaintext=1&exlimit=max' +
+        `&clcategories=${encodeURIComponent(BroadAreaCategories.join('|'))}` +
+        '&cllimit=max&pithumbsize=800&pilimit=max&inprop=url';
       const batchResponse = await fetch(batchUrl, { headers: { 'User-Agent': UserAgent }, signal: AbortSignal.timeout(8000) });
       if (!batchResponse.ok) {
         throw new Error(`Wikipedia batch query failed with status ${batchResponse.status}`);

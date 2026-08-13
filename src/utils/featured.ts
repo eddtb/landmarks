@@ -25,7 +25,12 @@ export function featuredStories(
 ): HistoryItem[] {
   return items
     .filter(
-      (item) => item.thumbnailUrl && !item.pastTag && !item.event && item.pageId !== excludePageId
+      (item) =>
+        item.thumbnailUrl &&
+        !item.pastTag &&
+        !item.event &&
+        !item.area &&
+        item.pageId !== excludePageId
     )
     .sort(
       (a, b) =>

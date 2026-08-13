@@ -18,12 +18,15 @@ describe('featuredStories (the mini featured listings)', () => {
     expect(featuredStories([thin, rich])[0].pageId).toBe(2);
   });
 
-  test('no photo or a pastTag disqualifies; the standing-on item is never double-featured', () => {
+  test('no photo, pastTag or broad area disqualifies; standing is never double-featured', () => {
     const noPhoto = story({ pageId: 1, thumbnailUrl: undefined });
     const gone = story({ pageId: 2, pastTag: 'Demolished 1694' });
     const standing = story({ pageId: 3 });
     const ok = story({ pageId: 4 });
-    expect(featuredStories([noPhoto, gone, standing, ok], 3).map((s) => s.pageId)).toEqual([4]);
+    const area = story({ pageId: 5, area: true });
+    expect(featuredStories([noPhoto, gone, standing, ok, area], 3).map((s) => s.pageId)).toEqual([
+      4,
+    ]);
   });
 
   test('the rail caps at six', () => {

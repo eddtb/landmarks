@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { WanderLine } from '@/components/wander-line';
-import { BrandPurple, BrandWarm, BrandWarmInk, Spacing } from '@/constants/theme';
+import { BrandPurple, BrandWarm, BrandWarmInk, Radius, Spacing } from '@/constants/theme';
 import { requestLocationPermission, useLocationPermission } from '@/hooks/use-location';
 
 export const ONE_DOOR_DISMISSED_KEY = 'one-door-dismissed-v1';
@@ -128,21 +128,26 @@ export function OneDoor({ onEnable, onNotNow }: Props) {
         <ThemedText type="eyebrow" style={styles.brandmark}>
           VENTURE
         </ThemedText>
-        <ThemedText accessibilityRole="header" style={styles.title}>
+        <ThemedText accessibilityRole="header" type="display" style={styles.title}>
           The history within a walk of you
         </ThemedText>
         <ThemedText type="small" style={styles.body}>
           Palaces, ships, plaques, vanished things — the stories of wherever you stand. Venture
           needs your location to find them.
         </ThemedText>
+        {/* "Continue", never "Enable location": App Review rejected 1.0(8)
+            under 5.1.1(iv) for a pre-permission button that DIRECTS the
+            user to grant, and named this exact remedy. The screen may
+            explain why the ask is coming; the button may not lobby for
+            the answer. The paragraph above carries the reason. */}
         <Pressable
           testID="one-door-enable"
           accessibilityRole="button"
-          accessibilityLabel="Enable location"
+          accessibilityLabel="Continue"
           onPress={onEnable}
           style={({ pressed }) => [styles.enable, pressed && { opacity: 0.9 }]}>
           <ThemedText type="smallBold" style={styles.enableText}>
-            Enable location
+            Continue
           </ThemedText>
         </Pressable>
         <Pressable
@@ -265,10 +270,6 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFFFFF',
-    fontSize: 34,
-    lineHeight: 38,
-    fontWeight: 800,
-    letterSpacing: -0.5,
   },
   body: {
     color: 'rgba(255, 255, 255, 0.82)',
@@ -277,7 +278,7 @@ const styles = StyleSheet.create({
   enable: {
     marginTop: Spacing.two,
     backgroundColor: BrandWarm,
-    borderRadius: 999,
+    borderRadius: Radius.pill,
     paddingVertical: Spacing.three - Spacing.half,
     alignItems: 'center',
   },

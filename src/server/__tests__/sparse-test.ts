@@ -9,7 +9,7 @@ import { shouldWiden, SparseRadiusMeters, SparseStoryThreshold } from '@/server/
 import { findNearbyHistory } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 
-jest.mock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map() }));
+jest.mock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map(), backgroundWorkSurvives: true }));
 jest.mock('@/server/fixtures', () => ({
   fixturesEnabled: () => false,
   outageActive: () => false,
@@ -22,7 +22,7 @@ jest.mock('@/server/plaque-subject', () => ({
   resolvePlaqueSubjects: jest.fn(async (plaques: HistoryItem[]) => plaques),
 }));
 jest.mock('@/server/wikidata', () => ({
-  fetchExistenceTags: jest.fn(async () => new Map()),
+  fetchExistenceFacts: jest.fn(async () => new Map()),
 }));
 jest.mock('@/server/wikipedia', () => ({ findNearbyHistory: jest.fn() }));
 jest.mock('@/server/heritage', () => {

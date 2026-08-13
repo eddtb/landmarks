@@ -1,4 +1,5 @@
 import { diskBackedMap } from '@/server/ai-cache';
+import { mapWithLimit } from '@/server/concurrency';
 import { findStory, StoryResult } from '@/server/wikipedia';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
@@ -123,9 +124,96 @@ function collapse(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/** A readable card title from an inscription: first 60 chars, whole words. */
+/**
+ * The name a plaque is filed under, when the inscription states one.
+ *
+ * A plaque's title used to be the first sixty characters of its own
+ * inscription — "Jimi Hendrix 1942-1970 guitarist and songwriter lived
+ * here…" — which is a sentence fragment, not a name. That went unnoticed
+ * for as long as the title had nowhere to render (#292); the moment the
+ * name reaches the screen it has to be a name.
+ *
+ * The subject is NOT available to ask for. Open Plaques' box query — one
+ * call for a whole area, the only one the feed makes — answers with four
+ * fields: id, latitude, longitude, inscription. `subjects`, `title` and
+ * `address` live on /plaques/<id>.json, one HTTP call per plaque and
+ * dozens per cold feed: the same egress bill enrichStandaloneListed
+ * already had to bound at four-at-a-time, spent on every plaque rather
+ * than the few that matter. So the name comes from the inscription.
+ *
+ * It comes from the one place a name is reliably found there.
+ * Commemorative plaques open by naming who they commemorate and close
+ * that clause with a lifespan: "AUDREY HEPBURN 1929–1993 Actress…",
+ * "Sir John Betjeman 1906-1984 Poet Laureate…", "WINIFRED ATWELL d.1983
+ * Pianist…". Capitalised words, then a year. Nothing else is claimed —
+ * the moment prose starts before a lifespan closes the clause, this
+ * abstains and the inscription's own opening words stand as before.
+ *
+ * Measured against 160 live plaques across eight British cities: it
+ * names 40 of them and every name it takes is the subject. The other 120
+ * mostly have no single subject to name ("This gateway marks the
+ * position of the north bank of the…"). A fragment is honest; a guessed
+ * name is not, and this file has no business inventing one.
+ */
+// A YEAR, not any number: "Detective Constable 0144 John Raymond Coker"
+// carries a service number, and reading it as a lifespan would file the
+// man under his rank.
+const LifespanYear = /(?:^|\D)(?:1\d{3}|20\d{2})(?:\D|$)/;
+// A name, not a sentence: four words holds "Sir Arthur Conan Doyle" and
+// refuses "Turner House Artists Alfred Turner RA".
+const MaxNameWords = 4;
+// A clause that opens with one of these is a preamble, not a name — "In
+// September 1767 Olaudah Equiano c.1745-1797" names the man second.
+const PreambleWords = new Set([
+  'in', 'on', 'at', 'to', 'of', 'the', 'this', 'these', 'near', 'here',
+  'from', 'by', 'a', 'an', 'and', 'site', 'erected', 'memory', 'honour',
+]);
+const startsCapital = (word: string) => /^[^\p{L}]*\p{Lu}/u.test(word);
+// Shouting, and safe to quiet: every word is two or more capitals and
+// nothing else. "J.L. Garvin C.H." is initials and keeps its own case.
+const allShouting = /^\p{Lu}{2,}(?: \p{Lu}{2,})*$/u;
+
+export function plaqueSubjectName(inscription: string): string | null {
+  const words = collapse(inscription).split(' ').filter(Boolean);
+  // A plaque that opens with a number opens with an occasion, not a
+  // person: "400 Year Celebration 1625 - 2025 St. Oliver Plunkett."
+  if (words.length === 0 || /\d/.test(words[0])) {
+    return null;
+  }
+  let run: string[] = [];
+  for (const word of words) {
+    if (/\d/.test(word)) {
+      const opener = run[0]?.toLowerCase().replace(/[^\p{L}]/gu, '') ?? '';
+      if (
+        LifespanYear.test(word) &&
+        run.length >= 2 &&
+        run.length <= MaxNameWords &&
+        !PreambleWords.has(opener)
+      ) {
+        const name = run.join(' ').replace(/[,;:]+$/, '');
+        return allShouting.test(name) ? titleCaseName(name) : name;
+      }
+      run = [];
+      continue;
+    }
+    if (startsCapital(word)) {
+      run.push(word);
+      continue;
+    }
+    // Prose began before any lifespan closed a name: nothing on this
+    // plaque is certainly a name, so nothing is claimed.
+    return null;
+  }
+  return null;
+}
+
+/** The name the inscription states, or its first 60 chars, whole words. */
 export function plaqueTitle(inscription: string): string {
   const clean = collapse(inscription);
+  const named = plaqueSubjectName(clean);
+  if (named) {
+    return named;
+  }
   if (clean.length <= 60) {
     return clean;
   }
@@ -268,11 +356,20 @@ export function mergeHistorySources(
  * article for a listed building doesn't move when the user does.
  */
 const StoryTtlMs = 7 * 24 * 60 * 60 * 1000;
-const storyCache = diskBackedMap<{ story: StoryResult | null; at: number }>('nhle-stories');
+const storyCache = diskBackedMap<{ story: StoryResult | null; at: number }>('nhle-stories', {
+  ttlMs: StoryTtlMs,
+  maxEntries: 2000,
+});
+
+// Each uncached enrichment is up to two Wikipedia calls, and a dense
+// listed-building area brings dozens — an unbounded Promise.all here
+// opened that many sockets at once and got the worker's egress
+// rate-limited, which surfaces as the NEXT reader's feed 502ing.
+// Four at a time still finishes a cold area inside the compose budget.
+const EnrichConcurrency = 4;
 
 export async function enrichStandaloneListed(items: HistoryItem[]): Promise<HistoryItem[]> {
-  const resolved = await Promise.all(
-    items.map(async (item) => {
+  const resolved = await mapWithLimit(items, EnrichConcurrency, async (item) => {
       if (!item.source.startsWith('Historic England')) {
         return item;
       }
@@ -301,7 +398,7 @@ export async function enrichStandaloneListed(items: HistoryItem[]): Promise<Hist
         // which side of the join found the story first
         source: `Wikipedia · ${grade} listed`,
       };
-    })
+    }
   );
   // A big site holds several register records (measured: the National
   // Maritime Museum), and each can resolve to the SAME article — one

@@ -23,6 +23,11 @@ export type HistoryItem = {
    * Events live in the History archive, never the Nearby feed (Edd's
    * ruling), photo or no photo — you can't walk to a happening. */
   event?: true;
+  /** The article describes a broad geographic area (for example an
+   * area of London, district or town), not a destination with a
+   * meaningful point to walk to. It stays available to the History
+   * Gazetteer but never appears as a Nearby destination. */
+  area?: true;
   /** A plaque's resolved subject when the feed already tells that
    * story under its own card: the story screen opens the subject's
    * Gazetteer while the card keeps the honest inscription. */
@@ -46,6 +51,17 @@ export type HistoryFeed = {
   horizon?: number;
   dressing?: boolean;
 };
+
+/**
+ * The feed's area bucket, ~111m × ~70m at UK latitudes — ONE truth for
+ * both sides of the wire (src/app/api/history+api.ts caches the
+ * composed feed by it, src/data/history-client.ts persists by it), so
+ * walking mints a new client bucket exactly when the server would mint
+ * a new answer.
+ */
+export function feedBucketKey(lat: number, lng: number): string {
+  return `${lat.toFixed(3)}|${lng.toFixed(3)}`;
+}
 
 /**
  * Heritage items carry synthetic pageIds far above real Wikipedia

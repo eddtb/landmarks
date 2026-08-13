@@ -17,6 +17,14 @@ on:
     - cron: '30 5 * * *' # nightly, 05:30 UTC
   workflow_dispatch: {}
 
+# Nobody watches a scheduled job: this one was red for twenty
+# consecutive nights and told no one. issues:write buys the alarm at
+# the bottom of the job — one open issue, the same shape the review
+# token's canary uses.
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   smoke:
     runs-on: macos-15
@@ -100,6 +108,12 @@ jobs:
         if: failure()
         run: xcrun simctl io booted screenshot sim-at-failure.png || true
 
+      # include-hidden-files is the whole point: --debug-output names a
+      # ROOT, and Maestro writes under <root>/.maestro/tests/<session>/
+      # — every command log, hierarchy dump and per-step screenshot
+      # sits inside a dot-directory, which upload-artifact silently
+      # skips by default. Twenty failures uploaded "2 files" while the
+      # richest evidence sat on the runner's disk and expired with it.
       - name: Keep the evidence when it fails
         if: failure()
         uses: actions/upload-artifact@v4
@@ -109,4 +123,25 @@ jobs:
             e2e-debug
             metro.log
             sim-at-failure.png
+          include-hidden-files: true
           retention-days: 14
+
+      # The alarm. Modelled on the review-token canary: ONE open issue,
+      # never a nightly pile — a red streak nobody can hear is the same
+      # as no E2E suite at all.
+      - name: Sound the alarm (one open issue, no duplicates)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create e2e-nightly --repo "$GITHUB_REPOSITORY" \
+            --color B60205 --description "Opened automatically when the nightly E2E smoke fails" \
+            > /dev/null 2>&1 || true
+          open_count=$(gh issue list --repo "$GITHUB_REPOSITORY" \
+            --label e2e-nightly --state open --json number --jq length)
+          if [ "$open_count" = "0" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --label e2e-nightly \
+              --title "The nightly E2E smoke is failing" \
+              --body "$(printf 'The Maestro suite failed on the nightly run. Until it is green again nothing is watching the app end to end — unit tests do not open a screen.\n\nStart with the run artifact (e2e-debug): Maestro'"'"'s own logs and per-step screenshots live under .maestro/tests/, `sim-at-failure.png` is the simulator at the moment it gave up, and `metro.log` says whether the bundler or the app was at fault.\n\nRe-run it on demand with: gh workflow run e2e-smoke.yml\n\nThis issue stays open until someone closes it — the job will not file a second one.\n\nFailing run: %s/%s/actions/runs/%s' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")"
+          fi

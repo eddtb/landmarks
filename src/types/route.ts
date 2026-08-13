@@ -8,6 +8,13 @@ import { Coordinates } from '@/utils/geo';
 
 export type RouteManeuver = { instruction: string; meters: number; beginIndex: number };
 
+/** The route cache's ~27m origin grid, shared by the server cache and
+ * the client session cache: a new route when you've actually walked,
+ * not when GPS breathes. */
+export function routeOriginBucket(position: Coordinates): string {
+  return `${Math.round(position.latitude * 4000) / 4000}|${Math.round(position.longitude * 4000) / 4000}`;
+}
+
 export type WalkingRoute = {
   coordinates: Coordinates[];
   maneuvers: RouteManeuver[];

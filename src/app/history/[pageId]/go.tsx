@@ -1,54 +1,22 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { ReactNode, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleProp,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Compass } from '@/components/compass';
+import { GlassPanel } from '@/components/glass-header';
+import { AskForLocation, OpenSettings } from '@/components/location-ask';
 import { PointerDial } from '@/components/pointer-dial';
 import { RouteMap } from '@/components/route-map';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { getCachedHistoryItem } from '@/data/history-client';
 import { fetchRoute } from '@/data/route-client';
-import { useLocation } from '@/hooks/use-location';
-import { useTheme } from '@/hooks/use-theme';
+import { useLocation, useSlowFix } from '@/hooks/use-location';
 import { WalkingRoute } from '@/types/route';
 import { formatDistance, formatWalkTime } from '@/utils/format';
 import { guidanceFor, needsReroute, RouteCorridor } from '@/utils/guidance';
-
-/**
- * Liquid glass chrome where supported (iOS 26+); the themed solid
- * surface — today's exact look — everywhere else. Content stays
- * opaque; only the chrome floating over the map is glass.
- */
-function ChromeSurface({
-  style,
-  interactive,
-  children,
-}: {
-  style: StyleProp<ViewStyle>;
-  interactive?: boolean;
-  children: ReactNode;
-}) {
-  const theme = useTheme();
-  if (isLiquidGlassAvailable()) {
-    return (
-      <GlassView glassEffectStyle="regular" isInteractive={interactive} style={style}>
-        {children}
-      </GlassView>
-    );
-  }
-  return <View style={[style, { backgroundColor: theme.background }]}>{children}</View>;
-}
 
 /**
  * Go mode: the whole screen is the journey — the venue-era UI, back
@@ -60,7 +28,10 @@ function ChromeSurface({
 export default function GoScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
   const item = getCachedHistoryItem(Number(pageId));
-  const { coordinates } = useLocation();
+  const { status, coordinates } = useLocation();
+  // The floor under 'locating': granted permission, no fix, and until
+  // now no end to the waiting either
+  const slowFix = useSlowFix(!coordinates && status !== 'denied' && status !== 'priming');
   const [stepsOpen, setStepsOpen] = useState(false);
   const [routeState, setRouteState] = useState<
     { status: 'loading' } | { status: 'none' } | { status: 'ready'; route: WalkingRoute }
@@ -105,21 +76,17 @@ export default function GoScreen() {
     };
   }, [latitude, longitude, target]);
 
-  if (!item || !target || !coordinates) {
+  if (!item || !target) {
     return (
       <ThemedView style={styles.centered}>
         <Stack.Screen options={{ headerShown: false }} />
-        {item ? (
-          <ActivityIndicator />
-        ) : (
-          <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
-        )}
+        <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
       </ThemedView>
     );
   }
 
-  const route = routeState.status === 'ready' ? routeState.route : null;
-  const guidance = route ? guidanceFor(route, coordinates) : null;
+  const route = coordinates && routeState.status === 'ready' ? routeState.route : null;
+  const guidance = route && coordinates ? guidanceFor(route, coordinates) : null;
 
   return (
     <ThemedView style={styles.container}>
@@ -129,7 +96,69 @@ export default function GoScreen() {
         <RouteMap route={route} destination={target} fullscreen />
       ) : (
         <View style={styles.centered}>
-          {routeState.status === 'loading' ? (
+          {!coordinates ? (
+            // No fix, no journey — but never a spinner that can't end,
+            // and the comment finally covers every branch under it:
+            // each no-fix state says what would fix IT, and the Close
+            // chrome below stays reachable throughout
+            status === 'denied' ? (
+              <>
+                <ThemedText type="headline">Venture can’t see where you are</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.deniedCopy}>
+                  Walking there needs your position. The story reads fine without it.
+                </ThemedText>
+                <OpenSettings />
+              </>
+            ) : status === 'priming' ? (
+              // Never asked — the state "Not now" leaves behind, and
+              // the one this screen used to spin on forever (#290).
+              // Settings has no Location row to send anyone to yet, so
+              // the door is the ask.
+              <>
+                <PointerDial
+                  user={target}
+                  target={target}
+                  primary="Not shared"
+                  locating
+                  coach="Venture hasn’t asked where you are"
+                />
+                <ThemedText type="small" themeColor="textSecondary" style={styles.deniedCopy}>
+                  Walking there needs your position. The story reads fine without it.
+                </ThemedText>
+                <AskForLocation style={styles.askWide} />
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.back()}
+                  hitSlop={Spacing.two}
+                  style={styles.tapLine}>
+                  <ThemedText type="linkPrimary">Read the story instead</ThemedText>
+                </Pressable>
+              </>
+            ) : slowFix ? (
+              // Granted, but nothing has arrived: a spinner with no
+              // floor is the same dead end wearing a friendlier face
+              <>
+                <ThemedText type="headline">Still looking for you</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.deniedCopy}>
+                  A fix can take a while indoors. The story reads fine without it.
+                </ThemedText>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.back()}
+                  hitSlop={Spacing.two}
+                  style={styles.tapLine}>
+                  <ThemedText type="linkPrimary">Read the story instead</ThemedText>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator />
+                <ThemedText type="small" themeColor="textSecondary">
+                  Finding you…
+                </ThemedText>
+              </>
+            )
+          ) : routeState.status === 'loading' ? (
             <ActivityIndicator />
           ) : (
             <>
@@ -143,14 +172,17 @@ export default function GoScreen() {
       )}
 
       <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
-        <ChromeSurface style={styles.topCard} interactive>
+        <GlassPanel style={styles.topCard} interactive>
+          {/* Close is a word, and violet — the compass modal's exact
+              treatment (the grey ✕ broke both halves of the rule);
+              16pt slop on the 20px label clears the 44pt target */}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close"
             onPress={() => router.back()}
-            hitSlop={Spacing.two}>
-            <ThemedText type="headline" themeColor="textSecondary">
-              ✕
+            hitSlop={Spacing.three}>
+            <ThemedText type="smallBold" themeColor="accent">
+              Close
             </ThemedText>
           </Pressable>
           <View style={styles.topText}>
@@ -163,14 +195,23 @@ export default function GoScreen() {
               </ThemedText>
             )}
           </View>
-        </ChromeSurface>
+        </GlassPanel>
       </SafeAreaView>
 
-      {guidance && (
+      {guidance && coordinates && (
         <SafeAreaView style={styles.sheetArea} edges={['bottom']} pointerEvents="box-none">
-          <ChromeSurface style={styles.sheet} interactive>
+          <GlassPanel style={styles.sheet} interactive>
             <Pressable
               accessibilityRole="button"
+              // The label carries what the sheet shows — the live step
+              // — so the explicit label loses VoiceOver nothing; the
+              // expanded state says which way the toggle will go
+              accessibilityLabel={
+                guidance.arrived
+                  ? 'You have arrived. Steps'
+                  : `${guidance.step.instruction}, ${formatDistance(guidance.metersToManeuver)} to next turn. Steps`
+              }
+              accessibilityState={{ expanded: stepsOpen }}
               onPress={() => setStepsOpen((open) => !open)}
               style={styles.sheetPress}>
               <View style={styles.sheetHeader}>
@@ -191,8 +232,10 @@ export default function GoScreen() {
                     </ThemedText>
                   )}
                 </View>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {stepsOpen ? '▼' : '▲'}
+                {/* A word, not a triangle (PR #186) — and violet:
+                    it names the tap the whole sheet header answers */}
+                <ThemedText type="smallBold" themeColor="accent">
+                  Steps
                 </ThemedText>
               </View>
               {stepsOpen &&
@@ -207,7 +250,7 @@ export default function GoScreen() {
                   </ThemedText>
                 ))}
             </Pressable>
-          </ChromeSurface>
+          </GlassPanel>
         </SafeAreaView>
       )}
     </ThemedView>
@@ -224,6 +267,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.three,
   },
+  deniedCopy: {
+    textAlign: 'center',
+    paddingHorizontal: Spacing.six,
+  },
+  // The pill stretches to the mock's width inside a centred column
+  askWide: {
+    alignSelf: 'stretch',
+    marginHorizontal: Spacing.six,
+  },
+  tapLine: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   overlay: {
     position: 'absolute',
     top: 0,
@@ -237,7 +293,7 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.three,
     marginTop: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.three - Spacing.one,
+    borderRadius: Radius.control,
   },
   topText: {
     flex: 1,
@@ -252,7 +308,7 @@ const styles = StyleSheet.create({
   sheet: {
     marginHorizontal: Spacing.three,
     marginBottom: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.sheet,
     overflow: 'hidden',
   },
   sheetPress: {

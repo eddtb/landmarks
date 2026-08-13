@@ -20,14 +20,19 @@ jest.mock('react-native-safe-area-context', () =>
 // Screens render outside a navigator in tests — always "focused"
 jest.mock('expo-router/build/useIsFocused', () => ({ useIsFocused: () => true }));
 
-jest.mock('expo-glass-effect', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return {
-    GlassView: (props) => React.createElement(View, props),
-    isLiquidGlassAvailable: () => false,
-  };
-});
+jest.mock(
+  'expo-glass-effect',
+  () => {
+    const React = require('react');
+    const { View } = require('react-native');
+    return {
+      GlassView: (props) => React.createElement(View, props),
+      isLiquidGlassAvailable: () => false,
+    };
+  },
+  // virtual: the OTA cut removes the package; the full branch has it
+  { virtual: true }
+);
 
 // @expo/ui is native (SwiftUI/Compose hosts) — a plain View that keeps
 // its props lets tests fire onPressAction directly
@@ -46,3 +51,19 @@ jest.mock('expo-maps', () => {
     GoogleMaps: { View: MockMapView },
   };
 });
+
+// expo-widgets renders a real WidgetKit extension out of process —
+// there is no JS runtime for it under test. createWidget hands back the
+// same control surface the app talks to, so a screen that pushes a
+// snapshot renders instead of exploding. Assertions about WHAT the
+// widget is told live in widget-feed-test, which mocks the widget
+// module itself and never reaches this.
+jest.mock('expo-widgets', () => ({
+  createWidget: () => ({
+    updateSnapshot: jest.fn(),
+    updateTimeline: jest.fn(),
+    reload: jest.fn(),
+    getTimeline: jest.fn().mockResolvedValue([]),
+  }),
+  widgetsDirectory: 'file:///widgets',
+}));

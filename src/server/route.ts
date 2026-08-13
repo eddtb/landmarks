@@ -1,6 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { makeBudget } from '@/server/spend-budget';
-import { WalkingRoute } from '@/types/route';
+import { routeOriginBucket, WalkingRoute } from '@/types/route';
 import { Coordinates } from '@/utils/geo';
 
 /**
@@ -18,8 +18,9 @@ const budget = makeBudget({
   provider: 'Valhalla (free walking routes)',
   ledgerName: 'route-call-ledger',
   envVar: 'ROUTE_DAILY_CALLS',
-  // Counts calls, not dollars — trip well before being a bad guest
-  defaultDailyUsd: 300,
+  unit: 'calls',
+  // Trip well before being a bad guest on the community server
+  defaultDailyCap: 300,
 });
 
 /**
@@ -85,25 +86,25 @@ export function buildRoute(trip: ValhallaTrip): WalkingRoute | null {
   };
 }
 
-/** ~27m grid: a new route when you've actually walked, not when GPS breathes. */
-function originBucket(position: Coordinates): string {
-  return `${Math.round(position.latitude * 4000) / 4000}|${Math.round(position.longitude * 4000) / 4000}`;
-}
-
 const RouteTtlMs = 24 * 60 * 60 * 1000;
-const cache = diskBackedMap<{ route: WalkingRoute; at: number }>('routes');
+// Geometry is bulky (~3.7KB an entry) and a day old is a day dead —
+// 10 entries were on disk at last measure and all 10 were expired
+const cache = diskBackedMap<{ route: WalkingRoute; at: number }>('routes', {
+  ttlMs: RouteTtlMs,
+  maxEntries: 500,
+});
 
 export async function fetchWalkingRoute(
   from: Coordinates,
   to: Coordinates
 ): Promise<WalkingRoute | null> {
-  const key = `${originBucket(from)}→${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}`;
+  const key = `${routeOriginBucket(from)}→${to.latitude.toFixed(5)},${to.longitude.toFixed(5)}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < RouteTtlMs) {
     return cached.route;
   }
 
-  budget.assert();
+  await budget.assert();
   const response = await fetch(Endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -120,7 +121,7 @@ export async function fetchWalkingRoute(
   if (!response.ok) {
     throw new Error(`Valhalla route failed with status ${response.status}`);
   }
-  budget.record(1);
+  await budget.record();
 
   const body = (await response.json()) as { trip?: ValhallaTrip };
   const route = body.trip ? buildRoute(body.trip) : null;

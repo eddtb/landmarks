@@ -2,7 +2,7 @@
   "expo": {
     "name": "Venture",
     "slug": "landmarks",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "landmarks",
@@ -12,6 +12,9 @@
       "bundleIdentifier": "com.eddtb.landmarks",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "runtimeVersion": {
+        "policy": "fingerprint"
       }
     },
     "android": {
@@ -24,13 +27,18 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "runtimeVersion": {
+        "policy": "fingerprint"
+      }
     },
     "web": {
       "output": "server",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/with-honest-capabilities",
+      "./plugins/with-widget-version-match",
       "expo-router",
       [
         "expo-location",
@@ -47,7 +55,40 @@
         }
       ],
       "expo-maps",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false,
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-widgets",
+        {
+          "bundleIdentifier": "com.eddtb.landmarks.widgets",
+          "groupIdentifier": "group.com.eddtb.landmarks",
+          "widgets": [
+            {
+              "name": "AreaStories",
+              "displayName": "History nearby",
+              "description": "How much history is within a walk of where you are.",
+              "contentMarginsDisabled": true,
+              "supportedFamilies": [
+                "systemSmall",
+                "systemMedium"
+              ],
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
@@ -58,6 +99,9 @@
       "eas": {
         "projectId": "522c780e-a4b2-43f7-8dd7-b668a5ac5533"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/522c780e-a4b2-43f7-8dd7-b668a5ac5533"
     }
   }
 }

@@ -78,3 +78,55 @@ describe('enrichStandaloneListed', () => {
     expect(findStory).toHaveBeenCalledTimes(2); // …so the lookup retried
   });
 });
+
+describe('the politeness fence (regression: production 502s, 27 July)', () => {
+  /**
+   * A dense listed-building area brings dozens of register cards, and
+   * each uncached enrichment is up to two Wikipedia calls. Fanning
+   * those out at once got the worker's egress IP rate-limited, so the
+   * NEXT reader's feed came back 502 and the app said "you're
+   * offline". The fence is the invariant worth pinning — not the
+   * incident, and not the exact number.
+   */
+  test('a dense area never opens more than a handful of lookups at once', async () => {
+    let live = 0;
+    let peak = 0;
+    findStory.mockImplementation(async () => {
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      live -= 1;
+      return { story: 'A story.', title: 'T', url: 'https://en.wikipedia.org/wiki/T' };
+    });
+
+    const dense = Array.from({ length: 30 }, (_, i) => ({
+      ...registerCard,
+      pageId: 2_001_000_000 + i,
+      title: `Listed building ${i}`,
+    }));
+
+    await enrichStandaloneListed(dense);
+
+    expect(findStory).toHaveBeenCalledTimes(30); // every card still resolved
+    expect(peak).toBeLessThanOrEqual(4); // …but never all at once
+  });
+
+  test('cards needing no lookup cost no concurrency at all', async () => {
+    findStory.mockResolvedValue(null);
+    // Distinct URLs: same-article cards are deduped by design (one
+    // card per article, nearest wins), which would mask the pass-through
+    const wikiCards = Array.from({ length: 20 }, (_, i) => ({
+      ...registerCard,
+      pageId: 3000 + i,
+      url: `https://en.wikipedia.org/wiki/Story_${i}`,
+      source: 'Wikipedia',
+    }));
+
+    const out = await enrichStandaloneListed(wikiCards);
+
+    expect(findStory).not.toHaveBeenCalled();
+    expect(out).toHaveLength(20); // passed through untouched, order intact
+    expect(out[0].pageId).toBe(3000);
+    expect(out[19].pageId).toBe(3019);
+  });
+});

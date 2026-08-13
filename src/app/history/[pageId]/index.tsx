@@ -1,25 +1,38 @@
 import * as Linking from 'expo-linking';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
-import { ExternalLink } from '@/components/external-link';
+import { ChromeEdgeInset, StoryBackChip } from '@/components/glass-header';
+import { failureCause, FailureCause, LoadFailure } from '@/components/load-failure';
 import { OverflowMenu } from '@/components/overflow-menu';
-import { StoryFolds } from '@/components/story-folds';
-import { TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { fetchStory, getCachedHistoryItem, getStoriesAround } from '@/data/history-client';
+import { loadVerdict } from '@/data/load-verdict';
+import { markRead, markVisited } from '@/data/journal';
+import { toggleSaved, useSaved, useSavedItem } from '@/data/saved';
+import { useLocation } from '@/hooks/use-location';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem, isWikiPageId } from '@/types/history';
-import { formatWalkTime, storyParagraphs } from '@/utils/format';
-import { Coordinates } from '@/utils/geo';
+import { formatWalkTimeForMeters } from '@/utils/format';
+import { Coordinates, distanceMeters } from '@/utils/geo';
 
-/** Same demo-mode walking estimate as everywhere else: ~1.33 m/s. */
-function estimatedWalkSeconds(meters: number): number {
-  return Math.round(meters / 1.33);
+/** The story screen owns its navigation now the native header is
+ * gone: a floating glass back chip, present in every state — a screen
+ * a reader cannot leave is a trap, whatever else failed. Loading,
+ * failed and not-found are plainly not photographs, so the chip takes
+ * the page rendering (DESIGN.md: the material follows what it sits on). */
+function FloatingBack() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.floatingBack, { top: insets.top + Spacing.two }]}>
+      <StoryBackChip backLabel="Stories" over="page" onPress={() => router.back()} />
+    </View>
+  );
 }
 
 function mapsWalkingUrl(coordinates: Coordinates): string {
@@ -32,13 +45,24 @@ function mapsWalkingUrl(coordinates: Coordinates): string {
   );
 }
 
-/** The venue grammar rides under the hero: one violet Go. */
+/** The journey controls ride under the hero: violet Go, Compass, Save. */
 function ActionsLead({ item }: { item: HistoryItem }) {
   const theme = useTheme();
-  const walkSeconds = estimatedWalkSeconds(item.distanceMeters);
+  // The walk time is live GPS or nothing: item.distanceMeters is the
+  // moment the feed was fetched — a story saved in another town, or a
+  // denied-location session measured from the fallback pin, would
+  // quote a fabricated number on the primary button. The shelf card
+  // already drops it for exactly this reason; the label says "Go"
+  // alone when there is no honest fix.
+  const { coordinates } = useLocation();
+  const walkTime = coordinates
+    ? formatWalkTimeForMeters(distanceMeters(coordinates, item.coordinates))
+    : null;
+  const saved = useSaved(item.pageId);
 
   return (
-    <View style={styles.lead}>
+    <View style={styles.leadBlock}>
+      <View style={styles.lead}>
       <Pressable
         accessibilityRole="button"
         onPress={() =>
@@ -52,47 +76,73 @@ function ActionsLead({ item }: { item: HistoryItem }) {
           { backgroundColor: theme.accent },
           pressed && { opacity: 0.85 },
         ]}>
-        <ThemedText type="smallBold" style={styles.goText}>
-          Go · {formatWalkTime(walkSeconds)}
+        {/* theme.background, not white: #FFFFFF on the DARK accent is
+            2.79:1, the exact ratio DESIGN.md names when it forbids
+            this. The background token reads 5.77:1 light, 7.53:1 dark. */}
+        <ThemedText type="smallBold" style={{ color: theme.background }}>
+          {walkTime ? `Go · ${walkTime}` : 'Go'}
         </ThemedText>
       </Pressable>
-      <ThemedText type="small" themeColor="textSecondary" style={styles.leadMeta}>
-        {item.source}
-      </ThemedText>
+      <Pressable
+        accessibilityRole="button"
+        testID="compass-button"
+        onPress={() =>
+          router.push({
+            pathname: '/history/[pageId]/compass',
+            params: { pageId: String(item.pageId) },
+          })
+        }
+        style={({ pressed }) => [
+          styles.compass,
+          { backgroundColor: theme.backgroundElement },
+          pressed && { opacity: 0.85 },
+        ]}>
+        <ThemedText type="smallBold">Compass</ThemedText>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        testID="save-button"
+        accessibilityLabel={saved ? 'Remove from saved' : 'Save this story'}
+        onPress={() => toggleSaved(item)}
+        style={({ pressed }) => [
+          styles.compass,
+          // Saved wears the door colours — accentSoft ground, accent
+          // word — because violet means tappable and this stays a button
+          { backgroundColor: saved ? theme.accentSoft : theme.backgroundElement },
+          pressed && { opacity: 0.85 },
+        ]}>
+        <ThemedText type="smallBold" themeColor={saved ? 'accent' : undefined}>
+          {saved ? 'Saved' : 'Save'}
+        </ThemedText>
+      </Pressable>
+      {/* One-line grey annotation: with the short denied-state "Go" label
+          the meta gets more width and would wrap mid-word — truncate
+          with a tail ellipsis instead (DESIGN.md: meta is a meta LINE) */}
+      </View>
+      {/* No source name here any more: with the byline ("Told by AI from
+          {source}") and the one citation row both naming it, this meta
+          line was the THIRD "Wikipedia" on a screen being defended
+          against a guideline about collections of links. The name lives
+          where attribution belongs. */}
     </View>
   );
 }
 
-/** No Wikipedia article of its own: the extract-and-folds story stands. */
-function ExtractStory({ item }: { item: HistoryItem }) {
-  if (!item.extract) {
-    return null;
-  }
-  // A plaque's extract IS its inscription, and the lead's "The plaque
-  // reads" block already shows it — saying it twice reads as broken
-  const inscriptionShownAbove = item.source.startsWith('Open Plaques');
-  return (
-    <View style={styles.section}>
-      <ThemedText type="eyebrow" themeColor="textSecondary">
-        Story
-      </ThemedText>
-      <TellingSection item={item} />
-      {/* Reading type (16/24), real paragraphs — an extract is a
-          story body, not a meta line */}
-      {!inscriptionShownAbove &&
-        storyParagraphs(item.extract).map((paragraph, index) => (
-          <ThemedText key={index} type="default">
-            {paragraph}
-          </ThemedText>
-        ))}
-      <StoryFolds item={item} />
-      <ExternalLink href={item.url as `https://${string}`}>
-        <ThemedText type="small" themeColor="accent">
-          From {item.source}
-        </ThemedText>
-      </ExternalLink>
-    </View>
-  );
+/**
+ * Headless: writes the journal's "visited" fact when the reader is
+ * physically at the story — the same 45m the standing-on banner uses.
+ * Its own component so GPS ticks re-render nothing but this null.
+ */
+function JournalVisitMarker({ item }: { item: HistoryItem }) {
+  const { coordinates } = useLocation();
+  const standing =
+    coordinates !== null && distanceMeters(coordinates, item.coordinates) < 45;
+  useEffect(() => {
+    if (standing) {
+      markVisited(item.pageId);
+    }
+  }, [standing, item.pageId]);
+  return null;
 }
 
 /**
@@ -100,7 +150,7 @@ function ExtractStory({ item }: { item: HistoryItem }) {
  * Gazetteer — hero, gallery, the story retold in parts, timeline,
  * the web of history — pointed at the place's OWN article, with the
  * venue grammar (one violet Go) riding under the hero. Places without
- * an article of their own keep the extract-and-folds story.
+ * an article of their own show the record itself and a citation.
  */
 export default function HistoryDetailScreen() {
   const { pageId } = useLocalSearchParams<{ pageId: string }>();
@@ -111,12 +161,26 @@ export default function HistoryDetailScreen() {
   // screen is allowed to say "not found".
   const [fetched, setFetched] = useState<HistoryItem | null>(null);
   const [missingPageId, setMissingPageId] = useState<number | null>(null);
+  // Failure and absence are different verdicts: fetchStory resolves
+  // null for a genuine 404 and THROWS on network trouble — a shared
+  // link opened on flaky signal must offer a retry, not tell the
+  // recipient the story doesn't exist.
+  // …and now it says WHICH kind of trouble, in the class's one shape
+  // (#291): null while the ask is live or has succeeded.
+  const [loadFailed, setLoadFailed] = useState<FailureCause | null>(null);
+  // The saved shelf is a peer source, not a cache: the item cache
+  // evicts and expires, but a story the user chose to keep must open
+  // from its snapshot forever (for synthetic heritage ids it is the
+  // only copy anywhere). Reactive, so the screen recovers the moment
+  // the shelf hydrates.
+  const savedSnapshot = useSavedItem(numericPageId);
   const item =
     getCachedHistoryItem(numericPageId) ??
+    savedSnapshot ??
     (fetched?.pageId === numericPageId ? fetched : undefined);
 
   useEffect(() => {
-    if (item || missingPageId === numericPageId) {
+    if (item || missingPageId === numericPageId || loadFailed) {
       return;
     }
     let cancelled = false;
@@ -126,20 +190,27 @@ export default function HistoryDetailScreen() {
         if (story) setFetched(story);
         else setMissingPageId(numericPageId);
       })
-      .catch(() => {
-        // Upstream trouble reads the same as a missing story here —
-        // there is nothing else this screen could honestly show
-        if (!cancelled) setMissingPageId(numericPageId);
+      .catch((error: unknown) => {
+        if (!cancelled) setLoadFailed(failureCause(loadVerdict(error)));
       });
     return () => {
       cancelled = true;
     };
-  }, [item, missingPageId, numericPageId]);
+  }, [item, missingPageId, numericPageId, loadFailed]);
+
+  if (!item && loadFailed) {
+    return (
+      <ThemedView style={styles.failed}>
+        <FloatingBack />
+        <LoadFailure surface="story" cause={loadFailed} onRetry={() => setLoadFailed(null)} />
+      </ThemedView>
+    );
+  }
 
   if (!item && missingPageId !== numericPageId) {
     return (
       <ThemedView style={styles.notFound} testID="story-loading">
-        <Stack.Screen options={{ title: '' }} />
+        <FloatingBack />
         <ActivityIndicator />
       </ThemedView>
     );
@@ -148,7 +219,7 @@ export default function HistoryDetailScreen() {
   if (!item) {
     return (
       <ThemedView style={styles.notFound}>
-        <Stack.Screen options={{ title: 'Not found' }} />
+        <FloatingBack />
         <ThemedText themeColor="textSecondary">This story could not be found.</ThemedText>
       </ThemedView>
     );
@@ -163,44 +234,57 @@ export default function HistoryDetailScreen() {
   // the compiler with a fresh identity per render.
   const others = getStoriesAround(item.pageId).filter((story) => story.pageId !== item.pageId);
 
+  const overflowActions = [
+    { id: 'share', title: 'Share' },
+    { id: 'maps', title: 'Open in Maps' },
+  ];
+  const onOverflow = (id: string) => {
+    if (id === 'share') {
+      // Recipients with Venture jump straight to this story; the source
+      // URL on the second line keeps the share useful without the app.
+      // Synthetic heritage ids (plaques, register entries) can't
+      // deep-link — they keep the plain source URL.
+      const message = isWikiPageId(item.pageId)
+        ? `${item.title} — walk to it with Venture: landmarks://history/${item.pageId}\n${item.url}`
+        : `${item.title} — ${item.url}`;
+      Share.share({ message });
+    }
+    if (id === 'maps') Linking.openURL(mapsWalkingUrl(item.coordinates));
+  };
+
   return (
     <ThemedView style={styles.container} testID="story-screen">
-      <Stack.Screen
-        options={{
-          title: item.title,
-          headerRight: () => (
-            <OverflowMenu
-              actions={[
-                { id: 'share', title: 'Share' },
-                { id: 'maps', title: 'Open in Maps' },
-              ]}
-              onAction={(id) => {
-                if (id === 'share') {
-                  // Recipients with Venture jump straight to this story;
-                  // the source URL on the second line keeps the share
-                  // useful without the app. Synthetic heritage ids
-                  // (plaques, register entries) can't deep-link — they
-                  // keep the plain source URL.
-                  const message = isWikiPageId(item.pageId)
-                    ? `${item.title} — walk to it with Venture: landmarks://history/${item.pageId}\n${item.url}`
-                    : `${item.title} — ${item.url}`;
-                  Share.share({ message });
-                }
-                if (id === 'maps') Linking.openURL(mapsWalkingUrl(item.coordinates));
-              }}
-            />
+      <AreaGazetteer
+        chrome={{
+          backLabel: 'Stories',
+          onBack: () => router.back(),
+          // Two renderings of ONE menu: theme glyph on the island's own
+          // surface, white glyph for the photo-scrim chip at rest
+          menu: <OverflowMenu actions={overflowActions} onAction={onOverflow} />,
+          menuOnPhoto: (
+            <OverflowMenu actions={overflowActions} onAction={onOverflow} tint="#FFFFFF" />
           ),
         }}
-      />
-      <AreaGazetteer
         areaName={item.subject ?? item.title}
         relics={[]}
         allStories={others}
         refreshing={false}
         onRefresh={() => {}}
-        sourceUrl={item.url}
+        // The citation points at what the reader just read. A plaque
+        // that resolved to a subject tells the SUBJECT's article, so
+        // its own openplaques.org URL is not the source of that story —
+        // dropping it lets the gazetteer derive the article's own link,
+        // the way an area does. Unresolved, the record IS the source.
+        sourceUrl={item.subject ? undefined : item.url}
+        // The telling can only open the place's OWN story: a plaque
+        // screen tells its subject's article, and a telling written
+        // from the inscription would speak past it. No extract, no
+        // telling — the model must never write from nothing.
+        tellingItem={!item.subject && item.extract?.trim() ? item : undefined}
+        onReadThreshold={() => markRead(item.pageId)}
         lead={
           <>
+            <JournalVisitMarker item={item} />
             <ActionsLead item={item} />
             {/* A resolved plaque keeps its inscription in view — the
                 primary source you are physically standing at */}
@@ -214,13 +298,22 @@ export default function HistoryDetailScreen() {
             )}
           </>
         }
-        empty={<ExtractStory item={item} />}
+        // The record itself, not an element that renders it. With no
+        // article this names the screen, decides the one measured line
+        // about how much the records hold, and is what the citation
+        // cites (#292, #255).
+        record={item}
       />
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
+  floatingBack: {
+    position: 'absolute',
+    left: ChromeEdgeInset,
+    zIndex: 10,
+  },
   container: {
     flex: 1,
   },
@@ -228,32 +321,37 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.three,
+  },
+  // The panel brings its own surface and margins; it sits below the
+  // floating back chip rather than centred behind it
+  failed: {
+    flex: 1,
+    paddingTop: Spacing.six + Spacing.four,
+  },
+  leadBlock: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    gap: Spacing.two,
   },
   lead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
   },
   go: {
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.four,
     borderRadius: Spacing.six,
   },
-  goText: {
-    color: '#FFFFFF',
-  },
-  leadMeta: {
-    flexShrink: 1,
+  compass: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.six,
   },
   inscription: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
     gap: Spacing.one,
-  },
-  section: {
-    padding: Spacing.four,
-    gap: Spacing.three,
   },
 });

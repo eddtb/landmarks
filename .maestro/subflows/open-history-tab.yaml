@@ -1,8 +1,12 @@
 # The magic numbers, explained once: the floating tab pill ignores
 # text taps intermittently (verifier's observation, confirmed 2/3
-# local failures — PR #187), so the History tab is tapped by position:
-# 61%, 94% is the History half of the pill on the simulator sizes we
-# run. Let the frame settle first — slow runners swallow taps that
+# local failures — PR #187), so the History tab is tapped by position.
+# The Quiz tab is back (rebuilt v1), so the pill holds four tabs again
+# and History is 3rd of 4: 61%, 94% is the field-proven four-tab value
+# from PR #187's calibration. (While the quiz was hidden the three-tab
+# centre measured 70%, 95% on an iPhone 17 Pro Max — see the
+# quiz-off-air-arrivals-disarm history if the pill ever loses a tab
+# again.) Let the frame settle first — slow runners swallow taps that
 # land mid-layout (run 8's failure mode).
 appId: com.eddtb.landmarks
 ---

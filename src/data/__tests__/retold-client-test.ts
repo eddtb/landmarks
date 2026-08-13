@@ -22,12 +22,16 @@ const telling: Retold = {
   ],
   minutes: 1,
   timeline: [],
+  brief: [],
 };
 
-/** The wire as expo/fetch sees it: an SSE body arriving in chunks. */
+/** The wire as expo/fetch sees it: an SSE body arriving in chunks.
+ * `cancel` is observable so tests can hold the client to releasing
+ * the socket on early exit. */
 function sseResponse(chunks: string[]) {
   const encoder = new TextEncoder();
   const queue = chunks.map((chunk) => encoder.encode(chunk));
+  const cancel = jest.fn(async () => undefined);
   return {
     ok: true,
     status: 200,
@@ -36,8 +40,10 @@ function sseResponse(chunks: string[]) {
       getReader: () => ({
         read: async () =>
           queue.length > 0 ? { done: false, value: queue.shift() } : { done: true, value: undefined },
+        cancel,
       }),
     },
+    cancel,
   };
 }
 
@@ -114,6 +120,16 @@ describe('fetchRetold (dual transport)', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  test('the done verdict cancels the reader — the socket is released, not drained', async () => {
+    const response = sseResponse([
+      frame('done', { retold: telling }) + frame('part', { index: 9, part: telling.parts[0] }),
+    ]);
+    mockFetch.mockResolvedValue(response);
+
+    expect(await fetchRetold('Charlton')).toEqual(telling);
+    expect(response.cancel).toHaveBeenCalled();
+  });
+
   test('an in-band failed frame throws, keeps the arrived count, caches nothing', async () => {
     mockFetch.mockResolvedValue(
       sseResponse([
@@ -147,5 +163,28 @@ describe('fetchRetold (dual transport)', () => {
       status: 404,
     });
     expect((await fetchRetold('Nowhere').catch((error) => error)) instanceof ApiError).toBe(true);
+  });
+});
+
+describe('fetchRetold offline-pack fallback', () => {
+  test('offline, a downloaded retelling still reads — but a packed "under the gate" verdict stays a miss', async () => {
+    const { setPackForTests } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@/data/offline-pack') as typeof import('@/data/offline-pack');
+    setPackForTests({
+      enabled: true,
+      stories: {
+        'kept area': { article: null, retold: telling },
+        'gated area': { article: null, retold: null },
+      },
+      tellings: {},
+    });
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    expect((await fetchRetold('Kept Area')).parts.length).toBe(3);
+    // null retold is the remembered 404 — the fallback must not
+    // resurrect it as a story, and the caller's fallback-article
+    // path must still fire
+    await expect(fetchRetold('Gated Area')).rejects.toThrow('Network request failed');
   });
 });

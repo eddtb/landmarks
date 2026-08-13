@@ -28,6 +28,20 @@ export function formatWalkTimeForMeters(meters: number): string {
 // building. Existence facts now come structured from Wikidata
 // (src/server/wikidata.ts) and ride items as `pastTag`.
 
+/**
+ * Markdown emphasis, flattened to its words. The retold prompt asks for
+ * plain prose, but the model still italicises the occasional film or
+ * ship title — and the renderer is Text, not markdown, so "*Sherlock
+ * Holmes* (2009)" reached the screen with its asterisks on (caught on
+ * the simulator, Royal Naval College part eight). Display-time so the
+ * 30-day cached retellings are fixed too.
+ */
+export function stripEmphasis(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*\s][^*]*)\*/g, '$1');
+}
+
 /** "https://en.wikipedia.org/wiki/Cutty_Sark" → "Cutty Sark", or null. */
 export function wikiTitleFromUrl(url: string): string | null {
   const match = url.match(/wikipedia\.org\/wiki\/([^#?]+)/);
@@ -55,6 +69,22 @@ export function storyParagraphs(extract: string): string[] {
     .filter(Boolean);
 }
 
+// A full stop after these is an abbreviation, not a sentence end —
+// "St. Paul's" must not truncate the hook to "St."
+const AbbreviationBeforeDot = /(?:^|[\s(])(?:St|Dr|Mr|Mrs|No|c)$/;
+
+/** The first sentence of `text`, or all of it when no boundary earns
+ * the name (an abbreviation's dot never does). */
+function firstSentence(text: string): string {
+  const boundaries = text.matchAll(/\.(?=\s|$)/g);
+  for (const boundary of boundaries) {
+    if (!AbbreviationBeforeDot.test(text.slice(0, boundary.index))) {
+      return text.slice(0, boundary.index + 1);
+    }
+  }
+  return text;
+}
+
 /**
  * The history card's hook: the extract's first sentence, because
  * "a nuclear reactor ran here until 1996" is the reason to tap and
@@ -66,8 +96,7 @@ export function storyHook(extract: string | undefined): string | undefined {
     return undefined;
   }
   const clean = storyParagraphs(extract)[0] ?? '';
-  const match = clean.match(/^.*?\.(?=\s|$)/);
-  const sentence = (match?.[0] ?? clean).trim();
+  const sentence = firstSentence(clean).trim();
   if (sentence.length <= 160) {
     return sentence;
   }
@@ -89,4 +118,29 @@ export function hookEchoesTitle(title: string, hook: string): boolean {
     return false;
   }
   return a.startsWith(b) || b.startsWith(a);
+}
+
+/**
+ * When the journal did something, in card words: "today", "yesterday",
+ * a weekday inside the week ("Tuesday"), then dates ("12 July"). The
+ * card meta line speaks in days, not timestamps — "Visited Tuesday"
+ * is how a person says it.
+ */
+export function formatDaySince(at: number, now = Date.now()): string {
+  const day = (ms: number) => {
+    const date = new Date(ms);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  };
+  const daysAgo = Math.round((day(now) - day(at)) / (24 * 60 * 60 * 1000));
+  if (daysAgo <= 0) {
+    return 'today';
+  }
+  if (daysAgo === 1) {
+    return 'yesterday';
+  }
+  const date = new Date(at);
+  if (daysAgo < 7) {
+    return date.toLocaleDateString('en-GB', { weekday: 'long' });
+  }
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 }

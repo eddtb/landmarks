@@ -1,8 +1,9 @@
 import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
+import { ApiError } from '@/data/cached-get';
 import { persistedMap } from '@/data/persisted-cache';
-import { HistoryFeed, HistoryItem } from '@/types/history';
+import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 const HourMs = 60 * 60 * 1000;
@@ -26,13 +27,25 @@ const HourMs = 60 * 60 * 1000;
 // sparse-area change applies to persisted entries identically — a
 // bare-array entry predates sparse and must not replay as a feed.
 //
+// EACH FEED ITEM IS PERSISTED ONCE, in its feed. Until #246 a new
+// bucket wrote every item twice — once inside the ~124KB feed blob,
+// once individually — and each `set` schedules its own debounced
+// write-back, so ~1s after every new bucket TWO write-backs fired,
+// each stringifying its whole map (~1MB apiece) on the same JS thread
+// that renders the map, at the ~100-170ms measured above. The second
+// copy bought nothing: getCachedHistoryItem now reads the feeds, the
+// way getStoriesAround always has.
+//
+// itemCache therefore holds only what no feed contains: deep-link
+// arrivals from fetchStory, a story at a time.
+//
 // Caps (see persisted-cache's maxEntries): 8 feed buckets is a whole
 // walk's worth at 3 dp (~900m of latitude each) while one ~124KB
 // Greenwich-sized feed × 8 stays well under Android AsyncStorage's
-// ~6MB ceiling; 500 items keeps several walks of detail-screen
-// material at ~2KB apiece for ~1MB worst case.
+// ~6MB ceiling; 100 deep-linked stories at ~2KB apiece is far more
+// than anyone opens from a share in a week.
 const FeedBucketCap = 8;
-const ItemCap = 500;
+const ItemCap = 100;
 // v2: items may carry event:true (events-are-history ruling) — a
 // pre-flag persisted feed would keep leaking events into Nearby
 const listCache = persistedMap<HistoryFeed>('history-feed-v2', HourMs, {
@@ -42,20 +55,23 @@ const itemCache = persistedMap<HistoryItem>('history-item', 7 * 24 * HourMs, {
   maxEntries: ItemCap,
 });
 
-// 3 dp ≈ 111m of latitude — the server's own bucket (src/app/api/
-// history+api.ts), mirrored so walking mints a new client bucket
-// exactly when the server would mint a new answer. (Was 4 dp ≈ 11m: finer than
-// the ~10m GPS tick, so every tick minted a bucket — ~90/km, each
-// persisting a full ~124KB feed.) Old 4 dp entries can't collide with
-// these keys — toFixed(3) and toFixed(4) render disjoint strings — so
-// they're simply never hit again and age out via the 2×TTL prune.
+// The shared 3 dp feed bucket (src/types/history.ts). Historical note:
+// was 4 dp ≈ 11m, finer than the ~10m GPS tick, so every tick minted a
+// bucket — ~90/km, each persisting a full ~124KB feed. Old 4 dp
+// entries can't collide with 3 dp keys — toFixed(3) and toFixed(4)
+// render disjoint strings — so they're simply never hit again and age
+// out via the 2×TTL prune.
 function cacheKey(center: Coordinates): string {
-  return `${center.latitude.toFixed(3)}|${center.longitude.toFixed(3)}`;
+  return feedBucketKey(center.latitude, center.longitude);
 }
 
 export type HistoryFetchResult = HistoryFeed & {
   /** A network failure forced serving saved stories — the UI may say so. */
   stale?: boolean;
+  /** When that saved copy was written. The offline line names the day,
+   * because an hour-old snapshot and a week-old one are different
+   * things to be reading (#248). */
+  savedAt?: number;
   /** Present when items are an expired persisted bucket shown instantly
    * as a placeholder; resolves with the fresh (or offline-stale) result. */
   revalidate?: Promise<HistoryFetchResult>;
@@ -163,7 +179,10 @@ async function requestFeed(
   try {
     const response = await fetch(apiUrl(`/api/history?${params}`));
     if (!response.ok) {
-      throw new Error(`History request failed with status ${response.status}`);
+      // ApiError, carrying the status: the feed's failure panel says
+      // whether an answer came back broken or never came back at all,
+      // and only an ApiError knows which (#291).
+      throw new ApiError('History', response.status);
     }
 
     const body = (await response.json()) as HistoryFeed;
@@ -185,10 +204,9 @@ async function requestFeed(
     // `dressing` and fires the one-shot upgrade (useHistory), so a
     // flagged bucket can never quietly masquerade as the dressed
     // verdict for its whole TTL.
+    // One write, one map: the items are IN this feed, and the detail
+    // screen reads them back out of it (getCachedHistoryItem)
     listCache.set(key, feed);
-    for (const item of body.items) {
-      itemCache.set(String(item.pageId), item);
-    }
     return feed; // same object the cache holds — see the cache-hit note
   } catch (error) {
     // Offline path: saved stories for this exact bucket (even expired)
@@ -197,13 +215,33 @@ async function requestFeed(
     await listCache.hydrated;
     const saved = listCache.peek(key);
     if (saved) {
-      return { ...saved.value, stale: true };
+      return { ...saved.value, stale: true, savedAt: saved.at };
     }
     throw error;
   }
 }
 
+/**
+ * One story from what the device already holds, for a detail screen
+ * opening instantly instead of spinning.
+ *
+ * The feeds are asked first and they are where almost every answer
+ * lives — a story is on screen because a feed put it there. Expired
+ * buckets count (peekValues, like getStoriesAround): offline, the feed
+ * on screen IS an expired bucket, and tapping a card from it must not
+ * suddenly find nothing. itemCache holds the remainder — deep-link
+ * arrivals fetchStory brought in, which belong to no feed.
+ */
 export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {
+  const feeds = listCache.peekValues();
+  // Reversed: insertion order tracks minting order, so the newest
+  // bucket — the one the user is standing in — answers first
+  for (let index = feeds.length - 1; index >= 0; index--) {
+    const found = feeds[index].items.find((item) => item.pageId === pageId);
+    if (found) {
+      return found;
+    }
+  }
   return itemCache.get(String(pageId));
 }
 
@@ -214,22 +252,37 @@ export function getCachedHistoryItem(pageId: number): HistoryItem | undefined {
  * caller can tell the difference.
  */
 export async function fetchStory(pageId: number): Promise<HistoryItem | null> {
+  // The cold start this function exists for arrives BEFORE hydration
+  // finishes — without the await, a story sitting in AsyncStorage was
+  // invisible here and an offline open said "not found" (the same
+  // race fetchNearbyHistory and fetchArticle already wait out)
+  await itemCache.hydrated;
   const cached = itemCache.get(String(pageId));
   if (cached) {
     return cached;
   }
 
-  const response = await fetch(apiUrl(`/api/story?pageId=${pageId}`));
-  if (response.status === 404) {
-    return null;
-  }
-  if (!response.ok) {
-    throw new Error(`Story request failed with status ${response.status}`);
-  }
+  try {
+    const response = await fetch(apiUrl(`/api/story?pageId=${pageId}`));
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`Story request failed with status ${response.status}`);
+    }
 
-  const body = (await response.json()) as { item: HistoryItem };
-  itemCache.set(String(body.item.pageId), body.item);
-  return body.item;
+    const body = (await response.json()) as { item: HistoryItem };
+    itemCache.set(String(body.item.pageId), body.item);
+    return body.item;
+  } catch (error) {
+    // Offline, the story you once had still answers: an expired entry
+    // beats "could not be found" (the article client's own rule)
+    const saved = itemCache.peek(String(pageId));
+    if (saved) {
+      return saved.value;
+    }
+    throw error;
+  }
 }
 
 /** Stable "no neighbourhood": one shared reference, so render-time

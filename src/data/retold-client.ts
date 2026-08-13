@@ -2,6 +2,7 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 import { ApiError } from '@/data/cached-get';
+import { packStory } from '@/data/offline-pack';
 import { makeSseFrameReader } from '@/data/sse';
 import { Retold, RetoldPart } from '@/types/retold';
 
@@ -31,6 +32,7 @@ const normalise = (retold: Retold): Retold => ({
   parts: retold.parts ?? [],
   minutes: retold.minutes ?? 1,
   timeline: retold.timeline ?? [],
+  brief: retold.brief ?? [],
 });
 
 export async function fetchRetold(
@@ -43,6 +45,27 @@ export async function fetchRetold(
     return cached;
   }
 
+  try {
+    return await fetchRetoldLive(areaName, key, onPart);
+  } catch (error) {
+    // Offline: a retelling the keep-offline toggle downloaded still
+    // reads. Only a real retelling answers — a pack entry whose
+    // retold is null is the server's remembered "under the gate"
+    // verdict, and the caller's 404 handling must keep meaning that.
+    const packed = packStory(key)?.retold;
+    if (packed) {
+      cache.set(key, packed);
+      return packed;
+    }
+    throw error;
+  }
+}
+
+async function fetchRetoldLive(
+  areaName: string,
+  key: string,
+  onPart?: (part: RetoldPart, index: number) => void
+): Promise<Retold> {
   const response = await fetch(apiUrl(`/api/retold?area=${encodeURIComponent(areaName)}`), {
     headers: { Accept: 'text/event-stream, application/json' },
   });
@@ -65,25 +88,32 @@ export async function fetchRetold(
   const frames = makeSseFrameReader();
   const bytes = new TextDecoder();
   let arrived = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    for (const frame of frames.feed(bytes.decode(value, { stream: true }))) {
-      if (frame.event === 'part') {
-        const { index, part } = JSON.parse(frame.data) as { index: number; part: RetoldPart };
-        arrived = Math.max(arrived, index + 1);
-        onPart?.(part, index);
-      } else if (frame.event === 'done') {
-        const finished = normalise((JSON.parse(frame.data) as { retold: Retold }).retold);
-        cache.set(key, finished);
-        return finished;
-      } else if (frame.event === 'failed') {
-        // In-band failure: what arrived stays rendered; nothing cached
-        throw new RetoldInterruptedError(arrived);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      for (const frame of frames.feed(bytes.decode(value, { stream: true }))) {
+        if (frame.event === 'part') {
+          const { index, part } = JSON.parse(frame.data) as { index: number; part: RetoldPart };
+          arrived = Math.max(arrived, index + 1);
+          onPart?.(part, index);
+        } else if (frame.event === 'done') {
+          const finished = normalise((JSON.parse(frame.data) as { retold: Retold }).retold);
+          cache.set(key, finished);
+          return finished;
+        } else if (frame.event === 'failed') {
+          // In-band failure: what arrived stays rendered; nothing cached
+          throw new RetoldInterruptedError(arrived);
+        }
       }
     }
+  } finally {
+    // Every early exit lands here — the done verdict, an in-band
+    // failure, a parse throw — release the socket rather than drain
+    // it (the house pattern from gemini.ts's stream reader)
+    void reader.cancel().catch(() => {});
   }
   // The connection closed without a verdict — an interruption too
   throw new RetoldInterruptedError(arrived);

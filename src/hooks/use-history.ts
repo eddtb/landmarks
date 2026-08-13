@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchNearbyHistory, hasCachedFeed, HistoryFetchResult } from '@/data/history-client';
+import { LoadVerdict, loadVerdict } from '@/data/load-verdict';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
 export type HistoryState =
   | { status: 'loading' }
-  | { status: 'error' }
+  /** Why it failed, so the screen can say what came back rather than
+   * "right now" (#291). Never 'absent': a feed has no 404. */
+  | { status: 'error'; verdict: LoadVerdict }
   | {
       status: 'ready';
       items: HistoryItem[];
@@ -14,13 +17,22 @@ export type HistoryState =
       /** Meters the sparse search actually reached — the copy's truth. */
       horizon?: number;
       stale?: boolean;
+      /** When the saved copy being served was written. */
+      savedAt?: number;
     };
 
 /** How long the server's photo leg gets before the one-shot upgrade
  * re-ask — comfortably past dressWithPhotos' 1.5s response deadline. */
 const DressingUpgradeDelayMs = 4000;
 
-export function useHistory(center: Coordinates): {
+/**
+ * A null center means Venture has no honest place to ask about — no
+ * fix and no pin — and nothing is spent finding out: no fetch, no
+ * revalidate, no upgrade timer. The state stays `loading` and callers
+ * must render their own no-location answer BEFORE reading it (#289:
+ * the feed used to ask about Charing Cross on everyone's behalf).
+ */
+export function useHistory(center: Coordinates | null): {
   state: HistoryState;
   refresh: () => Promise<void>;
 } {
@@ -29,8 +41,8 @@ export function useHistory(center: Coordinates): {
   // ~10m, and effect deps finer than the bucket refired a whole feed
   // fetch per tick. The raw center never enters this hook — it keeps
   // flowing to standing-on/distance labels in the components untouched.
-  const latitude = Number(center.latitude.toFixed(3));
-  const longitude = Number(center.longitude.toFixed(3));
+  const latitude = center === null ? null : Number(center.latitude.toFixed(3));
+  const longitude = center === null ? null : Number(center.longitude.toFixed(3));
   const requestId = useRef(0);
   // The dressing upgrade: EXACTLY one delayed re-ask per bucket visit
   // (or per pull) — `done` stops a still-dressing upgrade result from
@@ -61,7 +73,8 @@ export function useHistory(center: Coordinates): {
           prev.items === next.items &&
           prev.sparse === next.sparse &&
           prev.horizon === next.horizon &&
-          prev.stale === next.stale
+          prev.stale === next.stale &&
+          prev.savedAt === next.savedAt
             ? prev
             : {
                 status: 'ready',
@@ -69,6 +82,7 @@ export function useHistory(center: Coordinates): {
                 sparse: next.sparse,
                 horizon: next.horizon,
                 stale: next.stale,
+                savedAt: next.savedAt,
               }
         );
         // A dressing feed (fresh from the server, or a persisted flagged
@@ -113,6 +127,9 @@ export function useHistory(center: Coordinates): {
   );
 
   useEffect(() => {
+    if (latitude === null || longitude === null) {
+      return;
+    }
     const id = ++requestId.current;
     // Loading honesty on a bucket jump: this effect only refires when
     // the BUCKET changes (walking ticks inside one don't), and if the
@@ -130,7 +147,7 @@ export function useHistory(center: Coordinates): {
       } catch (error) {
         console.warn('Failed to load history:', error);
         if (id === requestId.current) {
-          setState({ status: 'error' });
+          setState({ status: 'error', verdict: loadVerdict(error) });
         }
       }
     })();
@@ -143,6 +160,9 @@ export function useHistory(center: Coordinates): {
   }, [latitude, longitude, applyResult, clearUpgrade]);
 
   const refresh = useCallback(async () => {
+    if (latitude === null || longitude === null) {
+      return;
+    }
     const id = ++requestId.current;
     // A pull is a fresh compose: drop any pending upgrade and let the
     // pull's own result schedule a new one if it arrives undressed
@@ -154,7 +174,7 @@ export function useHistory(center: Coordinates): {
     } catch (error) {
       console.warn('Failed to refresh history:', error);
       if (id === requestId.current) {
-        setState({ status: 'error' });
+        setState({ status: 'error', verdict: loadVerdict(error) });
       }
     }
   }, [latitude, longitude, applyResult, clearUpgrade]);

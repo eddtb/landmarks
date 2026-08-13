@@ -1,4 +1,4 @@
-import { EntityClaims, existenceTag, isEventArticle } from '@/server/wikidata';
+import { EntityClaims, existenceTag, isAreaArticle, isEventArticle } from '@/server/wikidata';
 
 /**
  * THE GOLDEN SENTINEL SUITE. Every shape below is a real place whose
@@ -100,5 +100,17 @@ describe('isEventArticle — events belong to the archive, not Nearby', () => {
   test('precision over recall: an unknown or event-ish-but-uncurated class never routes', () => {
     expect(isEventArticle(claims({ p31: ['Q26132862'] }))).toBe(false); // Olympic sports discipline event
     expect(isEventArticle(claims({}))).toBe(false);
+  });
+});
+
+describe('isAreaArticle — broad places are context, not destinations', () => {
+  test('Greenwich, Deptford and Millwall carry geographic area classes', () => {
+    expect(isAreaArticle(claims({ p31: ['Q149621', 'Q3957', 'Q2755753'] }))).toBe(true);
+    expect(isAreaArticle(claims({ p31: ['Q2755753'] }))).toBe(true);
+  });
+
+  test('Royal Observatory and Deptford Town Hall remain destinations', () => {
+    expect(isAreaArticle(claims({ p31: ['Q1254933', 'Q33506'] }))).toBe(false);
+    expect(isAreaArticle(claims({ p31: ['Q25550691', 'Q19844914'] }))).toBe(false);
   });
 });

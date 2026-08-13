@@ -1,0 +1,39 @@
+# Answer iOS's "Open in Venture?" alert — if it asks. Run after EVERY
+# openLink.
+#
+# iOS 26 confirms every inbound URL with a SpringBoard alert
+# (`Open in "Venture"?` [Cancel] [Open]) and openLink never answers
+# it. While that alert is up SpringBoard, not the app, is the
+# foreground process — so the hierarchy Maestro snapshots is the
+# alert's and the app's testIDs are simply not in it. One unanswered
+# dialog therefore fails every assertion after it, in every flow, on
+# a different anchor each time: run 31360287282 was 7/7 flows failed
+# on seven different anchors, over a screenshot of a perfectly
+# working Greenwich feed sitting behind the alert.
+#
+# Conditional, never unconditional: iOS remembers the answer for the
+# rest of a simulator session, so the second and third openLink of a
+# run usually raise no alert at all and a bare tapOn would fail the
+# flows this file exists to protect. Both commands are no-ops when
+# the alert never comes.
+#
+# The wait comes first because the alert is SpringBoard's, not the
+# app's: openurl returns before it renders, and a one-shot guard
+# checked the instant openLink returns loses that race — the same
+# lesson the dev-menu welcome mat taught in boot.yaml.
+#
+# The match names Venture deliberately. Maestro text matches are
+# FULL-STRING regexes and the story screen carries an "Open in Maps"
+# menu item, which a looser 'Open in .*' would match happily and
+# then tap a button that isn't there.
+appId: com.eddtb.landmarks
+---
+- extendedWaitUntil:
+    optional: true
+    visible: 'Open in .*Venture.*'
+    timeout: 5000
+- runFlow:
+    when:
+      visible: 'Open in .*Venture.*'
+    commands:
+      - tapOn: 'Open'

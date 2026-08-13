@@ -22,6 +22,9 @@ jest.mock('@/server/ai-cache', () => {
   const maps = new Map<string, Map<string, unknown>>();
   return {
     __maps: maps,
+    // This suite tests the Node bargain (serve early, float the legs);
+    // the edge worker's awaited path has its own suite
+    backgroundWorkSurvives: true,
     diskBackedMap: (name: string) => {
       const existing = maps.get(name);
       if (existing) {
@@ -43,6 +46,11 @@ jest.mock('@/server/wikidata', () => ({
   fetchExistenceFacts: jest.fn(async () => new Map()),
 }));
 jest.mock('@/server/wikipedia', () => ({ findNearbyHistory: jest.fn() }));
+jest.mock('@/server/telling-store', () => ({
+  storeGet: jest.fn(async () => undefined),
+  storePut: jest.fn(async () => undefined),
+  storeHealthHeaders: jest.fn(() => ({ 'x-feed-store': 'ok' })),
+}));
 jest.mock('@/server/heritage', () => {
   const actual = jest.requireActual('@/server/heritage');
   return {
@@ -60,7 +68,7 @@ const mockTags = fetchExistenceFacts as jest.Mock;
 const cacheMaps = (
   jest.requireMock('@/server/ai-cache') as { __maps: Map<string, Map<string, unknown>> }
 ).__maps;
-const listMap = () => cacheMaps.get('history-lists-v6')!;
+const listMap = () => cacheMaps.get('history-lists-v7')!;
 
 function story(pageId: number, title: string): HistoryItem {
   return {
@@ -198,5 +206,32 @@ describe('GET /api/history cold-compose early serve', () => {
     expect(body.items.every((item) => item.thumbnailUrl)).toBe(true);
     expect(body.items[1].pastTag).toBe('Until 1675');
     expect(listMap().size).toBe(1);
+  });
+});
+
+describe('the durable write does not depend on guessing the runtime', () => {
+  /**
+   * This suite runs with backgroundWorkSurvives TRUE — the Node
+   * serve-early path. The durable feed write lived only on the edge
+   * branch for hours and therefore never ran in production at all,
+   * because the runtime check silently read the wrong way (`fs`
+   * resolves on the edge too). The store write is now part of BOTH
+   * paths, and this pins the one that was missing it.
+   */
+  test('the grace-path compose still writes the feed to the durable store', async () => {
+    // Warm dressing settles inside the grace, taking the fast path
+    mockDress.mockImplementation(async (items: HistoryItem[]) => items);
+    mockTags.mockResolvedValue(new Map());
+
+    await GET(freshRequest());
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { storePut } = require('@/server/telling-store') as { storePut: jest.Mock };
+    expect(storePut).toHaveBeenCalledWith(
+      'feed',
+      expect.any(String),
+      expect.objectContaining({ items: expect.any(Array) }),
+      expect.any(Number)
+    );
   });
 });

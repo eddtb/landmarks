@@ -16,7 +16,12 @@ const validRetoldText = JSON.stringify({
   timeline: [],
 });
 
-function loadRetold(options: { chapters: Chapter[] | null; researchImpl?: jest.Mock }) {
+function loadRetold(options: {
+  chapters: Chapter[] | null;
+  researchImpl?: jest.Mock;
+  /** What the durable store answers; default is a miss (store off). */
+  storedGet?: jest.Mock;
+}) {
   jest.resetModules();
   // The call now travels the streaming transport — one researchStream
   // generator per spend, whole answer as a single delta by default
@@ -28,12 +33,15 @@ function loadRetold(options: { chapters: Chapter[] | null; researchImpl?: jest.M
   const getArticle = jest.fn(async () =>
     options.chapters ? { minutes: 3, images: [], chapters: options.chapters } : null
   );
-  jest.doMock('@/server/anthropic', () => ({ researchStream }));
+  const storeGet = options.storedGet ?? jest.fn(async () => undefined);
+  const storePut = jest.fn();
+  jest.doMock('@/server/ai-router', () => ({ researchStream }));
   jest.doMock('@/server/article', () => ({ getArticle }));
   jest.doMock('@/server/ai-cache', () => ({ diskBackedMap: () => new Map() }));
+  jest.doMock('@/server/telling-store', () => ({ storeGet, storePut }));
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const retold = require('@/server/retold') as typeof import('@/server/retold');
-  return { retold, research: researchStream, getArticle };
+  return { retold, research: researchStream, getArticle, storeGet, storePut };
 }
 
 const richChapters: Chapter[] = [
@@ -84,5 +92,68 @@ describe('getRetold call economy', () => {
     await retold.getRetold('Greenwich');
     await retold.getRetold('Greenwich');
     expect(research).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the durable store (the cache that outlives the worker)', () => {
+  const storedRetold = {
+    parts: [{ heading: 'Stored', body: 'Another worker already told this.' }],
+    minutes: 2,
+    timeline: [],
+  };
+
+  test('a store hit spends NOTHING — no call, not even the article fetch', async () => {
+    const { retold, research, getArticle } = loadRetold({
+      chapters: richChapters,
+      storedGet: jest.fn(async () => ({ value: { retold: storedRetold }, at: Date.now() })),
+    });
+    const answer = await retold.getRetold('Greenwich');
+    expect(answer?.parts[0].heading).toBe('Stored');
+    expect(research).not.toHaveBeenCalled();
+    expect(getArticle).not.toHaveBeenCalled();
+  });
+
+  test("a stored 'no retelling' verdict is honoured across workers", async () => {
+    const { retold, research, getArticle } = loadRetold({
+      chapters: richChapters,
+      storedGet: jest.fn(async () => ({ value: { retold: null }, at: Date.now() })),
+    });
+    expect(await retold.getRetold('Small Plaque')).toBeNull();
+    expect(research).not.toHaveBeenCalled();
+    expect(getArticle).not.toHaveBeenCalled();
+  });
+
+  test('a STALE store entry does not answer — the story is retold', async () => {
+    const monthAndDayMs = 31 * 24 * 60 * 60 * 1000;
+    const { retold, research } = loadRetold({
+      chapters: richChapters,
+      storedGet: jest.fn(async () => ({
+        value: { retold: storedRetold },
+        at: Date.now() - monthAndDayMs,
+      })),
+    });
+    const answer = await retold.getRetold('Greenwich');
+    expect(answer?.parts).toHaveLength(3); // the fresh generation, not the stale store
+    expect(research).toHaveBeenCalledTimes(1);
+  });
+
+  test('a finished generation writes the store; a stub verdict does too', async () => {
+    const { retold, storePut } = loadRetold({ chapters: richChapters });
+    await retold.getRetold('Greenwich');
+    expect(storePut).toHaveBeenCalledWith(
+      'retold',
+      'v4:greenwich', // v3: the gate drop must orphan old no-retell verdicts
+      expect.objectContaining({ retold: expect.objectContaining({ parts: expect.any(Array) }) }),
+      expect.any(Number)
+    );
+
+    const stub = loadRetold({ chapters: stubChapters });
+    await stub.retold.getRetold('Small Plaque');
+    expect(stub.storePut).toHaveBeenCalledWith(
+      'retold',
+      'v4:small plaque',
+      { retold: null },
+      expect.any(Number)
+    );
   });
 });

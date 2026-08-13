@@ -1,16 +1,31 @@
 import { parseRetold, retoldPrompt } from '@/server/retold';
 
-describe('retoldPrompt (the long-form contract)', () => {
-  const prompt = retoldPrompt('Greenwich', 'Some source text.');
+describe('retoldPrompt (the long-form contract, scaled to its source)', () => {
+  // Rich source: the full long-read ask
+  const long = retoldPrompt('Greenwich', 'x'.repeat(6000));
+  // 1,500-3,000 chars — the places the dropped gate newly admits. The
+  // old fixed ask (6-9 parts, 1,200-1,800 words) aimed at THIS source
+  // would be an instruction to invent.
+  const short = retoldPrompt('Greenwich', 'x'.repeat(1700));
 
-  test('carries the organisation, honesty and length rules', () => {
-    expect(prompt).toContain('6 to 9 parts');
-    expect(prompt).toContain('most surprising true thing');
-    expect(prompt).toContain('Use ONLY facts from the source text');
-    expect(prompt).toContain('1,200-1,800 words');
-    expect(prompt).toContain('copied EXACTLY');
-    expect(prompt).toContain('timeline');
-    expect(prompt).toContain('Some source text.');
+  test('a rich source carries the full organisation, honesty and length rules', () => {
+    expect(long).toContain('6 to 9 parts');
+    expect(long).toContain('most surprising true thing');
+    expect(long).toContain('Use ONLY facts from the source text');
+    expect(long).toContain('1,200-1,800 words');
+    expect(long).toContain('copied EXACTLY');
+    expect(long).toContain('4 to 6 pivotal dated moments');
+  });
+
+  test('a short source is asked for a SHORT original account, never a padded one', () => {
+    expect(short).toContain('3 to 5 parts');
+    expect(short).toContain('350-700 words');
+    expect(short).toContain('2 to 4 pivotal dated moments');
+    expect(short).toContain('Never pad');
+    // The honesty rules do not scale away
+    expect(short).toContain('Use ONLY facts from the source text');
+    expect(short).toContain('most surprising true thing');
+    // …and 3 parts still clears parseRetold's floor of 3
   });
 });
 
@@ -61,6 +76,43 @@ describe('parseRetold — pull-quotes and the timeline', () => {
   test('no timeline at all is fine — the story stands alone', () => {
     const retold = parseRetold(JSON.stringify({ parts: base.parts }));
     expect(retold?.timeline).toEqual([]);
+  });
+});
+
+describe('parseRetold — the brief (the ten-second read above Part One)', () => {
+  const parts = [
+    { heading: 'A', body: 'One.' },
+    { heading: 'B', body: 'Two.' },
+    { heading: 'C', body: 'Three.' },
+  ];
+
+  test('two or three clean lines survive, trimmed', () => {
+    const retold = parseRetold(
+      JSON.stringify({
+        brief: ['  The last surviving tea clipper. ', 'Nearly lost to fire in 2007.'],
+        parts,
+      })
+    );
+    expect(retold?.brief).toEqual([
+      'The last surviving tea clipper.',
+      'Nearly lost to fire in 2007.',
+    ]);
+  });
+
+  test('a bad line drops; a fourth line is never kept', () => {
+    const retold = parseRetold(
+      JSON.stringify({
+        brief: ['Real line one.', '   ', 42, 'Real line two.', 'x'.repeat(200), 'Line three.', 'Line four.'],
+        parts,
+      })
+    );
+    expect(retold?.brief).toEqual(['Real line one.', 'Real line two.', 'Line three.']);
+  });
+
+  test('one line is not a brief — and no brief never costs the retelling', () => {
+    expect(parseRetold(JSON.stringify({ brief: ['Alone.'], parts }))?.brief).toEqual([]);
+    expect(parseRetold(JSON.stringify({ brief: 'not an array', parts }))?.brief).toEqual([]);
+    expect(parseRetold(JSON.stringify({ parts }))?.brief).toEqual([]);
   });
 });
 

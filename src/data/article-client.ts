@@ -2,6 +2,7 @@ import { fetch } from 'expo/fetch';
 
 import { apiUrl } from '@/data/api';
 import { ApiError, cachedGet } from '@/data/cached-get';
+import { packStory } from '@/data/offline-pack';
 import { persistedMap } from '@/data/persisted-cache';
 import { Article } from '@/types/article';
 
@@ -31,7 +32,11 @@ export async function fetchArticle(title: string): Promise<Article> {
   try {
     const response = await fetch(apiUrl(`/api/article?title=${encodeURIComponent(title)}`));
     if (!response.ok) {
-      throw new Error(`Article request failed with status ${response.status}`);
+      // ApiError, not a bare Error, and for the same reason the light
+      // leg already throws one (#291): the gazetteer must tell a
+      // definite 404 — history has no record here — from a 502 or a
+      // timeout, which say nothing about the record at all.
+      throw new ApiError('Article', response.status);
     }
     const body = (await response.json()) as { article: Article };
     articleCache.set(title, body.article);
@@ -42,6 +47,12 @@ export async function fetchArticle(title: string): Promise<Article> {
     const saved = articleCache.peek(title);
     if (saved) {
       return saved.value;
+    }
+    // …and a story the keep-offline toggle downloaded beats both:
+    // the pack never expires and never gets evicted by browsing
+    const packed = packStory(title)?.article;
+    if (packed) {
+      return packed;
     }
     throw error;
   }

@@ -5,6 +5,8 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { BrandPurple } from '@/constants/theme';
+
 const DURATION = 600;
 
 export function AnimatedSplashOverlay() {
@@ -32,7 +34,14 @@ export function AnimatedSplashOverlay() {
     },
   });
 
-  const image = <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />;
+  // The SAME image the native splash shows, at the same 200pt width
+  // (app.json's imageWidth): the handoff from the system splash to
+  // this overlay must be invisible — template residue here once put
+  // the Expo logo between them, an off-brand flash on every launch
+  // (Edd's phone, and every reviewer's).
+  const image = (
+    <Image style={styles.wander} source={require('@/assets/images/splash-wander.png')} />
+  );
 
   return animate ? (
     <Animated.View
@@ -59,13 +68,15 @@ export function AnimatedSplashOverlay() {
 }
 
 const styles = StyleSheet.create({
-  image: {
-    width: 76,
-    height: 71,
+  // splash-wander.png is square (1024×1024); 200pt matches the native
+  // splash's rendered width exactly
+  wander: {
+    width: 200,
+    height: 200,
   },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#6A4BDB',
+    backgroundColor: BrandPurple,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,

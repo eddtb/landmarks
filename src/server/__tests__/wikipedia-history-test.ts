@@ -55,6 +55,26 @@ describe('buildHistoryItems', () => {
     expect(clink?.thumbnailUrl).toBeUndefined();
     expect(clink?.extract).toContain('City jurisdiction');
   });
+
+  test('broad-area categories flag the district, never a named building', () => {
+    const classifiedPages = {
+      ...pages,
+      '1': {
+        ...pages['1'],
+        title: 'Deptford',
+        categories: [{ title: 'Category:District centres of London' }],
+      },
+      '2': {
+        ...pages['2'],
+        title: 'Deptford Town Hall',
+        categories: [],
+      },
+    };
+    const items = buildHistoryItems(entries, classifiedPages, Center);
+
+    expect(items.find((item) => item.pageId === 1)?.area).toBe(true);
+    expect(items.find((item) => item.pageId === 2)?.area).toBeUndefined();
+  });
 });
 
 describe('isStoryTitle (register gate)', () => {

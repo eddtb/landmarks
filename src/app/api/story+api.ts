@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { fixturesEnabled, readFixture } from '@/server/fixtures';
+import { numberParam } from '@/server/params';
 import { fetchStoryByPageId } from '@/server/wikipedia';
 import { HistoryItem, isWikiPageId } from '@/types/history';
 
@@ -25,13 +26,17 @@ const StoryTtlMs = 7 * 24 * 60 * 60 * 1000;
 // Only real items are ever stored — a 404 (missing page, synthetic
 // id) or an upstream failure is a moment's verdict, not a fact about
 // the page, and must never be replayed for a week.
-const storyCache = diskBackedMap<{ item: HistoryItem; at: number }>('stories-v1');
+const storyCache = diskBackedMap<{ item: HistoryItem; at: number }>('stories-v1', {
+  ttlMs: StoryTtlMs,
+  maxEntries: 1000,
+});
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const pageIdParam = url.searchParams.get('pageId');
-  const pageId = pageIdParam ? Number(pageIdParam) : NaN;
-  if (!Number.isInteger(pageId) || pageId <= 0) {
+  // The shared reader (#305), so absence is refused in one place for
+  // every route; a pageId must additionally be a positive integer
+  const pageId = numberParam(url.searchParams, 'pageId');
+  if (pageId === null || !Number.isInteger(pageId) || pageId <= 0) {
     return Response.json({ error: 'Expected a numeric pageId' }, { status: 400 });
   }
 

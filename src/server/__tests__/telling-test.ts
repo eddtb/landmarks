@@ -1,8 +1,13 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { getTelling, tellingPrompt } from '@/server/telling';
 
-jest.mock('@/server/anthropic', () => ({
+jest.mock('@/server/ai-router', () => ({
   research: jest.fn(),
+}));
+// The durable store: a miss by default (exactly a store that's off)
+jest.mock('@/server/telling-store', () => ({
+  storeGet: jest.fn(async () => undefined),
+  storePut: jest.fn(),
 }));
 
 // The disk cache outlives the process BY DESIGN — which includes the
@@ -12,7 +17,10 @@ beforeAll(() => {
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { research } = require('@/server/anthropic') as { research: jest.Mock };
+const { research } = require('@/server/ai-router') as { research: jest.Mock };
+const { storeGet, storePut } =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('@/server/telling-store') as { storeGet: jest.Mock; storePut: jest.Mock };
 
 const subject = {
   pageId: 9001,
@@ -69,5 +77,71 @@ describe('getTelling', () => {
     await expect(getTelling({ ...subject, pageId: 9002 })).resolves.toBe('');
     await getTelling({ ...subject, pageId: 9002 });
     expect(research).toHaveBeenCalledTimes(2);
+  });
+
+  test('the durable store answers before a call is spent — another worker already told it', async () => {
+    storeGet.mockResolvedValueOnce({
+      value: { text: 'Told on a worker that has since died.', at: 1 },
+      at: Date.now() - 1000,
+    });
+
+    const text = await getTelling({ ...subject, pageId: 9003 });
+
+    expect(text).toBe('Told on a worker that has since died.');
+    expect(research).not.toHaveBeenCalled();
+    // …and the next open of the SAME story never re-asks the store:
+    // the hit re-seeded the per-process map
+    storeGet.mockClear();
+    await getTelling({ ...subject, pageId: 9003 });
+    expect(storeGet).not.toHaveBeenCalled();
+  });
+
+  test('a STALE store entry does not answer — the story is retold and re-stored', async () => {
+    const monthAndDayMs = 31 * 24 * 60 * 60 * 1000;
+    storeGet.mockResolvedValueOnce({
+      value: { text: 'Old words.', at: 1 },
+      at: Date.now() - monthAndDayMs,
+    });
+
+    const text = await getTelling({ ...subject, pageId: 9004 });
+
+    expect(text).toBe('In 1855 they tore it down.');
+    expect(research).toHaveBeenCalledTimes(1);
+    expect(storePut).toHaveBeenCalledWith(
+      'telling',
+      expect.stringMatching(/^9004:[0-9a-f]{24}$/),
+      expect.objectContaining({ text: 'In 1855 they tore it down.' }),
+      expect.any(Number)
+    );
+  });
+
+  test('a fabricated extract only ever poisons its own slot', async () => {
+    // The public route lets anyone POST any text under any pageId; the
+    // extract-bound key keeps the real story's telling out of reach
+    await getTelling({ ...subject, pageId: 9005 });
+    research.mockResolvedValueOnce('A palace of lies.');
+    const poisoned = await getTelling({
+      ...subject,
+      pageId: 9005,
+      extract: 'Fabricated: a palace of solid gold stood here.',
+    });
+    const real = await getTelling({ ...subject, pageId: 9005 });
+
+    expect(poisoned).toBe('A palace of lies.');
+    expect(real).toBe('In 1855 they tore it down.'); // untouched, from cache
+    expect(research).toHaveBeenCalledTimes(2); // real telling written once
+  });
+
+  test('concurrent opens join one in-flight generation', async () => {
+    let release!: (text: string) => void;
+    research.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
+
+    const first = getTelling({ ...subject, pageId: 9006 });
+    const second = getTelling({ ...subject, pageId: 9006 });
+    release('Told once.');
+
+    expect(await first).toBe('Told once.');
+    expect(await second).toBe('Told once.');
+    expect(research).toHaveBeenCalledTimes(1); // one free-tier unit, not two
   });
 });

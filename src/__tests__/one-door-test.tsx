@@ -4,10 +4,12 @@
  * screen. It lives at the ROOT as an overlay above the tab navigator —
  * inside a tab's LocationGate the floating tab pill sat on top of it
  * (sim-caught). These pin the contract: shown only while permission is
- * undetermined and "Not now" isn't on record, Enable is the app's one
- * permission-request path, "Not now" is remembered and LocationGate
- * falls through to the denied-state UI (banner + search), and a
- * returning dismisser never sees a flash of the door.
+ * undetermined and "Not now" isn't on record, requestLocationPermission
+ * is the app's one permission-request path, "Not now" is remembered and
+ * LocationGate falls through to the NEVER-ASKED invitation (#290: not
+ * the denied banner — nothing is off, and Settings has no Location row
+ * to send anyone to), and a returning dismisser never sees a flash of
+ * the door.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
@@ -32,7 +34,7 @@ jest.mock('@/hooks/use-location', () => ({
 }));
 
 jest.mock('@/hooks/use-area-name', () => ({
-  useAreaName: () => ({ name: 'Greenwich', settled: true }),
+  useAreaName: () => ({ name: 'Greenwich', label: 'Greenwich', settled: true }),
 }));
 
 jest.mock('expo-location', () => ({
@@ -44,7 +46,8 @@ jest.mock('@/hooks/use-history', () => ({
   useHistory: (...args: unknown[]) => mockUseHistory(...args),
 }));
 
-const deniedBanner = 'Location is off — enable it in Settings, or search a place to explore:';
+/** What "Not now" leaves behind: the ask, in the room where it matters. */
+const neverAskedHeading = 'Venture hasn’t asked where you are yet';
 
 /** iOS hasn't been asked yet — the only state where the door shows. */
 function permissionUndetermined() {
@@ -144,7 +147,7 @@ describe('the root overlay (OneDoorGate)', () => {
     expect(backdrop).toHaveProp('importantForAccessibility', 'auto');
   });
 
-  test('"Enable location" is the one permission-request path', async () => {
+  test('the primary button is the one permission-request path', async () => {
     permissionUndetermined();
     const screen = await render(atRoot());
 
@@ -153,6 +156,20 @@ describe('the root overlay (OneDoorGate)', () => {
     expect(mockRequestLocationPermission).toHaveBeenCalledTimes(1);
     // The door stays up — it leaves only when the permission status does
     expect(screen.getByTestId('one-door')).toBeOnTheScreen();
+  });
+
+  test('the button says "Continue" and never lobbies for the grant (5.1.1(iv))', async () => {
+    // App Review rejected 1.0(8) for a pre-permission button that
+    // directed the user to allow. The screen still explains WHY —
+    // that part Apple invites — but the button stays neutral.
+    permissionUndetermined();
+    const screen = await render(atRoot());
+
+    expect(await screen.findByText('Continue')).toBeOnTheScreen();
+    expect(screen.queryByText('Enable location')).toBeNull();
+    expect(screen.getByTestId('one-door-enable')).toHaveProp('accessibilityLabel', 'Continue');
+    // The reason keeps its place above the button
+    expect(screen.getByText(/Venture needs your location to find them/)).toBeOnTheScreen();
   });
 
   test('"Not now" persists the flag and takes the door down', async () => {
@@ -177,17 +194,25 @@ describe('the root overlay (OneDoorGate)', () => {
     expect(screen.queryByTestId('one-door')).toBeNull();
   });
 
-  test('a determined permission never shows the door', async () => {
+  test('a determined permission never shows the door, and the app is reachable', async () => {
     permissionDetermined('granted');
     const screen = await render(atRoot());
     await waitFor(() =>
       expect(AsyncStorage.getItem).toHaveBeenCalledWith(ONE_DOOR_DISMISSED_KEY)
     );
     expect(screen.queryByTestId('one-door')).toBeNull();
+    // Not merely "no door": the app behind it is in the accessibility
+    // tree, which a door that failed to render would also satisfy
+    expect(screen.getByText('the app underneath')).toBeOnTheScreen();
+    expect(screen.getByTestId('one-door-backdrop')).toHaveProp(
+      'accessibilityElementsHidden',
+      false
+    );
 
     permissionDetermined('denied');
     await screen.rerender(atRoot());
     expect(screen.queryByTestId('one-door')).toBeNull();
+    expect(screen.getByText('the app underneath')).toBeOnTheScreen();
   });
 
   test('no flash of the door while the flag is still loading', async () => {
@@ -211,18 +236,52 @@ describe('the root overlay (OneDoorGate)', () => {
 });
 
 describe('LocationGate beneath the door', () => {
-  test('undetermined + dismissed: falls through to the denied UI', async () => {
+  test('undetermined + dismissed: the never-asked invitation, and the ask that reopens the door', async () => {
     await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
     permissionUndetermined();
 
     const screen = await render(<StoriesScreen />);
 
-    expect(await screen.findByText(deniedBanner)).toBeOnTheScreen();
-    expect(screen.getByTestId('place-search')).toBeOnTheScreen();
+    expect(await screen.findByText(neverAskedHeading)).toBeOnTheScreen();
+    // "Not now" is no longer a one-way door: the ask has a second call
+    // site, and it is on the screen the reader is actually looking at
+    await fireEvent.press(screen.getByTestId('ask-for-location'));
+    expect(mockRequestLocationPermission).toHaveBeenCalled();
     expect(screen.queryByTestId('one-door')).toBeNull();
   });
 
+  test('undetermined + dismissed: nothing claims location is off, and Settings is not offered', async () => {
+    // iOS shows no Location row for an app that has never requested
+    // one, so the old sentence sent the majority state to a screen
+    // with no such control (#290)
+    await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
+    permissionUndetermined();
+
+    const screen = await render(<StoriesScreen />);
+
+    await screen.findByText(neverAskedHeading);
+    expect(screen.queryByTestId('open-settings')).toBeNull();
+    expect(screen.queryByText(/Location is off/)).toBeNull();
+  });
+
+  test('undetermined + dismissed: the search waits behind a word, and opens on it', async () => {
+    await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
+    permissionUndetermined();
+
+    const screen = await render(<StoriesScreen />);
+
+    await screen.findByText(neverAskedHeading);
+    expect(screen.queryByTestId('place-search')).toBeNull();
+    await fireEvent.press(screen.getByTestId('invitation-search-instead'));
+    expect(screen.getByTestId('place-search')).toBeOnTheScreen();
+  });
+
   test('undetermined + not dismissed: a quiet loading — the root door owns the screen', async () => {
+    // Three `toBeNull`s and a mock call stood here. Absence is the
+    // cheapest thing a screen can satisfy: return null from this branch
+    // of LocationGate and a first-run reader gets a blank tab under the
+    // door — every assertion still green. So the wait is asserted as a
+    // thing that is THERE.
     permissionUndetermined();
 
     const screen = await render(<StoriesScreen />);
@@ -230,8 +289,22 @@ describe('LocationGate beneath the door', () => {
     await waitFor(() =>
       expect(AsyncStorage.getItem).toHaveBeenCalledWith(ONE_DOOR_DISMISSED_KEY)
     );
-    // No denied banner, and no door of its own — that lives at the root
-    expect(screen.queryByText(deniedBanner)).toBeNull();
+    expect(screen.getByTestId('gate-waiting')).toBeOnTheScreen();
+    // No invitation, and no door of its own — that lives at the root
+    expect(screen.queryByText(neverAskedHeading)).toBeNull();
     expect(screen.queryByTestId('one-door')).toBeNull();
+  });
+
+  test('the gate lets go the moment the flag says dismissed', async () => {
+    // The other half of the same fact: the quiet wait is a WAIT, not a
+    // resting state. Behind the door it holds; past the door the tab
+    // shows the invitation, on the same permission status.
+    await AsyncStorage.setItem(ONE_DOOR_DISMISSED_KEY, 'true');
+    permissionUndetermined();
+
+    const screen = await render(<StoriesScreen />);
+
+    expect(await screen.findByText(neverAskedHeading)).toBeOnTheScreen();
+    expect(screen.queryByTestId('gate-waiting')).toBeNull();
   });
 });

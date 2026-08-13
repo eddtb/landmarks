@@ -25,8 +25,9 @@ const budget = makeBudget({
   provider: 'Gemini (free-tier calls)',
   ledgerName: 'gemini-call-ledger',
   envVar: 'GEMINI_DAILY_CALLS',
+  unit: 'calls',
   // Grounded free quota is 500/day on this model — trip well before
-  defaultDailyUsd: 300,
+  defaultDailyCap: 300,
 });
 
 export const geminiBudget = budget;
@@ -84,10 +85,15 @@ function requestBody(options: GenerateOptions): string {
 }
 
 export async function generateWithGemini(options: GenerateOptions): Promise<string> {
-  budget.assert();
-  const response = await fetch(`${Endpoint}?key=${options.apiKey}`, {
+  await budget.assert();
+  const response = await fetch(Endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // The key travels as a header, not a query string — query strings
+    // land in proxy and error logs far more readily
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': options.apiKey },
+    // Every other upstream carries a timeout; a hung handshake here
+    // was the one spinner the platform had to kill for us
+    signal: AbortSignal.timeout(30_000),
     body: requestBody(options),
   });
 
@@ -97,12 +103,12 @@ export async function generateWithGemini(options: GenerateOptions): Promise<stri
   }
 
   const body = (await response.json()) as GeminiResponse;
-  budget.record(1);
+  await budget.record();
   const today = budget.todays();
   console.log(
     `[gemini] ${options.label}: ${body.usageMetadata?.promptTokenCount ?? 0} in / ` +
       `${body.usageMetadata?.candidatesTokenCount ?? 0} out, grounded=${options.grounded} ` +
-      `(today: ${today.dollars} of ${budget.cap()} free calls)`
+      `(today: ${today.calls} of ${budget.cap()} free calls)`
   );
   return extractAnswerText(body.candidates?.[0]?.content?.parts ?? []);
 }
@@ -168,17 +174,27 @@ export function makeGeminiSseDecoder(): {
  * stream cut short still burned a call.
  */
 export async function* streamWithGemini(options: GenerateOptions): AsyncGenerator<string, void, void> {
-  budget.assert();
-  const response = await fetch(`${StreamEndpoint}?alt=sse&key=${options.apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: requestBody(options),
-  });
+  await budget.assert();
+  // Connect-phase timeout only: once headers arrive the model is
+  // writing, and a long multi-part stream must not be cut mid-telling
+  const connect = new AbortController();
+  const connectTimer = setTimeout(() => connect.abort(), 15_000);
+  let response: Response;
+  try {
+    response = await fetch(`${StreamEndpoint}?alt=sse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': options.apiKey },
+      signal: connect.signal,
+      body: requestBody(options),
+    });
+  } finally {
+    clearTimeout(connectTimer);
+  }
   if (!response.ok || !response.body) {
     const detail = response.ok ? 'no response body' : await response.text();
     throw new Error(`Gemini API ${response.status}: ${detail.slice(0, 500)}`);
   }
-  budget.record(1);
+  await budget.record();
 
   const decoder = makeGeminiSseDecoder();
   const reader = response.body.getReader();
@@ -202,7 +218,7 @@ export async function* streamWithGemini(options: GenerateOptions): AsyncGenerato
     console.log(
       `[gemini] ${options.label}: ${usage?.promptTokenCount ?? 0} in / ` +
         `${usage?.candidatesTokenCount ?? 0} out, streamed, grounded=${options.grounded} ` +
-        `(today: ${today.dollars} of ${budget.cap()} free calls)`
+        `(today: ${today.calls} of ${budget.cap()} free calls)`
     );
   }
 }

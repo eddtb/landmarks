@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
 import { CommonsPage, creditLine } from '@/server/commons';
+import { UserAgent } from '@/server/user-agent';
 import { Article, ArticleChapter, ArticleImage } from '@/types/article';
 import { storyParagraphs } from '@/utils/format';
 
@@ -9,8 +10,6 @@ import { storyParagraphs } from '@/utils/format';
  * 14-chapter article). Fetched by title, parsed into chapters,
  * reference-apparatus culled, cached a week per article.
  */
-
-const UserAgent = 'landmarks-app/1.0 (https://github.com/eddtb/landmarks; learning project)';
 
 // The reference apparatus reads as junk in a reading app
 const JunkSections = new Set([
@@ -158,12 +157,36 @@ const LightTtlMs = 15 * 60 * 1000;
 // a light result cached with images: [] would read as tried-and-
 // found-none and hide the gallery for a week (couldn't-try ≠
 // tried-and-failed), hence the separate short-lived light key.
-const cache = diskBackedMap<{ article: Article; at: number }>('articles-v2');
-const lightCache = diskBackedMap<{ article: Article; at: number }>('articles-light-v1');
+// Measured before the caps landed (#246): 63 full articles at 672KB
+// with 57 of them past the week, and 44 light ones at 532KB with ALL
+// 44 past their fifteen minutes — the light store is pure churn
+// without a bound. ~11KB an entry, so these caps are ~3MB and ~1MB.
+const cache = diskBackedMap<{ article: Article; at: number }>('articles-v2', {
+  ttlMs: ArticleTtlMs,
+  maxEntries: 300,
+});
+const lightCache = diskBackedMap<{ article: Article; at: number }>('articles-light-v1', {
+  ttlMs: LightTtlMs,
+  maxEntries: 100,
+});
 // Single-flight (mirrors retold.ts): concurrent /api/article and
 // /api/retold cold-opens share one upstream fetch per title
 const inFlight = new Map<string, Promise<Article | null>>();
 const lightInFlight = new Map<string, Promise<Article | null>>();
+// The chapters leg itself is single-flight too: the client fires the
+// light and full asks concurrently on a cold open, and both funnel
+// into ONE Wikipedia extract call instead of two
+const chaptersInFlight = new Map<string, Promise<Omit<Article, 'images'> | null>>();
+
+function getChaptersOnce(title: string, key: string): Promise<Omit<Article, 'images'> | null> {
+  const pending = chaptersInFlight.get(key);
+  if (pending) {
+    return pending;
+  }
+  const work = fetchChapters(title).finally(() => chaptersInFlight.delete(key));
+  chaptersInFlight.set(key, work);
+  return work;
+}
 
 /** The extract leg alone: ~0.2s of a 1.3-1.7s cold open. */
 async function fetchChapters(title: string): Promise<Omit<Article, 'images'> | null> {
@@ -215,7 +238,7 @@ export async function getArticleLight(title: string): Promise<Article | null> {
 }
 
 async function fetchLightUncached(title: string, key: string): Promise<Article | null> {
-  const base = await fetchChapters(title);
+  const base = await getChaptersOnce(title, key);
   if (!base) {
     return null;
   }
@@ -242,14 +265,17 @@ export async function getArticle(title: string): Promise<Article | null> {
 async function fetchFullUncached(title: string, key: string): Promise<Article | null> {
   // The light path usually just paid for the extract leg — reuse it
   const light = lightCache.get(key);
-  const base =
+  const baseLeg =
     light && Date.now() - light.at < LightTtlMs
-      ? { chapters: light.article.chapters, minutes: light.article.minutes }
-      : await fetchChapters(title);
+      ? Promise.resolve({ chapters: light.article.chapters, minutes: light.article.minutes })
+      : getChaptersOnce(title, key);
+  // The image legs never depended on the chapters — run them abreast
+  // (the old serialization was ~0.3-0.5s of every cold hero paint)
+  const imagesLeg = fetchArticleImages(title).catch(() => []);
+  const [base, images] = await Promise.all([baseLeg, imagesLeg]);
   if (!base) {
     return null;
   }
-  const images = await fetchArticleImages(title).catch(() => []);
   const article = { ...base, images };
   cache.set(key, { article, at: Date.now() });
   return article;

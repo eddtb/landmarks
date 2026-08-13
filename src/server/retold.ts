@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
-import { researchStream } from '@/server/anthropic';
+import { storeGet, storePut } from '@/server/telling-store';
+import { researchStream } from '@/server/ai-router';
 import { getArticle } from '@/server/article';
 import { extractAnswerText } from '@/server/gemini';
 import { Retold, RetoldPart, TimelineStop } from '@/types/retold';
@@ -19,27 +20,65 @@ const TtlMs = 30 * 24 * 60 * 60 * 1000;
 // A failed or refused retelling is remembered too — every open must
 // NOT re-burn a free-tier call on an article that can't be retold
 const NoRetellTtlMs = 7 * 24 * 60 * 60 * 1000;
-// Stubs don't earn a retelling: their formatted original already
-// reads well, and the call quota goes where the stories are rich
-export const MinSourceChars = 3000;
-// v2: v1 entries predate pull-quotes and the timeline
-const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v2');
-const inFlight = new Map<string, Promise<Retold | null>>();
+// Below this there is genuinely too little to write from — a telling
+// covers it. It sat at 3,000 while the app still showed the original
+// article under the gate; once that republication was removed (App
+// Review kept citing it), the places just under the old gate — six of
+// the twenty nearest Greenwich places, each with 1,500-2,500 chars of
+// good material — were left showing a ~150-word telling. The prompt now
+// scales its ask to the source (see retoldPrompt), so a shorter article
+// earns a shorter original account instead of either extreme.
+export const MinSourceChars = 1500;
+// v3: the gate dropped from 3,000 — the durable no-retell verdicts
+// written under the old gate would otherwise block the newly-eligible
+// places' retellings for up to 7 days. v4: the brief joined the
+// contract (Edd, 2026-08-06) — everything regenerates once on next
+// open, arriving with its card. One prefix, lazy, free tier.
+const retoldKey = (areaName: string) => `v4:${areaName.toLowerCase()}`;
+// The LONGER of the two TTLs above: pruning at 30 days can never drop
+// an entry a caller would still have served, while a no-retell verdict
+// stops being served at 7 days by the read below, as it always did.
+const cache = diskBackedMap<{ retold: Retold | null; at: number }>('retold-v4', {
+  ttlMs: TtlMs,
+  maxEntries: 1000,
+});
+// What a joiner learns when the shared generation settles: a VERDICT
+// (told, or honestly untellable — 404 material) or an INTERRUPTION
+// (transport died, nothing cached — 502 material, retry welcome).
+// Settling both as null once made joiners tell users "no retelling
+// exists" about stories whose stream merely broke mid-write.
+type SharedOutcome = { verdict: Retold | null } | { interrupted: true };
+const inFlight = new Map<string, Promise<SharedOutcome>>();
+
+async function joinShared(shared: Promise<SharedOutcome>): Promise<Retold | null> {
+  const outcome = await shared;
+  if ('interrupted' in outcome) {
+    throw new Error('Retelling interrupted mid-stream');
+  }
+  return outcome.verdict;
+}
 
 /** Pure and unit-tested: the contract the model must write to. */
 export function retoldPrompt(areaName: string, source: string): string {
+  // The ask scales to the material. Demanding 6-9 parts and 1,200+
+  // words of a 1,700-character source is an instruction to invent —
+  // the one thing the trust contract forbids. A short source earns a
+  // short original account, not a padded one.
+  const short = source.length < 3000;
   return [
-    `You retell local history for a reading app. Retell the story of ${areaName} from the source text below as an engaging long read.`,
+    `You retell local history for a reading app. Retell the story of ${areaName} from the source text below as an engaging ${short ? 'short read' : 'long read'}.`,
     '',
     'Rules:',
-    '- Organise it into 6 to 9 parts, each with a short evocative heading (2-5 words) that stays honest to its content.',
+    `- Organise it into ${short ? '3 to 5' : '6 to 9'} parts, each with a short evocative heading (2-5 words) that stays honest to its content. Never pad: fewer full parts beat more thin ones.`,
     '- Open the first part with the most surprising true thing — the detail a reader would repeat to a friend.',
-    '- Short paragraphs (2-4 sentences each), 2-4 paragraphs per part. Aim for 1,200-1,800 words in total. Concrete details, real dates and names. Written to be read with pleasure, not skimmed.',
+    `- Short paragraphs (2-4 sentences each), 2-4 paragraphs per part. Aim for ${short ? '350-700' : '1,200-1,800'} words in total. Concrete details, real dates and names. Written to be read with pleasure, not skimmed.`,
     '- Chronology should generally flow forward after the opening.',
     '- Use ONLY facts from the source text. Never invent. If the source is thin somewhere, write less.',
     '- For each part you MAY include "pullQuote": ONE sentence copied EXACTLY, word for word, from that part\'s body — its most repeatable line. Omit it where nothing stands out.',
-    '- Include a top-level "timeline": 4 to 6 pivotal dated moments, each {"year": "1491", "label": "Henry VIII born here", "part": 4} — label 3-6 words, facts only from the source, "part" = the 1-based number of the part where that moment is told.',
-    '- Return ONLY fenced JSON: {"parts": [{"heading": "...", "body": "paragraph\\n\\nparagraph", "pullQuote": "..."}], "timeline": [...]}',
+    `- Include a top-level "timeline": ${short ? '2 to 4' : '4 to 6'} pivotal dated moments,` +
+      ' each {"year": "1491", "label": "Henry VIII born here", "part": 4} — label 3-6 words, facts only from the source, "part" = the 1-based number of the part where that moment is told.',
+    '- Include a top-level "brief": the 2 or 3 lines a stranger standing at this place most needs, for a ten-second read. CHOOSE the questions this place calls for — a preserved ship wants what it is, what made it famous, why it sits here; a ruin wants what stood here, what happened to it, what remains; a plaque wants who, and what happened on this spot. One sentence per line, under 110 characters, facts only from the source. Not an introduction — the essentials.',
+    '- Return ONLY fenced JSON: {"brief": ["...", "..."], "parts": [{"heading": "...", "body": "paragraph\\n\\nparagraph", "pullQuote": "..."}], "timeline": [...]}',
     '',
     'Source:',
     source,
@@ -123,12 +162,28 @@ export function parseRetold(text: string): Retold | null {
     })
     .slice(0, 6);
 
+  // The brief is lenient like the timeline: a bad line drops, a bad
+  // brief drops whole — it must never cost a reader the retelling
+  const rawBrief = (parsed as { brief?: unknown }).brief;
+  const briefLines = (Array.isArray(rawBrief) ? rawBrief : [])
+    .flatMap((line) =>
+      typeof line === 'string' && line.trim() && line.trim().length <= 140 ? [line.trim()] : []
+    )
+    .slice(0, 3);
+  // One line is not a brief — it's a caption wearing the card
+  const brief = briefLines.length >= 2 ? briefLines : [];
+
   const words = clean
     .map((part) => part.body)
     .join(' ')
     .split(/\s+/)
     .filter(Boolean).length;
-  return { parts: clean, minutes: Math.max(1, Math.round(words / ReadingWordsPerMinute)), timeline };
+  return {
+    parts: clean,
+    minutes: Math.max(1, Math.round(words / ReadingWordsPerMinute)),
+    timeline,
+    brief,
+  };
 }
 
 /**
@@ -218,11 +273,12 @@ export type RetoldStreamEvent =
 export type RetoldStreamStart =
   | { kind: 'unavailable' } // no article, or too thin to retell — a 404
   | { kind: 'join' } // a generation is already running — share it as JSON
+  | { kind: 'cached' } // the durable store answered — peek now hits, serve JSON
   | { kind: 'stream'; events: AsyncGenerator<RetoldStreamEvent, void, void> };
 
 /** The fresh cache entry (a null retold is the "no retelling" verdict), or undefined. */
 export function peekRetold(areaName: string): { retold: Retold | null } | undefined {
-  const cached = cache.get(areaName.toLowerCase());
+  const cached = cache.get(retoldKey(areaName));
   if (cached && Date.now() - cached.at < (cached.retold ? TtlMs : NoRetellTtlMs)) {
     return { retold: cached.retold };
   }
@@ -230,7 +286,29 @@ export function peekRetold(areaName: string): { retold: Retold | null } | undefi
 }
 
 export function retellingInFlight(areaName: string): boolean {
-  return inFlight.has(areaName.toLowerCase());
+  return inFlight.has(retoldKey(areaName));
+}
+
+/**
+ * The durable store's answer for a key, re-seeded into the
+ * per-process map at its ORIGINAL age so both TTL clocks (30d told,
+ * 7d "no retelling") keep one truth. On production edge runtimes the
+ * map dies with every isolate — without this, each recycle rewrote
+ * the same stories, one free-tier call at a time. Undefined means
+ * miss, stale, store off, or store unreachable — all one answer:
+ * generate.
+ */
+async function restoreRetold(key: string): Promise<{ retold: Retold | null } | undefined> {
+  const stored = await storeGet<{ retold: Retold | null }>('retold', key);
+  if (!stored) {
+    return undefined;
+  }
+  const ttl = stored.value.retold ? TtlMs : NoRetellTtlMs;
+  if (Date.now() - stored.at >= ttl) {
+    return undefined;
+  }
+  cache.set(key, { retold: stored.value.retold, at: stored.at });
+  return { retold: stored.value.retold };
 }
 
 async function retellSource(areaName: string): Promise<string | null> {
@@ -257,32 +335,47 @@ async function retellSource(areaName: string): Promise<string | null> {
  * and nothing is cached — we couldn't try, so we may try again.
  */
 export async function startRetoldStream(areaName: string): Promise<RetoldStreamStart> {
-  const key = areaName.toLowerCase();
+  const key = retoldKey(areaName);
   // Single-flight: concurrent opens of the same story share one call
   if (inFlight.has(key)) {
     return { kind: 'join' };
   }
-  let settle!: (retold: Retold | null) => void;
-  const shared = new Promise<Retold | null>((resolve) => {
+  // Another worker may have told this story already — ask the durable
+  // store before spending a call. Re-checked join after the await:
+  // a concurrent open may have started generating meanwhile.
+  const restored = await restoreRetold(key);
+  if (restored !== undefined) {
+    return restored.retold ? { kind: 'cached' } : { kind: 'unavailable' };
+  }
+  if (inFlight.has(key)) {
+    return { kind: 'join' };
+  }
+  let settle!: (outcome: SharedOutcome) => void;
+  const shared = new Promise<SharedOutcome>((resolve) => {
     settle = resolve;
   });
   inFlight.set(key, shared);
-  const finish = (retold: Retold | null) => {
+  const finish = (outcome: SharedOutcome) => {
     inFlight.delete(key);
-    settle(retold);
+    settle(outcome);
   };
 
   try {
     const source = await retellSource(areaName);
     if (source === null) {
       // No article at all: not cached — the article may yet appear
-      finish(null);
+      finish({ verdict: null });
       return { kind: 'unavailable' };
     }
     if (source.length < MinSourceChars) {
-      // Stubs don't earn a retelling — not worth a call now, or on the next open
-      cache.set(key, { retold: null, at: Date.now() });
-      finish(null);
+      // Stubs don't earn a retelling — not worth a call now, or on the
+      // next open, on ANY worker (the verdict is durable too)
+      const at = Date.now();
+      cache.set(key, { retold: null, at });
+      // Awaited: a floating write dies with the isolate (Workers
+      // freeze on response) — the verdict must land before we answer
+      await storePut('retold', key, { retold: null }, at);
+      finish({ verdict: null });
       return { kind: 'unavailable' };
     }
     const deltas = researchStream({
@@ -294,7 +387,9 @@ export async function startRetoldStream(areaName: string): Promise<RetoldStreamS
     const first = await deltas.next(); // breaker + connection open happen here
     return { kind: 'stream', events: pumpRetold(key, deltas, first, finish) };
   } catch (error) {
-    finish(null);
+    // The initiator gets the real error; joiners must not hear a
+    // refused breaker or a dead source as "no retelling exists"
+    finish({ interrupted: true });
     throw error;
   }
 }
@@ -303,7 +398,7 @@ async function* pumpRetold(
   key: string,
   deltas: AsyncGenerator<string, void, void>,
   first: IteratorResult<string, void>,
-  finish: (retold: Retold | null) => void
+  finish: (outcome: SharedOutcome) => void
 ): AsyncGenerator<RetoldStreamEvent, void, void> {
   const scanner = makePartScanner();
   let raw = '';
@@ -334,7 +429,7 @@ async function* pumpRetold(
       // The stream broke mid-write. Couldn't-finish is not a verdict:
       // NOTHING is cached, and the next ask may try again.
       console.error('Retold stream interrupted:', error);
-      finish(null);
+      finish({ interrupted: true });
       settled = true;
       yield { kind: 'failed', reason: 'interrupted' };
       return;
@@ -345,8 +440,12 @@ async function* pumpRetold(
     // 30 days; a completed-but-invalid one as the 7-day "no retelling"
     // verdict (the call was spent; re-spending per open compounds it).
     const retold = parseRetold(extractAnswerText([{ text: raw }]));
-    cache.set(key, { retold, at: Date.now() });
-    finish(retold);
+    const at = Date.now();
+    cache.set(key, { retold, at });
+    // Awaited before the final frame: the SSE response is still open
+    // here, so the isolate stays alive for the write
+    await storePut('retold', key, { retold }, at);
+    finish({ verdict: retold });
     settled = true;
     if (retold) {
       yield { kind: 'done', retold };
@@ -356,15 +455,15 @@ async function* pumpRetold(
   } finally {
     if (!settled) {
       // The consumer walked away mid-stream (disconnect): release the
-      // single-flight slot, cache nothing
-      finish(null);
+      // single-flight slot, cache nothing — joiners retry, not 404
+      finish({ interrupted: true });
     }
     void deltas.return(undefined);
   }
 }
 
 export async function getRetold(areaName: string): Promise<Retold | null> {
-  const key = areaName.toLowerCase();
+  const key = retoldKey(areaName);
   const peeked = peekRetold(areaName);
   if (peeked !== undefined) {
     return peeked.retold;
@@ -374,15 +473,20 @@ export async function getRetold(areaName: string): Promise<Retold | null> {
   // for that one call rather than spending its own
   const pending = inFlight.get(key);
   if (pending) {
-    return pending;
+    return joinShared(pending);
   }
 
   const started = await startRetoldStream(areaName);
   if (started.kind === 'unavailable') {
     return null;
   }
+  if (started.kind === 'cached') {
+    // The durable store answered and re-seeded the map
+    return peekRetold(areaName)?.retold ?? null;
+  }
   if (started.kind === 'join') {
-    return inFlight.get(key) ?? getRetold(areaName);
+    const shared = inFlight.get(key);
+    return shared ? joinShared(shared) : getRetold(areaName);
   }
   // Same transport as the streaming route, drained to one answer
   let final: Retold | null = null;

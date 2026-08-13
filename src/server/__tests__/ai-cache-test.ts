@@ -1,12 +1,25 @@
-import { diskBackedMap } from '@/server/ai-cache';
+import { diskBackedMap, flushDiskMapsForTests } from '@/server/ai-cache';
 
 // Same guarded require the module itself uses — the app tsconfig has
 // no node types, and this test only runs under node
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { existsSync, rmSync } = require('fs') as {
+const { existsSync, rmSync, readFileSync, writeFileSync } = require('fs') as {
   existsSync: (path: string) => boolean;
   rmSync: (path: string) => void;
+  readFileSync: (path: string, encoding: 'utf8') => string;
+  writeFileSync: (path: string, data: string) => void;
 };
+
+/** The simulated process restart: drop the live instance so the next
+ * diskBackedMap call has nothing but the file to build from. */
+function restart(name: string) {
+  (globalThis as { aiDiskMaps?: Map<string, unknown> }).aiDiskMaps?.delete(name);
+  (globalThis as { aiDiskPolicies?: Map<string, unknown> }).aiDiskPolicies?.delete(name);
+}
+
+function diskEntries(path: string): Map<string, unknown> {
+  return new Map(JSON.parse(readFileSync(path, 'utf8')) as [string, unknown][]);
+}
 
 /**
  * The cache's whole job is surviving the process: entries written
@@ -45,78 +58,6 @@ describe('diskBackedMap', () => {
   });
 });
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { extractAnswerText } = require('@/server/gemini') as {
-  extractAnswerText: (parts: { text?: string; thought?: boolean }[]) => string;
-};
-
-describe('extractAnswerText (Gemini part handling)', () => {
-  test('drops thought parts and takes the fenced block when present', () => {
-    const text = extractAnswerText([
-      { text: 'Let me research this venue…', thought: true },
-      { text: 'Here is the answer:\n```json\n[{"title": "Quiz Night"}]\n```' },
-      { text: '```json\n[{"title": "Quiz Night"}]\n```' },
-    ]);
-    // The duplicate-block trap: first fenced block wins, cleanly
-    expect(JSON.parse(text)).toEqual([{ title: 'Quiz Night' }]);
-  });
-
-  test('plain unfenced answers pass through untouched', () => {
-    expect(extractAnswerText([{ text: '[{"a": 1}]' }])).toBe('[{"a": 1}]');
-  });
-});
-
-describe('extractAnswerText truncation handling', () => {
-  test('skips a truncated first block for the complete repeat', () => {
-    const text = extractAnswerText([
-      { text: '```json\n[{"title": "Quiz", "sourceUrl": "https://truncat' },
-      { text: '```\n```json\n[{"title": "Quiz", "sourceUrl": "https://full.example"}]\n```' },
-    ]);
-    expect(JSON.parse(text)).toEqual([{ title: 'Quiz', sourceUrl: 'https://full.example' }]);
-  });
-});
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { makeGeminiSseDecoder } = require('@/server/gemini') as {
-  makeGeminiSseDecoder: () => {
-    feed: (chunk: string) => string[];
-    usage: () => { candidatesTokenCount?: number } | undefined;
-  };
-};
-
-describe('makeGeminiSseDecoder (streamGenerateContent alt=sse framing)', () => {
-  const dataLine = (text: string, extra = '') =>
-    `data: {"candidates": [{"content": {"parts": [{"text": ${JSON.stringify(text)}}]}}]${extra}}\n\n`;
-
-  test('deltas surface per complete data line, across any network chunking', () => {
-    const wire = dataLine('The palace ') + dataLine('stood here.');
-    const decoder = makeGeminiSseDecoder();
-    const deltas = [...wire].flatMap((char) => decoder.feed(char));
-    expect(deltas).toEqual(['The palace ', 'stood here.']);
-  });
-
-  test('thought parts are dropped, exactly as in the one-shot path', () => {
-    const decoder = makeGeminiSseDecoder();
-    const deltas = decoder.feed(
-      'data: {"candidates": [{"content": {"parts": [{"text": "hmm", "thought": true}, {"text": "answer"}]}}]}\n\n'
-    );
-    expect(deltas).toEqual(['answer']);
-  });
-
-  test('usage metadata is kept from the last chunk that carried it', () => {
-    const decoder = makeGeminiSseDecoder();
-    decoder.feed(dataLine('a', ', "usageMetadata": {"candidatesTokenCount": 42}'));
-    expect(decoder.usage()?.candidatesTokenCount).toBe(42);
-  });
-
-  test('an error chunk throws instead of vanishing into the buffer', () => {
-    const decoder = makeGeminiSseDecoder();
-    expect(() => decoder.feed('data: {"error": {"message": "quota exceeded"}}\n\n')).toThrow(
-      'quota exceeded'
-    );
-  });
-});
-
 /**
  * The clobber regression: two processes sharing .ai-cache must never
  * erase each other's entries. Simulated by writing a "foreign" entry
@@ -125,11 +66,6 @@ describe('makeGeminiSseDecoder (streamGenerateContent alt=sse framing)', () => {
 describe('diskBackedMap merge-on-write', () => {
   const name = 'test-merge-cache';
   const path = `${process.env.AI_CACHE_DIR}/${name}.json`;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { writeFileSync, readFileSync } = require('fs') as {
-    writeFileSync: (path: string, data: string) => void;
-    readFileSync: (path: string, encoding: 'utf8') => string;
-  };
 
   afterAll(() => {
     if (existsSync(path)) {
@@ -158,5 +94,156 @@ describe('diskBackedMap merge-on-write', () => {
     expect(onDisk.get('theirs')).toBe('from the other process'); // preserved, not clobbered
     expect(onDisk.get('ours')).toBe('from this process'); // in-memory wins for our keys
     expect(onDisk.get('ours-2')).toBe('trigger a flush');
+  });
+});
+
+/**
+ * Forgetting, the half these maps never had (#246). Three ways an
+ * entry must leave — age, the cap, and being deleted — and all three
+ * are only real if they survive the rehydrate. A delete that lives in
+ * memory alone is not a delete: the entry comes back with the next
+ * process, which is how quiz.ts's invalidation and spend-budget's
+ * ledger reset were both quietly no-ops.
+ */
+describe('diskBackedMap forgetting', () => {
+  const Ttl = 60 * 60 * 1000;
+  const paths: string[] = [];
+
+  function probe(name: string): string {
+    const path = `${process.env.AI_CACHE_DIR}/${name}.json`;
+    paths.push(path);
+    restart(name);
+    return path;
+  }
+
+  afterAll(() => {
+    for (const path of paths) {
+      if (existsSync(path)) {
+        rmSync(path);
+      }
+    }
+  });
+
+  test('an expired entry never survives the hydrate — it is gone before any caller asks', () => {
+    const name = 'forget-expiry';
+    const path = probe(name);
+    writeFileSync(
+      path,
+      JSON.stringify([
+        ['stale', { value: 'composed two hours ago', at: Date.now() - 2 * Ttl }],
+        ['live', { value: 'composed just now', at: Date.now() }],
+      ])
+    );
+
+    const map = diskBackedMap<{ value: string; at: number }>(name, { ttlMs: Ttl });
+
+    expect(map.has('stale')).toBe(false);
+    expect(map.size).toBe(1);
+    expect(map.get('live')?.value).toBe('composed just now');
+  });
+
+  test('the cap evicts the oldest-written entry, and the cap holds on disk too', () => {
+    const name = 'forget-cap';
+    const path = probe(name);
+    const map = diskBackedMap<{ value: string; at: number }>(name, { maxEntries: 2 });
+
+    map.set('first', { value: 'oldest', at: 1000 });
+    map.set('second', { value: 'newer', at: 2000 });
+    map.set('third', { value: 'newest', at: 3000 }); // over the cap
+
+    expect(map.has('first')).toBe(false);
+    expect([...map.keys()]).toEqual(['second', 'third']);
+
+    flushDiskMapsForTests();
+    expect(diskEntries(path).size).toBe(2);
+    expect(diskEntries(path).has('first')).toBe(false);
+  });
+
+  test('a deleted entry is gone from disk, and STAYS gone across a restart', () => {
+    const name = 'forget-delete';
+    const path = probe(name);
+    const map = diskBackedMap<string>(name);
+    map.set('keep', 'wanted');
+    map.set('drop', 'poisoned entry, invalidated by its route');
+    flushDiskMapsForTests();
+    expect(diskEntries(path).has('drop')).toBe(true); // it really was persisted
+
+    expect(map.delete('drop')).toBe(true);
+    flushDiskMapsForTests();
+
+    // What the NEXT process gets, which is the only thing that matters
+    expect(diskEntries(path).has('drop')).toBe(false);
+    restart(name);
+    const rehydrated = diskBackedMap<string>(name);
+    expect(rehydrated.get('drop')).toBeUndefined();
+    expect(rehydrated.get('keep')).toBe('wanted');
+  });
+
+  test("a delete is not undone by the stale file it was deleted from", () => {
+    // The merge fold exists so concurrent writers may only add — but a
+    // key this process deleted must not ride back in on another
+    // process's older copy of the same file.
+    const name = 'forget-delete-fold';
+    const path = probe(name);
+    const map = diskBackedMap<string>(name);
+    map.set('drop', 'to be invalidated');
+    map.set('keep', 'wanted');
+    flushDiskMapsForTests();
+
+    map.delete('drop');
+    // Another writer's file still carries it (and something new of
+    // its own, which must still be folded in — adds stay allowed)
+    writeFileSync(
+      path,
+      JSON.stringify([
+        ['drop', 'their stale copy'],
+        ['theirs', 'from the other process'],
+      ])
+    );
+    map.set('trigger', 'a flush');
+    flushDiskMapsForTests();
+
+    const disk = diskEntries(path);
+    expect(disk.has('drop')).toBe(false); // stayed dead
+    expect(disk.get('theirs')).toBe('from the other process'); // add-never-destroy holds
+    expect(disk.get('keep')).toBe('wanted');
+  });
+
+  test('clear empties the file too — a ledger reset that a restart cannot undo', () => {
+    const name = 'forget-clear';
+    const path = probe(name);
+    const map = diskBackedMap<{ dollars: number; calls: number }>(name);
+    map.set('2026-08-10', { dollars: 0.42, calls: 3 });
+    flushDiskMapsForTests();
+    expect(diskEntries(path).size).toBe(1);
+
+    map.clear();
+    flushDiskMapsForTests();
+
+    expect(diskEntries(path).size).toBe(0);
+    restart(name);
+    expect(diskBackedMap(name).size).toBe(0);
+  });
+
+  test('an entry pruned for age is not resurrected by another writer’s stale file', () => {
+    const name = 'forget-prune-fold';
+    const path = probe(name);
+    const map = diskBackedMap<{ value: string; at: number }>(name, { ttlMs: Ttl });
+    map.set('live', { value: 'fresh', at: Date.now() });
+
+    writeFileSync(
+      path,
+      JSON.stringify([
+        ['ancient', { value: 'two hours old', at: Date.now() - 2 * Ttl }],
+        ['fresh-foreign', { value: 'theirs, and current', at: Date.now() }],
+      ])
+    );
+    map.set('trigger', { value: 'a flush', at: Date.now() });
+    flushDiskMapsForTests();
+
+    const disk = diskEntries(path);
+    expect(disk.has('ancient')).toBe(false); // age is the one carve-out
+    expect(disk.has('fresh-foreign')).toBe(true);
+    expect(disk.has('live')).toBe(true);
   });
 });

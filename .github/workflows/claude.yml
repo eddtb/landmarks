@@ -12,11 +12,17 @@ on:
 
 jobs:
   claude:
+    # The repo is PUBLIC and this job's runner holds a long-lived
+    # sk-ant-oat01 credential. Without an author guard, any account could
+    # open an issue saying "@claude" and spend the quota — or, with an
+    # install-script package, read the token off the runner. Only the owner
+    # gets to spend it.
     if: |
+      github.actor == github.repository_owner && (
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,6 +50,9 @@ jobs:
           # prompt: 'Update the pull request description to include a summary of changes.'
 
           # Let Claude install deps, run our quality gates, and read Expo docs
-          # (it reported being blocked on all of these in issue #19)
-          claude_args: '--allowed-tools "Bash(npm ci),Bash(npm install:*),Bash(npm run typecheck),Bash(npm run lint:*),Bash(npm test:*),Bash(npx expo customize:*),WebFetch(domain:docs.expo.dev)"'
+          # (it reported being blocked on all of these in issue #19).
+          # NOT `npm install <pkg>`: install scripts are arbitrary code
+          # execution on a runner holding the OAuth token. `npm ci` installs
+          # the lockfile and nothing else, and is what CI itself uses.
+          claude_args: '--allowed-tools "Bash(npm ci),Bash(npm run typecheck),Bash(npm run lint:*),Bash(npm test:*),Bash(npx expo customize:*),WebFetch(domain:docs.expo.dev)"'
 

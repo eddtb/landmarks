@@ -7,7 +7,7 @@
  */
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { ReactNode } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Linking, Pressable, Text } from 'react-native';
 
 import {
   GateProps,
@@ -16,6 +16,7 @@ import {
   LocationGate,
   StoriesScreen,
 } from '@/components/section-screen';
+import { PlaceSearchPlaceholder } from '@/components/place-search';
 import { clearPin } from '@/hooks/use-pin';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
@@ -28,10 +29,13 @@ jest.mock('@/hooks/use-location', () => ({
   useLocation: () => mockUseLocation(),
 }));
 
-// Area names keyed off the center so tests can read where the app is
+// Area names keyed off the center so tests can read where the app is.
+// A null centre names nothing — the real hook's own answer, and the
+// point of #289: there is no place to name.
 jest.mock('@/hooks/use-area-name', () => ({
-  useAreaName: (center: Coordinates) => ({
-    name: center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
+  useAreaName: (center: Coordinates | null) => ({
+    name: center === null ? null : center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
+    label: center === null ? null : center.latitude === 55.4135 ? 'Alnwick' : 'Greenwich',
     settled: true,
   }),
 }));
@@ -47,10 +51,19 @@ jest.mock('@/hooks/use-history', () => ({
 }));
 
 // The Gazetteer hero is its own tested surface — a stub keeps these
-// tests on the header
+// tests on the chrome. It renders `lead`, because with the History
+// tab's standing header gone that slot is where the mode admission
+// lives (direction B, #300).
 jest.mock('@/components/area-gazetteer', () => {
-  const { Text: RNText } = jest.requireActual('react-native');
-  return { AreaGazetteer: () => <RNText>gazetteer body</RNText> };
+  const { Text: RNText, View: RNView } = jest.requireActual('react-native');
+  return {
+    AreaGazetteer: ({ lead }: { lead?: ReactNode }) => (
+      <RNView>
+        <RNText>gazetteer body</RNText>
+        {lead}
+      </RNView>
+    ),
+  };
 });
 
 function gpsLive() {
@@ -77,10 +90,16 @@ beforeEach(() => {
   mockUseHistory.mockReturnValue({ state: { status: 'ready', items: [] }, refresh: jest.fn() });
 });
 
-/** Drive the header's search: open via the title, type, submit. */
+/** Drive the header's search: open via the title, type, submit. Both
+ * tabs wear a header now, so a two-tab render is driven from the first. */
 async function searchFor(screen: Awaited<ReturnType<typeof render>>, query: string) {
-  await fireEvent.press(screen.getByTestId('area-title'));
-  const input = screen.getByPlaceholderText('Search near a place…');
+  await fireEvent.press(screen.getAllByTestId('area-title')[0]);
+  await submitSearch(screen, query);
+}
+
+/** Type into whichever place field is on screen and submit it. */
+async function submitSearch(screen: Awaited<ReturnType<typeof render>>, query: string) {
+  const input = screen.getByPlaceholderText(PlaceSearchPlaceholder);
   await fireEvent.changeText(input, query);
   await fireEvent(input, 'submitEditing');
 }
@@ -90,9 +109,9 @@ describe('LocationGate pin lifecycle', () => {
   function Probe(gate: GateProps): ReactNode {
     return (
       <>
-        <Text>{`center:${gate.center.latitude}`}</Text>
+        <Text>{`center:${gate.center?.latitude ?? 'none'}`}</Text>
         <Text>{`exploring:${gate.exploring}`}</Text>
-        <Text>{`denied:${gate.locationDenied}`}</Text>
+        <Text>{`standing:${gate.standing}`}</Text>
         <Pressable testID="pin" onPress={() => gate.onManualCenter(alnwick)} />
         <Pressable testID="release" onPress={() => gate.onBackToNearMe()} />
       </>
@@ -120,12 +139,15 @@ describe('LocationGate pin lifecycle', () => {
   test('a pin dropped blind releases itself when GPS first arrives', async () => {
     gpsDenied();
     const screen = await render(gated());
-    expect(screen.getByText('denied:true')).toBeOnTheScreen();
+    expect(screen.getByText('standing:refused')).toBeOnTheScreen();
+    // Refused and unpinned: no centre at all, rather than Charing Cross
+    expect(screen.getByText('center:none')).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByTestId('pin'));
     expect(screen.getByText(`center:${alnwick.latitude}`)).toBeOnTheScreen();
-    // Pinned: the gate no longer reads as denied
-    expect(screen.getByText('denied:false')).toBeOnTheScreen();
+    // Pinned: the reader chose a place, so there is a centre again —
+    // and the permission fact behind it is unchanged
+    expect(screen.getByText('standing:refused')).toBeOnTheScreen();
 
     // Location comes back — the frozen-pin bug fix: GPS wins again
     gpsLive();
@@ -162,7 +184,7 @@ describe('the Exploring header (StoriesScreen)', () => {
     expect(screen.getByText('Greenwich')).toBeOnTheScreen();
     expect(screen.queryByText('Back to near me')).toBeNull();
     // No search until the title is tapped
-    expect(screen.queryByPlaceholderText('Search near a place…')).toBeNull();
+    expect(screen.queryByPlaceholderText(PlaceSearchPlaceholder)).toBeNull();
     const dot = screen.getByTestId('locator-dot');
     expect(dot).toHaveStyle({ backgroundColor: '#6A4BDB' });
   });
@@ -183,7 +205,7 @@ describe('the Exploring header (StoriesScreen)', () => {
       borderWidth: 2,
     });
     // The search folds away once the pin lands
-    expect(screen.queryByPlaceholderText('Search near a place…')).toBeNull();
+    expect(screen.queryByPlaceholderText(PlaceSearchPlaceholder)).toBeNull();
   });
 
   test('Back to near me clears the pin and the header comes home', async () => {
@@ -199,23 +221,47 @@ describe('the Exploring header (StoriesScreen)', () => {
     expect(screen.getByTestId('locator-dot')).toHaveStyle({ backgroundColor: '#6A4BDB' });
   });
 
-  test('denied state keeps today’s banner and search, untouched', async () => {
+  test('Privacy and Support live behind the header ⋯, never in the feed', async () => {
+    gpsLive();
+    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const screen = await render(<StoriesScreen />);
+
+    // Off the feed entirely — no link row between the count and the cards
+    expect(screen.queryByText('Privacy')).toBeNull();
+    expect(screen.queryByText('Support')).toBeNull();
+
+    // Still one tap from the Nearby header: Apple 5.1.1(i) requires the
+    // privacy policy be reachable inside the app, not only on the store
+    const menu = screen.getByTestId('overflow-menu');
+    expect(menu.props.actions).toEqual([
+      { id: 'privacy', title: 'Privacy Policy' },
+      { id: 'support', title: 'Support' },
+    ]);
+
+    await fireEvent(menu, 'pressAction', { nativeEvent: { event: 'privacy' } });
+    expect(openURL).toHaveBeenCalledWith('https://eddtb-landmarks.expo.app/privacy');
+    await fireEvent(menu, 'pressAction', { nativeEvent: { event: 'support' } });
+    expect(openURL).toHaveBeenCalledWith('https://eddtb-landmarks.expo.app/support');
+  });
+
+  test('refused: the banner names Settings, and the search is in the invitation below', async () => {
     gpsDenied();
     const screen = await render(<StoriesScreen />);
     expect(screen.getByText('Nearby')).toBeOnTheScreen();
     expect(
-      screen.getByText('Location is off — enable it in Settings, or search a place to explore:')
+      screen.getByText(
+        'Location is off for Venture. Turn it back on in Settings and this fills with the ground you’re standing on.'
+      )
     ).toBeOnTheScreen();
-    expect(screen.getByPlaceholderText('Search near a place…')).toBeOnTheScreen();
+    expect(screen.getByTestId('open-settings')).toBeOnTheScreen();
+    expect(screen.getByPlaceholderText(PlaceSearchPlaceholder)).toBeOnTheScreen();
     expect(screen.queryByText('Back to near me')).toBeNull();
   });
 
-  test('a denied-state search pins and reads Exploring, with the way home', async () => {
+  test('a refused-state search pins and reads Exploring, with the way home', async () => {
     gpsDenied();
     const screen = await render(<StoriesScreen />);
-    const input = screen.getByPlaceholderText('Search near a place…');
-    await fireEvent.changeText(input, 'Alnwick');
-    await fireEvent(input, 'submitEditing');
+    await submitSearch(screen, 'Alnwick');
 
     await waitFor(() => expect(screen.getByText('Exploring')).toBeOnTheScreen());
     expect(screen.getByText('Alnwick')).toBeOnTheScreen();
@@ -235,16 +281,18 @@ describe('the pin is shared across tabs', () => {
     </>
   );
 
-  test('a pin dropped on Nearby pins History too — same center, both headers', async () => {
+  test('a pin dropped on Nearby pins History too — both tabs admit the mode', async () => {
     gpsLive();
     const screen = await render(bothTabs());
-    // GPS live: only Nearby has a header to search from
+    // Only Nearby's island carries the search affordance now: History
+    // wears no chrome at rest (direction B), so there is one title.
     expect(screen.getAllByTestId('area-title')).toHaveLength(1);
 
     await searchFor(screen, 'Alnwick');
 
+    // Nearby says it in its island, History in its flow — the SAME pin
     await waitFor(() => expect(screen.getAllByText('Exploring')).toHaveLength(2));
-    expect(screen.getAllByText('Alnwick')).toHaveLength(2); // the SAME pinned center
+    expect(screen.getByText('Alnwick')).toBeOnTheScreen();
     expect(screen.getAllByText('Back to near me')).toHaveLength(2);
   });
 
@@ -260,6 +308,8 @@ describe('the pin is shared across tabs', () => {
     expect(screen.queryByText('Exploring')).toBeNull();
     expect(screen.queryByText('Back to near me')).toBeNull();
     expect(screen.getByText('Nearby')).toBeOnTheScreen();
+    // Both tabs came home to the live fix; the one that still has
+    // chrome at rest says so, and the other has stopped saying anything
     expect(screen.getByText('Greenwich')).toBeOnTheScreen();
   });
 });
@@ -282,7 +332,9 @@ describe('standing-on suppression while exploring', () => {
       state: { status: 'ready', items: [townHall] },
       refresh: jest.fn(),
     });
-    const screen = await render(<HistoryBody center={alnwick} exploring />);
+    const screen = await render(
+      <HistoryBody center={alnwick} exploring onManualCenter={jest.fn()} />
+    );
     expect(screen.queryByText(/standing on it/)).toBeNull();
     expect(screen.getByText('Alnwick Town Hall')).toBeOnTheScreen();
   });
@@ -292,35 +344,44 @@ describe('standing-on suppression while exploring', () => {
       state: { status: 'ready', items: [townHall] },
       refresh: jest.fn(),
     });
-    const screen = await render(<HistoryBody center={alnwick} />);
+    const screen = await render(<HistoryBody center={alnwick} onManualCenter={jest.fn()} />);
     expect(screen.getByText(/standing on it/)).toBeOnTheScreen();
   });
 });
 
-describe('the Exploring header (HistoryArchiveScreen)', () => {
-  test('GPS live: no header — the hero is the header', async () => {
+describe('the History tab wears no chrome at rest (direction B, #300)', () => {
+  test('GPS live: the hero IS the header, so nothing repeats it', async () => {
+    // The standing SectionHeader is gone: an island exists to carry a
+    // title the screen can no longer show, and at rest the hero is
+    // showing it. #292's rule — a located reader must never get a
+    // screen that fails to say where they are — is kept by the
+    // gazetteer itself, which now renders its title block on the page
+    // when no article resolves (fenced in gazetteer-chrome-test).
     gpsLive();
     const screen = await render(<HistoryArchiveScreen />);
-    expect(screen.queryByText('History')).toBeNull();
     expect(screen.getByText('gazetteer body')).toBeOnTheScreen();
-  });
-
-  test('denied: the HISTORY header with the search, as today', async () => {
-    gpsDenied();
-    const screen = await render(<HistoryArchiveScreen />);
-    expect(screen.getByText('History')).toBeOnTheScreen();
-    expect(screen.getByPlaceholderText('Search near a place…')).toBeOnTheScreen();
-  });
-
-  test('exploring: the header appears and owns the mode', async () => {
-    gpsDenied();
-    const screen = await render(<HistoryArchiveScreen />);
-    const input = screen.getByPlaceholderText('Search near a place…');
-    await fireEvent.changeText(input, 'Alnwick');
-    await fireEvent(input, 'submitEditing');
-
-    await waitFor(() => expect(screen.getByText('Exploring')).toBeOnTheScreen());
     expect(screen.queryByText('History')).toBeNull();
+    // …and no island either: it arrives on the hero clearing, not on mount
+    expect(screen.queryByTestId('glass-island')).toBeNull();
+  });
+
+  test('refused: the invitation carries the search, and is below the notch', async () => {
+    gpsDenied();
+    const screen = await render(<HistoryArchiveScreen />);
+    expect(screen.getByPlaceholderText(PlaceSearchPlaceholder)).toBeOnTheScreen();
+    // The gazetteer itself stands down — it is written ABOUT a place
+    expect(screen.queryByText('gazetteer body')).toBeNull();
+    // The refusal is not lost copy, it is the invitation's own heading
+    expect(screen.getByText('The Gazetteer is written about a place')).toBeOnTheScreen();
+  });
+
+  test('exploring: the mode is admitted in the flow, with the way home', async () => {
+    gpsDenied();
+    const screen = await render(<HistoryArchiveScreen />);
+    await submitSearch(screen, 'Alnwick');
+
+    await waitFor(() => expect(screen.getByTestId('gazetteer-exploring')).toBeOnTheScreen());
+    expect(screen.getByText('Exploring')).toBeOnTheScreen();
     expect(screen.getByText('Back to near me')).toBeOnTheScreen();
     expect(screen.getByText('gazetteer body')).toBeOnTheScreen();
   });

@@ -41,17 +41,29 @@ export function bearingDegrees(from: Coordinates, to: Coordinates): number {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-const CompassArrows = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'] as const;
+const CompassPoints = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
+
+/** The bearing as a spoken compass point — "away · NE" on the dial. */
+export function compassPoint(bearing: number): (typeof CompassPoints)[number] {
+  return CompassPoints[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
+}
+
+const CompassWords = [
+  'north',
+  'north-east',
+  'east',
+  'south-east',
+  'south',
+  'south-west',
+  'west',
+  'north-west',
+] as const;
 
 /**
- * Which arrow points at the target, given the direction the user is facing.
- * "Relative bearing 0" = straight ahead = ↑.
+ * The same bearing in words, for prose rather than a dial. "NE" is right
+ * on a compass card and wrong in a sentence — and VoiceOver reads it as
+ * the letter N, which tells a listener nothing.
  */
-export function arrowTowards(
-  from: Coordinates,
-  to: Coordinates,
-  headingDegrees: number
-): string {
-  const relative = (bearingDegrees(from, to) - headingDegrees + 360) % 360;
-  return CompassArrows[Math.round(relative / 45) % 8];
+export function compassWords(bearing: number): (typeof CompassWords)[number] {
+  return CompassWords[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
 }

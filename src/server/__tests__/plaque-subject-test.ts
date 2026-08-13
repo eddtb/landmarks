@@ -80,3 +80,59 @@ describe('resolvePlaqueSubjects', () => {
     expect(findStory).toHaveBeenCalledTimes(2); // may try again
   });
 });
+
+describe('the plaque pool (cold-feed latency vs politeness)', () => {
+  /**
+   * One-at-a-time made this the costliest leg of a cold compose
+   * (5.4-6.4s of 17s, measured on the deployed worker), and a cold
+   * compose is what nearly every reader of a small app gets. Twenty
+   * at once is what got the summary endpoint rate-limited in the
+   * first place. Both bounds are pinned here so neither lesson can be
+   * lost to the other.
+   */
+  test('resolves concurrently, but never more than three at a time', async () => {
+    let live = 0;
+    let peak = 0;
+    const findStory = jest.fn(async () => {
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      live -= 1;
+      return null;
+    });
+    const { resolvePlaqueSubjects } = load(findStory);
+
+    const plaques = Array.from({ length: 15 }, (_, i) => ({
+      pageId: 3_000_000_000 + i,
+      title: `Plaque ${i}`,
+      extract: `Inscription ${i}`,
+      coordinates: { latitude: 51.48, longitude: -0.01 },
+      distanceMeters: 50,
+      url: `https://openplaques.org/plaques/${i}`,
+      source: 'Open Plaques',
+    }));
+
+    const out = await resolvePlaqueSubjects(plaques, []);
+
+    expect(out).toHaveLength(15); // every plaque still answered
+    expect(peak).toBeGreaterThan(1); // …concurrently
+    expect(peak).toBeLessThanOrEqual(3); // …but politely
+  });
+
+  test('order is preserved — the feed is distance-sorted', async () => {
+    const findStory = jest.fn(async () => null);
+    const { resolvePlaqueSubjects } = load(findStory);
+    const plaques = Array.from({ length: 6 }, (_, i) => ({
+      pageId: 3_100_000_000 + i,
+      title: `Plaque ${i}`,
+      extract: `Inscription ${i}`,
+      coordinates: { latitude: 51.48, longitude: -0.01 },
+      distanceMeters: 10 * i,
+      url: `https://openplaques.org/plaques/x${i}`,
+      source: 'Open Plaques',
+    }));
+
+    const out = await resolvePlaqueSubjects(plaques, []);
+    expect(out.map((p) => p.pageId)).toEqual(plaques.map((p) => p.pageId));
+  });
+});

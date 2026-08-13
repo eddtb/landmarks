@@ -1,4 +1,4 @@
-import { diskBackedMap } from '@/server/ai-cache';
+import { backgroundWorkSurvives, diskBackedMap } from '@/server/ai-cache';
 import { fixturesEnabled, outageActive, readFixture } from '@/server/fixtures';
 import { dressWithPhotos } from '@/server/geograph';
 import {
@@ -7,11 +7,13 @@ import {
   fetchPlaques,
   mergeHistorySources,
 } from '@/server/heritage';
+import { coordinatesParam } from '@/server/params';
 import { resolvePlaqueSubjects } from '@/server/plaque-subject';
 import { shouldWiden, SparseRadiusMeters } from '@/server/sparse';
+import { storeGet, storeHealthHeaders, storePut } from '@/server/telling-store';
 import { ExistenceFacts, fetchExistenceFacts } from '@/server/wikidata';
 import { findNearbyHistory } from '@/server/wikipedia';
-import { HistoryFeed, HistoryItem } from '@/types/history';
+import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
 import { wikiTitleFromUrl } from '@/utils/format';
 import { distanceMeters } from '@/utils/geo';
 
@@ -34,6 +36,8 @@ import { distanceMeters } from '@/utils/geo';
  * once and collects the dressed verdict from this bucket's cache.
  */
 const ListTtlMs = 60 * 60 * 1000;
+// v7: items may carry area:true (broad geographic subjects stay in the
+// Gazetteer but never become walk-to Nearby cards);
 // v6: items may carry event:true (Edd's ruling: articles ABOUT events
 // — crashes, battles, fires — live in the History archive, never
 // Nearby) — a v5 list lacks the flag and would keep leaking events
@@ -43,13 +47,34 @@ const ListTtlMs = 60 * 60 * 1000;
 // must not be replayed as if it were the honest wide list;
 // v4: plaque items may carry resolved subject titles (option A);
 // v3 and earlier predate photo rules and existence tags
-const listCache = diskBackedMap<{ items: HistoryItem[]; sparse?: boolean; at: number }>(
-  'history-lists-v6'
-);
+type CachedList = { items: HistoryItem[]; sparse?: boolean; at: number };
+// The most expensive entry in the codebase to hold: a Greenwich-sized
+// feed serialises at ~95KB, and this map was measured holding 13 of
+// them — 1.24MB, every one of them hours past the TTL above (#246).
+// The TTL does the forgetting; the cap is the backstop for a busy dev
+// server, at roughly an hour of walking (a ~111m bucket every few
+// hundred metres) and ~3MB worst case.
+const listCache = diskBackedMap<CachedList>('history-lists-v7', {
+  ttlMs: ListTtlMs,
+  maxEntries: 32,
+});
 
-function bucketKey(lat: number, lng: number): string {
-  return `${lat.toFixed(3)}|${lng.toFixed(3)}`; // ~111m × ~70m at UK latitudes
-}
+/**
+ * The durable half of the same cache. The map above is per-process,
+ * and on the production edge runtime that means per-ISOLATE: isolates
+ * recycle constantly, so a "1 hour" bucket was in practice minutes
+ * long and nearly every reader paid for a full four-upstream compose
+ * (measured: 2-6s warm-looking, 8-11s under load, and enough
+ * Wikipedia traffic to get the worker's egress rate-limited — which
+ * the app reports, honestly, as "you're offline").
+ *
+ * The tellings solved this in #231 with a Turso store; the feed never
+ * got the same treatment. It does now, under the same iron rule: the
+ * store NEVER gates a read. Absent config, unreachable, corrupt — all
+ * answer "not stored" and the compose proceeds exactly as before.
+ */
+const FeedKind = 'feed';
+
 
 // Serve-once state for a cold compose whose photo leg is still in
 // flight: the text-complete list lives HERE, never in listCache — the
@@ -66,7 +91,7 @@ const pendingCompose = new Map<string, { items: HistoryItem[]; sparse?: boolean 
 // cold legs (measured 1.5-3.5s) never make it — and shouldn't.
 const ServeGraceMs = 150;
 
-/** Existence facts (tag + event verdict) keyed by pageId; failure
+/** Existence facts (tag + event + broad-area verdicts) keyed by pageId; failure
  * degrades to an empty map — fewer facts, never fewer stories. */
 async function existenceFactsByPageId(items: HistoryItem[]): Promise<Map<number, ExistenceFacts>> {
   try {
@@ -99,6 +124,7 @@ function applyFacts(items: HistoryItem[], facts: Map<number, ExistenceFacts>): H
       ...item,
       ...(fact.tag ? { pastTag: fact.tag } : {}),
       ...(fact.event ? { event: true as const } : {}),
+      ...(fact.area ? { area: true as const } : {}),
     };
   });
 }
@@ -112,17 +138,15 @@ const SparseFixtureMeters = 20000;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const latParam = url.searchParams.get('lat');
-  const lngParam = url.searchParams.get('lng');
   const fresh = url.searchParams.get('fresh') === '1';
 
-  const lat = latParam ? Number(latParam) : NaN;
-  const lng = lngParam ? Number(lngParam) : NaN;
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+  // The shared reader (#305): this route already refused a missing
+  // parameter, but `?lat=%20` is truthy and `Number(' ')` is 0 — the
+  // same Null Island by a narrower door
+  const center = coordinatesParam(url.searchParams);
+  if (!center) {
     return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
   }
-  const center = { latitude: lat, longitude: lng };
 
   // Hermetic E2E: recorded payloads instead of upstreams — runner IPs
   // get 429'd by Wikipedia/Wikidata. Near the pinned simulator it's
@@ -162,18 +186,38 @@ export async function GET(request: Request) {
       ...(sparse ? { sparse: true, horizon: SparseRadiusMeters } : {}),
       ...(dressing ? { dressing: true } : {}),
     };
-    return Response.json(feed);
+    // The edge runtime gives us no log to read, so the cache reports
+    // its own health on the way out: whether this answer came from the
+    // durable store, what the store is doing, and why it last refused.
+    // Cheap, and the only thing standing between a silent cache miss
+    // and a day of guessing. x-feed-store rides EVERY answer — the
+    // cache-hit paths below return without ever writing, so a
+    // post-deploy curl that lands on one used to learn nothing at all.
+    return Response.json(feed, {
+      headers: {
+        'x-feed-cache': cacheOutcome,
+        ...(breakdown ? { 'x-feed-timing': breakdown } : {}),
+        ...storeHealthHeaders(),
+      },
+    });
   };
+  // Set as the request walks its path; reported in the header above.
+  let cacheOutcome = 'compose';
+  let breakdown = '';
 
-  const key = bucketKey(lat, lng);
+  const key = feedBucketKey(center.latitude, center.longitude);
   if (!fresh) {
     const cached = listCache.get(key);
     if (cached && Date.now() - cached.at < ListTtlMs) {
       // Re-dress from the photo cache only (zero lookups): background
       // lookups that finished since the list was cached land here
+      cacheOutcome = 'process-hit';
       const items = await dressWithPhotos(cached.items, undefined, undefined, 0, 0);
-      // …and quietly warm the still-unverdicted tail for the next request
-      void dressWithPhotos(cached.items).catch(() => {});
+      if (backgroundWorkSurvives) {
+        // …and quietly warm the still-unverdicted tail for the next
+        // request — only where a floated promise actually finishes
+        void dressWithPhotos(cached.items).catch(() => {});
+      }
       return respond(items, cached.sparse);
     }
     // A cold compose for this bucket is mid-dress: serve its snapshot
@@ -182,6 +226,16 @@ export async function GET(request: Request) {
     const pending = pendingCompose.get(key);
     if (pending) {
       return respond(pending.items, pending.sparse, true);
+    }
+    // Another isolate may have composed this bucket already. A hit
+    // re-seeds the map at its ORIGINAL age, so the hour is counted
+    // from the compose, not from this worker's luck.
+    const stored = await storeGet<CachedList>(FeedKind, key);
+    if (stored && Date.now() - stored.at < ListTtlMs) {
+      cacheOutcome = 'store-hit';
+      listCache.set(key, { ...stored.value, at: stored.at });
+      const items = await dressWithPhotos(stored.value.items, undefined, undefined, 0, 0);
+      return respond(items, stored.value.sparse);
     }
   }
 
@@ -243,49 +297,113 @@ export async function GET(request: Request) {
     }
 
     const enrichStart = Date.now();
+    // Abreast again, but on different terms than #240. That attempt
+    // overlapped two UNBOUNDED legs and doubled a fan-out that was
+    // already too wide; every leg is now capped by its own pool
+    // (plaques 3, enrichment 4, facts 3 batches), so the peak is
+    // roughly ten sockets rather than the forty-plus that got the
+    // worker's egress rate-limited. The seconds matter here: a small
+    // app's readers almost always get a cold compose, because nobody
+    // has warmed their area for them.
+    const backbone = merged.slice(0, 150);
+    const backboneFacts = existenceFactsByPageId(backbone);
+    const queried = new Set(backbone.map((item) => item.pageId));
     const told = await enrichStandaloneListed(merged);
     // The deep feed: everything within the walk, not a top-40 — the list
     // virtualises client-side, and photo lookups stay capped per request
     // (the deep tail warms up across requests), so length ≠ load time
     const capped = told.slice(0, 150);
 
-    // The two remaining network stages hit DIFFERENT hosts (Commons +
-    // Geograph vs Wikidata) — per-host politeness allows them to
-    // overlap, so together they cost the longer of the two, not the
-    // sum. The Wikipedia-bound stages above stay ordered: they share a
-    // host AND enrichment consumes the merge that plaque resolution
-    // feeds. And neither leg holds the response past the grace below:
-    // measured cold (2026-07-22, Greenwich), tags are 3.5s and dressing
-    // is deadline-bounded at 1.5s — both decoration (the eyebrow tag,
-    // the thumbnail), neither worth staring at a spinner for. The story
-    // text itself is complete at this point.
+    // Classification is routing, not decoration: it must settle before
+    // ANY payload is allowed out, otherwise a cold Wikidata lookup can
+    // briefly paint Deptford as a walk-to destination before the
+    // dressing upgrade removes it. Failure still degrades to no facts,
+    // but a successful area/event verdict is atomic with the response.
+    // Photos remain cosmetic and retain the fast-response grace below.
     const decorateStart = Date.now();
-    const dressing = dressWithPhotos(capped);
-    // Structured existence facts from Wikidata — grammar retired (#137's
-    // ceiling); failure degrades (in the helper) to fewer tags, never
-    // fewer stories
-    let factsSoFar = new Map<number, ExistenceFacts>();
-    const tagging = existenceFactsByPageId(capped).then((facts) => (factsSoFar = facts));
+    const facts = await backboneFacts;
+    // Only faces the first ask never saw (enrichment's additions) go
+    // back to Wikidata — a no-facts answer is a real verdict
+    const newcomers = capped.filter((item) => !queried.has(item.pageId));
+    if (newcomers.length > 0) {
+      for (const [pageId, fact] of await existenceFactsByPageId(newcomers)) {
+        facts.set(pageId, fact);
+      }
+    }
+    const factsDone = Date.now();
+    const classified = applyFacts(capped, facts);
+    // The edge awaits this leg (below), so every lookup it starts
+    // actually completes — where the Node path floats them and the
+    // deadline drops the tail. Twenty completing lookups is another
+    // forty sockets at Commons and Geograph on top of the compose;
+    // half as many still warms the feed across requests.
+    const dressing = backgroundWorkSurvives
+      ? dressWithPhotos(classified)
+      : dressWithPhotos(classified, undefined, undefined, undefined, 10);
 
     // Cache only the final dressed verdict — the disk cache's bucket
     // answer must never be an undressed list
     const finalize = ([dressedItems, facts]: [HistoryItem[], Map<number, ExistenceFacts>]) => {
       const items = applyFacts(dressedItems, facts);
-      listCache.set(key, sparse ? { items, sparse, at: Date.now() } : { items, at: Date.now() });
-      return items;
+      const entry: CachedList = sparse
+        ? { items, sparse, at: Date.now() }
+        : { items, at: Date.now() };
+      listCache.set(key, entry);
+      // The durable twin, so the NEXT isolate inherits this compose
+      // instead of repeating it. Fire-and-forget would be wrong on
+      // the edge (frozen at response) and unnecessary on Node — the
+      // callers below await it where it matters.
+      return { items, stored: storePut(FeedKind, key, entry, entry.at) };
     };
 
     const timings = () =>
       `sources ${plaquesStart - sourcesStart}ms, plaques+merge ${enrichStart - plaquesStart}ms, ` +
       `enrich ${decorateStart - enrichStart}ms, decorate ${Date.now() - decorateStart}ms` +
       ` (${capped.length} items, sparse=${sparse})`;
+    // The same numbers the log line carries, on the response — the
+    // edge has no log to read, and a cold compose is the ONLY thing
+    // most readers of a small app will ever experience (nobody has
+    // warmed their area for them), so its breakdown has to be visible.
+    breakdown =
+      `sources=${plaquesStart - sourcesStart}` +
+      `,merge=${enrichStart - plaquesStart}` +
+      `,enrich=${decorateStart - enrichStart}` +
+      `,facts=${factsDone - decorateStart}` +
+      `,photos=${Date.now() - factsDone}` +
+      `,items=${capped.length}`;
 
     // The grace: warm caches settle both legs in a few ms — answer
     // complete and unflagged, cached, done. A cold compose won't make
     // it; the text-complete list is served NOW and the dressed verdict
     // is cached when the legs land. A failed photo leg caches NOTHING:
     // couldn't-try is not tried-and-failed.
-    const final = Promise.all([dressing, tagging]);
+    const final = Promise.all([dressing, Promise.resolve(facts)]);
+
+    // On the edge worker the serve-early bargain is a lie: the floated
+    // finalize dies with the isolate (#232), the dressed verdict never
+    // caches, and the dressing:true snapshot re-serves forever. There
+    // the response waits for the photo leg it would have floated —
+    // bounded by dressWithPhotos' own deadline, so ≤ ~1.5s, once per
+    // bucket per isolate.
+    if (!backgroundWorkSurvives) {
+      try {
+        const finished = await final;
+        const { items, stored } = finalize(finished);
+        // Awaited: the isolate freezes the moment this response
+        // returns, and a write that never lands leaves the next
+        // reader composing from scratch — the whole point of the store.
+        // Swallowed: the store never gates a read (its iron rule), and
+        // a rejected write must not turn a complete feed into a
+        // degraded one. storePut is contracted not to throw; this is
+        // the belt, and a test pins it.
+        await stored.catch(() => {});
+        console.log(`[history] cold compose ${key}: ${timings()}, awaited dressing (edge)`);
+        return respond(items, sparse);
+      } catch (error) {
+        console.warn('Photo dressing degraded (verdict not cached):', error);
+        return respond(classified, sparse, true);
+      }
+    }
     const settled = await Promise.race([
       final,
       new Promise<null>((resolve) => {
@@ -295,11 +413,17 @@ export async function GET(request: Request) {
     ]).catch(() => null);
     if (settled) {
       console.log(`[history] cold compose ${key}: ${timings()}, decoration made the grace`);
-      return respond(finalize(settled), sparse);
+      const { items, stored } = finalize(settled);
+      // Awaited on EVERY runtime, not just the one we think we're on.
+      // The whole durable cache existed for hours without writing a
+      // single row because it sat behind a runtime check that silently
+      // read the wrong way; a write worth making is worth the ~150ms
+      // wherever we are.
+      await stored.catch(() => {});
+      return respond(items, sparse);
     }
 
-    // Facts that beat the grace still ride the early response
-    const snapshot = { items: applyFacts(capped, factsSoFar), ...(sparse ? { sparse } : {}) };
+    const snapshot = { items: classified, ...(sparse ? { sparse } : {}) };
     pendingCompose.set(key, snapshot);
     const settle = () => {
       // Identity-checked like the client's in-flight map: a fresh=1
@@ -309,8 +433,8 @@ export async function GET(request: Request) {
       }
     };
     final.then(
-      (finished) => {
-        finalize(finished);
+      async (finished) => {
+        await finalize(finished).stored.catch(() => {});
         settle();
         console.log(
           `[history] dressed ${key}: decoration landed ${Date.now() - decorateStart}ms after start`
@@ -325,6 +449,21 @@ export async function GET(request: Request) {
     return respond(snapshot.items, sparse, true);
   } catch (error) {
     console.error('History lookup failed:', error);
-    return Response.json({ error: 'History lookup failed' }, { status: 502 });
+    // A refused compose is not an empty world. Wikipedia rate-limits
+    // by egress IP, so one worker's busy minute becomes every reader's
+    // error — and the app says "you're offline" to someone who isn't.
+    // A stored feed past its hour is stale, not wrong: the ground
+    // doesn't change in an hour, and yesterday's stories beat a dead
+    // screen. Only a bucket we have never composed can honestly 502.
+    const salvaged = await storeGet<CachedList>(FeedKind, key);
+    if (salvaged) {
+      cacheOutcome = 'store-salvage';
+      console.log(`[history] compose refused for ${key} — serving the stored feed instead`);
+      return respond(salvaged.value.items, salvaged.value.sparse);
+    }
+    return Response.json(
+      { error: 'History lookup failed' },
+      { status: 502, headers: storeHealthHeaders() }
+    );
   }
 }

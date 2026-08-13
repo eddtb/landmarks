@@ -1,5 +1,6 @@
 import { diskBackedMap } from '@/server/ai-cache';
-import { research } from '@/server/anthropic';
+import { research } from '@/server/ai-router';
+import { storeGet, storePut } from '@/server/telling-store';
 
 /**
  * The telling: a ~one-minute spoken narration of a story, written by
@@ -12,7 +13,27 @@ import { research } from '@/server/anthropic';
 const TtlMs = 30 * 24 * 60 * 60 * 1000;
 
 type CachedTelling = { text: string; at: number };
-const cache = diskBackedMap<CachedTelling>('tellings');
+// Generously capped and never tightened casually: these entries cost
+// free-tier quota to make, and the durable store is the real home
+const cache = diskBackedMap<CachedTelling>('tellings', { ttlMs: TtlMs, maxEntries: 2000 });
+// One generation per key at a time: concurrent opens of the same story
+// join the in-flight call instead of each spending a free-tier unit.
+const inFlight = new Map<string, Promise<string>>();
+
+/**
+ * The extract rides in from the client (the server holds no per-story
+ * state), so the cache key must bind the telling to the text it was
+ * written from: a fabricated extract POSTed to the public route may
+ * only ever poison its own slot, never the one real clients — who all
+ * send the same cleaned source text — read for the next 30 days.
+ * SHA-256 so a matching key can't be crafted for someone else's text.
+ */
+export async function extractKeyPart(extract: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(extract));
+  return Array.from(new Uint8Array(digest).slice(0, 12))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 export type TellingSubject = {
   pageId: number;
@@ -44,10 +65,34 @@ export async function getTelling(
   // Areas have no pageId — they cache under "area:greenwich"
   cacheKey = String(subject.pageId)
 ): Promise<string> {
-  const key = cacheKey;
+  const key = `${cacheKey}:${await extractKeyPart(subject.extract)}`;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < TtlMs) {
     return cached.text;
+  }
+
+  const joined = inFlight.get(key);
+  if (joined) {
+    return joined;
+  }
+  const run = tellUncached(subject, key);
+  inFlight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function tellUncached(subject: TellingSubject, key: string): Promise<string> {
+  // The durable store outlives the worker: on production edge
+  // runtimes the map above dies with every isolate, and each story
+  // was being rewritten per recycle. A store hit re-seeds the map at
+  // its ORIGINAL age, so the 30-day clock keeps one truth.
+  const stored = await storeGet<CachedTelling>('telling', key);
+  if (stored && stored.value.text && Date.now() - stored.at < TtlMs) {
+    cache.set(key, { text: stored.value.text, at: stored.at });
+    return stored.value.text;
   }
 
   const text = (
@@ -60,7 +105,11 @@ export async function getTelling(
   ).trim();
 
   if (text) {
-    cache.set(key, { text, at: Date.now() });
+    const at = Date.now();
+    cache.set(key, { text, at });
+    // Awaited: Workers freeze the isolate once the response returns —
+    // a floating write here silently never lands (production-proved)
+    await storePut('telling', key, { text, at }, at);
   }
   return text;
 }

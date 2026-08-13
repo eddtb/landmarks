@@ -33,6 +33,10 @@ const HourMs = 60 * 60 * 1000;
 // after a force-quit. Keys are the client's own ~111m (3 dp — the
 // server's own grid) buckets; values are whole feeds (items plus
 // sparse metadata).
+/** When the offline bucket was written — the day the History tab's own
+ * offline line names ("as it was saved on 8 August", #248). */
+const OfflineSavedAt = Date.now() - 2 * HourMs;
+
 const store = (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> })
   .__INTERNAL_MOCK_STORAGE__;
 store['cache-history-feed-v2-v1'] = JSON.stringify([
@@ -46,7 +50,7 @@ store['cache-history-feed-v2-v1'] = JSON.stringify([
   ],
   [
     '50.300|-0.090',
-    { value: { items: [persistedItem(3, 'Persisted Offline')] }, at: Date.now() - 2 * HourMs },
+    { value: { items: [persistedItem(3, 'Persisted Offline')] }, at: OfflineSavedAt },
   ],
   [
     '50.400|-0.090',
@@ -58,6 +62,9 @@ store['cache-history-feed-v2-v1'] = JSON.stringify([
 ]);
 store['cache-history-item-v1'] = JSON.stringify([
   ['7', { value: persistedItem(7, 'Persisted Detail'), at: Date.now() }],
+  // Older than the 7d TTL but younger than the 14d prune: invisible
+  // to get, alive to peek — the offline fallback's whole clientele
+  ['8', { value: persistedItem(8, 'Persisted Expired'), at: Date.now() - 8 * 24 * HourMs }],
 ]);
 
 const { fetchNearbyHistory, fetchStory, getCachedHistoryItem, getStoriesAround } =
@@ -157,8 +164,11 @@ describe('fetchNearbyHistory persistence (relaunch simulated by pre-import seedi
     expect(result.items[0].title).toBe('Persisted Offline'); // placeholder first
 
     const offline = await result.revalidate!;
-    expect(offline.stale).toBe(true); // the flag HistoryBody's note hangs on
+    expect(offline.stale).toBe(true); // the flag both tabs' note hangs on
     expect(offline.items[0].title).toBe('Persisted Offline');
+    // …and WHEN it was saved, so the note can name the day rather than
+    // just admitting to a cache (#248)
+    expect(offline.savedAt).toBe(OfflineSavedAt);
   });
 
   test('a persisted sparse bucket round-trips its flag — offline, the honesty survives', async () => {
@@ -281,6 +291,27 @@ describe('fetchStory', () => {
     mockFetch.mockResolvedValue({ ok: false, status: 502 });
 
     await expect(fetchStory(4244)).rejects.toThrow('502');
+  });
+
+  test('a fresh persisted story answers without touching the network', async () => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    expect((await fetchStory(7))?.title).toBe('Persisted Detail');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('offline, an EXPIRED persisted story still answers — never "not found"', async () => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    // Past the 7d TTL, so the fresh path missed and the network was
+    // tried; the fallback peek serves what the device still holds
+    expect((await fetchStory(8))?.title).toBe('Persisted Expired');
+  });
+
+  test('offline with nothing persisted rethrows — an honest failure, not a 404', async () => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+
+    await expect(fetchStory(9999)).rejects.toThrow('Network request failed');
   });
 });
 
@@ -422,4 +453,68 @@ describe('getStoriesAround', () => {
     expect(titles).toContain('New Neighbour');
     expect(titles).not.toContain('Old Neighbour');
   });
+});
+
+/**
+ * The double-persist (#246). Every feed item used to be written TWICE
+ * — once inside the ~124KB feed blob, once individually — and both
+ * `set`s schedule their own debounced write-back, so ~1s after every
+ * new bucket two write-backs fired, each stringifying its whole map
+ * (~1MB apiece) on the JS thread that renders the map, at the
+ * ~100-170ms per write this module's own header measures.
+ *
+ * The assertion is therefore about what reaches the phone's storage,
+ * not about what the module was handed: the item store must not gain
+ * the feed's items, and no second write may be scheduled for it.
+ */
+describe('feed items are persisted once', () => {
+  const setItem = AsyncStorage.setItem as jest.Mock;
+  const WriteBackMs = 1400; // persisted-cache's 1s debounce, ridden out
+
+  beforeEach(() => mockFetch.mockReset());
+
+  test('a new bucket writes the feed and NOTHING to the item store', async () => {
+    await new Promise((resolve) => setTimeout(resolve, WriteBackMs)); // let earlier writes land
+    setItem.mockClear();
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [persistedItem(555, 'Only In The Feed')] }),
+    });
+
+    await fetchNearbyHistory(freshCenter());
+    await new Promise((resolve) => setTimeout(resolve, WriteBackMs));
+
+    const written = setItem.mock.calls.map((call) => call[0]);
+    expect(written).toContain('cache-history-feed-v2-v1'); // the feed, once
+    expect(written).not.toContain('cache-history-item-v1'); // the second ~1MB stringify is gone
+
+    // …and the item store on the phone never gained it
+    const items = new Map(JSON.parse(store['cache-history-item-v1']) as [string, unknown][]);
+    expect(items.has('555')).toBe(false);
+  }, 20000);
+
+  test('the detail screen still finds that item — read out of the feed it came in', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [persistedItem(556, 'Read Back From The Feed')] }),
+    });
+    await fetchNearbyHistory(freshCenter());
+
+    expect(getCachedHistoryItem(556)?.title).toBe('Read Back From The Feed');
+  });
+
+  test('a deep-linked story still persists individually — no feed contains it', async () => {
+    await new Promise((resolve) => setTimeout(resolve, WriteBackMs));
+    setItem.mockClear();
+    const story = persistedItem(557, 'Arrived By Share Link');
+    mockFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({ item: story }) });
+
+    await fetchStory(557);
+    await new Promise((resolve) => setTimeout(resolve, WriteBackMs));
+
+    expect(setItem.mock.calls.map((call) => call[0])).toContain('cache-history-item-v1');
+    const items = new Map(JSON.parse(store['cache-history-item-v1']) as [string, unknown][]);
+    expect(items.has('557')).toBe(true);
+    expect(getCachedHistoryItem(557)?.title).toBe('Arrived By Share Link');
+  }, 20000);
 });

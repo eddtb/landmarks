@@ -20,8 +20,14 @@ jest.mock('@/hooks/use-location', () => ({
   useLocation: () => mockUseLocation(),
 }));
 
+// A null centre names nothing — the real hook's answer, and the point
+// of #289: the fallback used to resolve a real London name and print
+// it under the solid "you are here" dot
 jest.mock('@/hooks/use-area-name', () => ({
-  useAreaName: () => ({ name: 'Greenwich', settled: true }),
+  useAreaName: (center: Coordinates | null) =>
+    center === null
+      ? { name: null, label: null, settled: true }
+      : { name: 'Greenwich', label: 'Greenwich', settled: true },
 }));
 
 jest.mock('expo-location', () => ({
@@ -168,7 +174,11 @@ describe('the #208 fix: no standing-on claim without a real fix', () => {
     coordinates: FallbackCoordinates,
   });
 
-  test('location denied: the fallback center never claims "right here"', async () => {
+  test('location refused: the feed itself stands down — no London stories, no walk times', async () => {
+    // This test used to assert only that the BANNER was absent, and
+    // that is how the suite stayed green while a reader in Cupertino
+    // was served Trafalgar Square "2 min walk" (#289). The feed is
+    // what has to be asserted: no story reaches the screen at all.
     gpsDenied();
     mockUseHistory.mockReturnValue({
       state: { status: 'ready', items: [onTheFallback] },
@@ -176,11 +186,29 @@ describe('the #208 fix: no standing-on claim without a real fix', () => {
     });
     const screen = await render(<StoriesScreen />);
     await waitFor(() =>
-      expect(
-        screen.getByText('Location is off — enable it in Settings, or search a place to explore:')
-      ).toBeOnTheScreen()
+      expect(screen.getByText('Or read a place you name')).toBeOnTheScreen()
     );
+    expect(screen.queryByText('Equestrian statue of Charles I')).toBeNull();
+    expect(screen.queryByText(/min walk/)).toBeNull();
     expect(screen.queryByText("You're standing on it")).toBeNull();
+    // Nor the fallback's own name under the locator dot
+    expect(screen.queryByText('Greenwich')).toBeNull();
+  });
+
+  test('location refused: nothing is fetched about a place nobody is at', async () => {
+    gpsDenied();
+    mockUseHistory.mockReturnValue({
+      state: { status: 'ready', items: [onTheFallback] },
+      refresh: jest.fn(),
+    });
+    const screen = await render(<StoriesScreen />);
+    await waitFor(() =>
+      expect(screen.getByText('Or read a place you name')).toBeOnTheScreen()
+    );
+    // The hook is handed a null centre, and asks about nothing
+    for (const call of mockUseHistory.mock.calls) {
+      expect(call[0]).toBeNull();
+    }
   });
 
   test('GPS live on the same spot: the banner rightly shows', async () => {
