@@ -33,12 +33,20 @@ onFlowComplete:
 - runScript: subflows/outage-on.js
 
 # A deliberate pull bypasses every cache → the fetch fails → the
-# saved bucket serves with the stale banner
+# saved bucket serves with the stale banner.
+# The pull's geometry carries two hard-won facts (sim-caught, both):
+# START below 47% — the map card leads the list now (glass-island
+# rework) and a drag that starts on the map PANS THE MAP, so the
+# FlatList never sees it. TRAVEL far — rubber-band resistance halves
+# the drag, and UIRefreshControl's threshold needs ~40% of the screen
+# in finger travel; a 25% pull scrolls, bounces, and never refreshes
+# (probed: 25% travel = no fetch on the wire at all, 39% = the 503
+# and the banner).
 - waitForAnimationToEnd:
     timeout: 3000
 - swipe:
-    start: 50%, 45%
-    end: 50%, 85%
+    start: 50%, 60%
+    end: 50%, 99%
 - extendedWaitUntil:
     visible: '.*saved stories.*'
     timeout: 20000
