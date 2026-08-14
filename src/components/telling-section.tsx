@@ -8,7 +8,14 @@ import { fetchTelling } from '@/data/telling-client';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { storyParagraphs } from '@/utils/format';
-import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
+import {
+  pauseSpeech,
+  resumeSpeech,
+  speakAsync,
+  speechAvailable,
+  speechCanPause,
+  stopSpeech,
+} from '@/utils/speech';
 
 /**
  * The telling behind a press, for the extract story — a place with no
@@ -25,7 +32,62 @@ import { speakAsync, speechAvailable, stopSpeech } from '@/utils/speech';
  * the inscription this rule exists to protect.
  */
 
-type Status = 'idle' | 'writing' | 'ready' | 'speaking' | 'error' | 'engine-failed';
+type Status = 'idle' | 'writing' | 'ready' | 'speaking' | 'paused' | 'error' | 'engine-failed';
+
+/**
+ * The transport while a telling is being read aloud: Pause · Stop,
+ * then Resume · Stop. Two controls, each named in a word (PR #186 —
+ * nothing for VoiceOver to call "black square"), and the verb keeps
+ * its name through the flow: Pause becomes Resume, Stop stays Stop.
+ * Rendered only where the platform can honour a pause
+ * (`speechCanPause`); elsewhere the single Stop stands, because a word
+ * that does nothing is worse than no word.
+ */
+export function SpeechControls({
+  paused,
+  onPause,
+  onResume,
+  onStop,
+  tall = false,
+}: {
+  paused: boolean;
+  onPause: () => Promise<void>;
+  onResume: () => Promise<void>;
+  onStop: () => Promise<void>;
+  /** In the full-width pill the words fill its 44pt height; the inline
+   *  rows clear 44pt with vertical slop on the 20px words instead.
+   *  Never horizontal slop here — two neighbouring words would fight
+   *  over the taps between them. */
+  tall?: boolean;
+}) {
+  const slop = tall ? undefined : { top: Spacing.three, bottom: Spacing.three };
+  return (
+    <View style={styles.transport}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => void (paused ? onResume() : onPause())}
+        hitSlop={slop}
+        style={[styles.transportWord, tall && styles.transportWordTall]}>
+        <ThemedText type="smallBold" themeColor="accent">
+          {paused ? 'Resume' : 'Pause'}
+        </ThemedText>
+      </Pressable>
+      {/* Punctuation between the words, not a control — VoiceOver skips it */}
+      <ThemedText type="smallBold" themeColor="accent" accessible={false}>
+        ·
+      </ThemedText>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => void onStop()}
+        hitSlop={slop}
+        style={[styles.transportWord, tall && styles.transportWordTall]}>
+        <ThemedText type="smallBold" themeColor="accent">
+          Stop
+        </ThemedText>
+      </Pressable>
+    </View>
+  );
+}
 
 export function TellingSection({ item }: { item: HistoryItem }) {
   const theme = useTheme();
@@ -45,6 +107,9 @@ export function TellingSection({ item }: { item: HistoryItem }) {
       return;
     }
     setStatus('speaking');
+    // This await holds through a pause — the utterance only settles on
+    // done, stop or error — so the continuation below is the one place
+    // the outcome is written, whatever state the tap left us in.
     const outcome = await speakAsync(text);
     setStatus(outcome === 'error' ? 'engine-failed' : 'ready');
   };
@@ -68,6 +133,24 @@ export function TellingSection({ item }: { item: HistoryItem }) {
     }
   };
 
+  const onPause = async () => {
+    if ((await pauseSpeech()) === 'paused') {
+      setStatus('paused');
+    }
+    // 'error' keeps the words honest: either the utterance is still
+    // audibly speaking (leave 'speaking' standing) or it just ended
+    // and speak()'s continuation has already written the outcome.
+  };
+
+  const onResume = async () => {
+    if ((await resumeSpeech()) === 'speaking') {
+      setStatus('speaking');
+    }
+    // A failed resume settles the pending utterance as 'error' inside
+    // resumeSpeech, so speak()'s continuation surfaces engine-failed —
+    // the same channel every other engine failure takes.
+  };
+
   const label =
     status === 'writing'
       ? 'Writing the telling…'
@@ -82,21 +165,35 @@ export function TellingSection({ item }: { item: HistoryItem }) {
               ? 'Listen again'
               : 'Listen · about a minute';
 
+  const reading = status === 'speaking' || status === 'paused';
   return (
     <>
-      <Pressable
-        accessibilityRole="button"
-        disabled={status === 'writing' || (telling !== null && !speechAvailable)}
-        onPress={onPress}
-        style={({ pressed }) => [
-          styles.button,
-          { backgroundColor: theme.accentSoft },
-          pressed && { opacity: 0.85 },
-        ]}>
-        <ThemedText type="smallBold" themeColor="accent">
-          {label}
-        </ThemedText>
-      </Pressable>
+      {reading && speechCanPause ? (
+        // The same pill, its words now two controls
+        <View style={[styles.button, styles.buttonRow, { backgroundColor: theme.accentSoft }]}>
+          <SpeechControls
+            paused={status === 'paused'}
+            onPause={onPause}
+            onResume={onResume}
+            onStop={stopSpeech}
+            tall
+          />
+        </View>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          disabled={status === 'writing' || (telling !== null && !speechAvailable)}
+          onPress={onPress}
+          style={({ pressed }) => [
+            styles.button,
+            { backgroundColor: theme.accentSoft },
+            pressed && { opacity: 0.85 },
+          ]}>
+          <ThemedText type="smallBold" themeColor="accent">
+            {label}
+          </ThemedText>
+        </Pressable>
+      )}
       {telling && <ThemedText type="small">{telling}</ThemedText>}
     </>
   );
@@ -120,6 +217,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
   const [telling, setTelling] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [engineFailed, setEngineFailed] = useState(false);
   const [itemFor, setItemFor] = useState<HistoryItem | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -161,6 +259,7 @@ export function TellingLead({ item }: { item: HistoryItem }) {
     if (speaking) {
       await stopSpeech();
       setSpeaking(false);
+      setPaused(false);
       return;
     }
     if (!telling) {
@@ -168,11 +267,27 @@ export function TellingLead({ item }: { item: HistoryItem }) {
     }
     setEngineFailed(false);
     setSpeaking(true);
+    setPaused(false);
+    // Holds through a pause; settles on done, stop, or error — a
+    // resume that fails lands here as 'error' and is said out loud
     const outcome = await speakAsync(telling);
     if (outcome === 'error') {
       setEngineFailed(true);
     }
     setSpeaking(false);
+    setPaused(false);
+  };
+
+  const pause = async () => {
+    if ((await pauseSpeech()) === 'paused') {
+      setPaused(true);
+    }
+  };
+
+  const resume = async () => {
+    if ((await resumeSpeech()) === 'speaking') {
+      setPaused(false);
+    }
   };
 
   // Never silently: a telling that vanishes leaves the source extract
@@ -219,12 +334,19 @@ export function TellingLead({ item }: { item: HistoryItem }) {
           VoiceOver to call "four-pointed star", and Stop is a word. */}
       {speechAvailable && (
         <View style={styles.leadControl}>
-          {/* 16pt slop on the 20px label clears the 44pt target */}
-          <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.three}>
-            <ThemedText type="smallBold" themeColor="accent">
-              {speaking ? 'Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
-            </ThemedText>
-          </Pressable>
+          {speaking && speechCanPause ? (
+            <SpeechControls paused={paused} onPause={pause} onResume={resume} onStop={toggle} />
+          ) : (
+            /* 16pt slop on the 20px label clears the 44pt target */
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void toggle()}
+              hitSlop={Spacing.three}>
+              <ThemedText type="smallBold" themeColor="accent">
+                {speaking ? 'Stop' : engineFailed ? 'Speech failed · retry' : 'Listen'}
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
       )}
       {storyParagraphs(telling).map((paragraph, index) => (
@@ -247,8 +369,30 @@ export function TellingLead({ item }: { item: HistoryItem }) {
 const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
+    justifyContent: 'center',
+    // The HIG's 44pt floor, for the whole pill and not just its text
+    minHeight: 44,
     paddingVertical: Spacing.two + Spacing.half,
     borderRadius: Spacing.three - Spacing.one,
+  },
+  // The pill as a row of word-controls: the words themselves carry the
+  // height, so the pill's own vertical padding stands down
+  buttonRow: {
+    flexDirection: 'row',
+    paddingVertical: 0,
+  },
+  transport: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // Each word's own padding is its tap target — bounds never overlap
+  transportWord: {
+    paddingHorizontal: Spacing.two,
+  },
+  transportWordTall: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
   },
   leadPending: {
     flexDirection: 'row',
