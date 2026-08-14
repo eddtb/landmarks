@@ -40,7 +40,7 @@ import {
   LoadFailure,
   SavedCopyLine,
 } from '@/components/load-failure';
-import { TellingLead, TellingSection } from '@/components/telling-section';
+import { SpeechControls, TellingLead, TellingSection } from '@/components/telling-section';
 import { ThemedText } from '@/components/themed-text';
 import { DrawingWanderLine, WanderLine } from '@/components/wander-line';
 import { Spacing } from '@/constants/theme';
@@ -56,7 +56,15 @@ import { readingProgress } from '@/utils/reading-progress';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
-import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/utils/speech';
+import {
+  pauseSpeech,
+  resumeSpeech,
+  speakAsync,
+  speechAvailable,
+  speechCanPause,
+  stopSpeech,
+  usingEnhancedVoice,
+} from '@/utils/speech';
 
 /**
  * The Gazetteer: a magazine cover for the place. Hero and gallery in
@@ -506,6 +514,7 @@ function Hero({
 
 function useRetoldSpeaker(retold: Retold | null) {
   const [speaking, setSpeaking] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [engineFailed, setEngineFailed] = useState(false);
   const [spokeOnce, setSpokeOnce] = useState(false);
   const cancelled = useRef(false);
@@ -524,6 +533,7 @@ function useRetoldSpeaker(retold: Retold | null) {
       cancelled.current = true;
       await stopSpeech();
       setSpeaking(false);
+      setPaused(false);
       return;
     }
     if (!retold) {
@@ -533,6 +543,10 @@ function useRetoldSpeaker(retold: Retold | null) {
     setEngineFailed(false);
     setSpokeOnce(true);
     setSpeaking(true);
+    setPaused(false);
+    // A pause holds this loop where it stands: the awaited utterance
+    // only settles on done, stop or error, so a part paused mid-body
+    // resumes mid-body — the loop never advances over a paused reading.
     for (const [index, part] of retold.parts.entries()) {
       if (cancelled.current) {
         return;
@@ -542,19 +556,44 @@ function useRetoldSpeaker(retold: Retold | null) {
         // A broken engine must say so, not mime success
         setEngineFailed(true);
         setSpeaking(false);
+        setPaused(false);
         return;
       }
       if (cancelled.current) {
         return;
       }
-      await speakAsync(part.body);
+      const bodyOutcome = await speakAsync(part.body);
+      if (bodyOutcome === 'error') {
+        // Mid-body is exactly where a failed resume settles as 'error'.
+        // Reading on to Part n+1 over a broken engine would announce
+        // headings nobody can hear — stop and say so instead.
+        setEngineFailed(true);
+        setSpeaking(false);
+        setPaused(false);
+        return;
+      }
     }
     if (!cancelled.current) {
       setSpeaking(false);
+      setPaused(false);
     }
   }, [speaking, retold]);
 
-  return { speaking, engineFailed, spokeOnce, toggle };
+  const pause = useCallback(async () => {
+    if ((await pauseSpeech()) === 'paused') {
+      setPaused(true);
+    }
+  }, []);
+
+  const resume = useCallback(async () => {
+    if ((await resumeSpeech()) === 'speaking') {
+      setPaused(false);
+    }
+    // On 'error' the in-flight utterance settles as 'error' and the
+    // loop above surfaces it — one channel for every engine failure
+  }, []);
+
+  return { speaking, paused, engineFailed, spokeOnce, toggle, pause, resume };
 }
 
 export function AreaGazetteer({
@@ -746,7 +785,8 @@ export function AreaGazetteer({
   const [retoldAttempt, setRetoldAttempt] = useState(0);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [areaFor, setAreaFor] = useState<string | null>(null);
-  const { speaking, engineFailed, spokeOnce, toggle } = useRetoldSpeaker(retold);
+  const { speaking, paused, engineFailed, spokeOnce, toggle, pause, resume } =
+    useRetoldSpeaker(retold);
 
   // Adjust-during-render: walking into Deptford must not show Greenwich
   if (areaFor !== areaName) {
@@ -1049,7 +1089,10 @@ export function AreaGazetteer({
             <ThemedText type="caption" themeColor="textSecondary" style={styles.aiLabelText}>
               Retold by AI from Wikipedia — source below
             </ThemedText>
-            {speechAvailable && retold && (
+            {speechAvailable && retold && speaking && speechCanPause && (
+              <SpeechControls paused={paused} onPause={pause} onResume={resume} onStop={toggle} />
+            )}
+            {speechAvailable && retold && !(speaking && speechCanPause) && (
               // 16pt slop on the 20px label clears the 44pt target
               <Pressable accessibilityRole="button" onPress={() => void toggle()} hitSlop={Spacing.three}>
                 <ThemedText type="smallBold" themeColor="accent">
@@ -1122,9 +1165,12 @@ export function AreaGazetteer({
     },
     [
       speaking,
+      paused,
       engineFailed,
       spokeOnce,
       toggle,
+      pause,
+      resume,
       retold,
       jumpToPart,
       partParagraphs,
