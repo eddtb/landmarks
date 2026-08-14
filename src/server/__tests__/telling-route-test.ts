@@ -46,6 +46,16 @@ describe('POST /api/telling', () => {
     expect(getTelling).toHaveBeenCalledWith(expect.anything(), 'area:greenwich');
   });
 
+  test('surrounding whitespace never buys a second cache row', async () => {
+    // The rule /api/retold keeps (#304), kept here too: the key we
+    // accept is the key we write, and " Greenwich " must not mint an
+    // "area: greenwich " slot beside the real one in Turso.
+    const { pageId: _dropped, ...areaBody } = { ...goodBody, area: '  Greenwich  ' };
+    const response = await POST(tellingRequest(areaBody));
+    expect(response.status).toBe(200);
+    expect(getTelling).toHaveBeenCalledWith(expect.anything(), 'area:greenwich');
+  });
+
   test('rejects malformed JSON and missing fields without spending', async () => {
     expect((await POST(tellingRequest('not json'))).status).toBe(400);
     expect((await POST(tellingRequest({ title: 'No id' }))).status).toBe(400);
@@ -93,5 +103,12 @@ describe('POST /api/telling', () => {
 
     getTelling.mockRejectedValueOnce(new Error('upstream down'));
     expect((await POST(tellingRequest(goodBody))).headers.get('x-feed-store')).toBe('off');
+
+    // Refusals too — the header is UNCONDITIONAL (AGENTS.md), and a
+    // 400 that stays silent about the store is a conditional header
+    expect((await POST(tellingRequest('not json'))).headers.get('x-feed-store')).toBe('off');
+    expect(
+      (await POST(tellingRequest({ ...goodBody, extract: '   ' }))).headers.get('x-feed-store')
+    ).toBe('off');
   });
 });

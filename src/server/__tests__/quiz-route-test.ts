@@ -309,5 +309,12 @@ describe('GET /api/quiz', () => {
     mockFindNearbyHistory.mockResolvedValue([place(1, 'The Old Rectory')]);
     resetQuizForTests();
     expect((await realReader()).headers.get('x-feed-store')).toBe('off');
+
+    // The refusal too. The 400's STATUS belongs to route-params-test;
+    // this asserts only that the header the postflight reads is
+    // genuinely unconditional (AGENTS.md), refusals included.
+    const refusal = await route.GET!(new Request('http://localhost/api/quiz'));
+    expect(refusal.status).toBe(400);
+    expect(refusal.headers.get('x-feed-store')).toBe('off');
   });
 });

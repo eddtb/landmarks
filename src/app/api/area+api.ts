@@ -23,7 +23,12 @@ export async function GET(request: Request) {
   // missing one used to read as 0 and name Null Island (#305)
   const center = coordinatesParam(url.searchParams);
   if (!center) {
-    return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
+    // Refusals report the store too — x-feed-store is UNCONDITIONAL
+    // on the store-backed routes (AGENTS.md)
+    return Response.json(
+      { error: 'Expected lat and lng' },
+      { status: 400, headers: storeHealthHeaders() }
+    );
   }
 
   // Hermetic E2E: the runner's IP gets 429'd by Wikipedia and Wikidata,

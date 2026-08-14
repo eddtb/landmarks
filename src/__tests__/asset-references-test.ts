@@ -21,6 +21,10 @@ import { join } from 'path';
 const SourceRoot = join(__dirname, '..');
 const RepoRoot = join(SourceRoot, '..');
 const AssetReference = /@\/assets\/[a-zA-Z0-9/._-]+/g;
+// The other spelling Metro resolves and jest stubs identically: a
+// relative climb out of src/ into assets/. None exist today; the first
+// one somebody writes is under this fence the moment it lands.
+const RelativeAssetReference = /(?:\.\.\/)+assets\/[a-zA-Z0-9/._-]+/g;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -32,14 +36,48 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-function referencesIn(file: string): string[] {
-  return readFileSync(file, 'utf8').match(AssetReference) ?? [];
+function referencesIn(file: string): { reference: string; resolved: string }[] {
+  const source = readFileSync(file, 'utf8');
+  return [
+    ...(source.match(AssetReference) ?? []).map((reference) => ({
+      reference,
+      resolved: join(RepoRoot, reference.replace('@/', '')),
+    })),
+    ...(source.match(RelativeAssetReference) ?? []).map((reference) => ({
+      reference,
+      resolved: join(file, '..', reference),
+    })),
+  ];
 }
 
 const files = sourceFiles(SourceRoot);
 const referenced = files.flatMap((file) =>
-  referencesIn(file).map((reference) => ({ file: file.slice(RepoRoot.length + 1), reference }))
+  referencesIn(file).map(({ reference, resolved }) => ({
+    file: file.slice(RepoRoot.length + 1),
+    reference,
+    resolved,
+  }))
 );
+
+/** Every "./assets/…" and "./plugins/…" string anywhere in app.json —
+ * icon, splash, adaptive-icon, favicon, and whatever a plugin block
+ * names. A deleted splash image bundle-fails exactly like a deleted
+ * component asset, and the config plugins are require()d by prebuild. */
+function appJsonReferences(node: unknown, found: string[] = []): string[] {
+  if (typeof node === 'string') {
+    if (node.startsWith('./assets/') || node.startsWith('./plugins/')) {
+      found.push(node);
+    }
+  } else if (Array.isArray(node)) {
+    node.forEach((child) => appJsonReferences(child, found));
+  } else if (node && typeof node === 'object') {
+    Object.values(node).forEach((child) => appJsonReferences(child, found));
+  }
+  return found;
+}
+
+const appJson = JSON.parse(readFileSync(join(RepoRoot, 'app.json'), 'utf8')) as unknown;
+const appJsonReferenced = appJsonReferences(appJson);
 
 describe('asset references', () => {
   // Without this, deleting every asset in the app would leave the suite
@@ -47,12 +85,27 @@ describe('asset references', () => {
   test('the scan is actually reading the tree', () => {
     expect(files.length).toBeGreaterThan(50);
     expect(referenced.length).toBeGreaterThan(0);
+    // app.json names at least the icon, the splash and the favicon;
+    // an empty walk here would mean the walker broke, not the config
+    expect(appJsonReferenced.length).toBeGreaterThanOrEqual(4);
   });
 
   test('every asset a component asks for is on disk', () => {
     const missing = referenced
-      .filter(({ reference }) => !existsSync(join(RepoRoot, reference.replace('@/', ''))))
+      .filter(({ resolved }) => !existsSync(resolved))
       .map(({ file, reference }) => `${file} requires ${reference}, which does not exist`);
+
+    expect(missing).toEqual([]);
+  });
+
+  test('every asset and plugin app.json names is on disk', () => {
+    const missing = appJsonReferenced
+      .filter((reference) => {
+        const resolved = join(RepoRoot, reference);
+        // Config plugins resolve like modules: bare, .js, or a directory
+        return !existsSync(resolved) && !existsSync(`${resolved}.js`);
+      })
+      .map((reference) => `app.json names ${reference}, which does not exist`);
 
     expect(missing).toEqual([]);
   });

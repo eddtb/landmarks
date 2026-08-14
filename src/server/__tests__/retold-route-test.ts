@@ -188,6 +188,28 @@ describe('GET /api/retold — what counts as an area', () => {
     expect(mockGetRetold).not.toHaveBeenCalled();
   });
 
+  test('a C1 control character is a control character too', async () => {
+    // The original guard stopped at C0+DEL, and %C2%9B decodes to CSI
+    // (U+009B) — a key with a control character in it, straight into
+    // Turso and the prompt. Built with fromCharCode so no editor or
+    // diff tool ever normalises the byte away.
+    const csi = `Green${String.fromCharCode(0x9b)}wich`;
+    const nel = `Green${String.fromCharCode(0x85)}wich`;
+
+    expect((await GET(askFor(csi))).status).toBe(400);
+    expect((await GET(askFor(nel))).status).toBe(400);
+    expect(mockGetRetold).not.toHaveBeenCalled();
+  });
+
+  test('a joining script is not a control character — ZWJ names survive', async () => {
+    mockGetRetold.mockResolvedValue(telling);
+    // Sinhala uses ZWJ (Cf) inside real words; a guard that widened to
+    // all of \p{C} would refuse a real place its retelling.
+    const sinhala = `ශ්${String.fromCharCode(0x200d)}රී`;
+
+    expect((await GET(askFor(sinhala))).status).toBe(200);
+  });
+
   test('a real area name in any script still gets its retelling', async () => {
     mockGetRetold.mockResolvedValue(telling);
 
@@ -214,6 +236,28 @@ describe('GET /api/retold — what counts as an area', () => {
     const miss = await GET(askFor('Greenwich'));
     expect(miss.status).toBe(404);
     expect(miss.headers.get('x-feed-store')).toBe('off');
+  });
+
+  test('…and so does a refusal — the header is unconditional', async () => {
+    const refusal = await GET(askFor('12345'));
+
+    expect(refusal.status).toBe(400);
+    expect(refusal.headers.get('x-feed-store')).toBe('off');
+  });
+
+  test('…and the SSE open — the one moment a stream has headers', async () => {
+    mockStart.mockResolvedValue({
+      kind: 'stream',
+      events: streamOf([{ kind: 'done', retold: telling }]),
+    });
+
+    const response = await GET(ask('text/event-stream'));
+
+    expect(response.headers.get('content-type')).toBe('text/event-stream');
+    // A cold generation is exactly the request that will try to WRITE
+    // to the store; its health must ride the open, because there is
+    // nowhere later to put it.
+    expect(response.headers.get('x-feed-store')).toBe('off');
   });
 });
 

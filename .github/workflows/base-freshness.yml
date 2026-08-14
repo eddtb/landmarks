@@ -1,0 +1,173 @@
+# Two PRs can be green separately and red together.
+#
+# #311 added the design fences; #313 refactored glass into token groups.
+# Each was green. Their combination left the base RED — nine allowlist
+# entries orphaned, one literal unregistered — and nobody noticed until a
+# third PR rebased onto both, because each PR's checks ran against the
+# tree it was WRITTEN on, not the tree it LANDS on.
+#
+# GitHub already has the cure: `strict_required_status_checks_policy`
+# ("require branches to be up to date before merging"). It is on — and it
+# is on for `main` ONLY, because the `protect-main` ruleset's condition is
+# `~DEFAULT_BRANCH`. Every long-lived stack branch the work actually
+# happens on is ungoverned: no required checks, no strict policy, nothing
+# to stop two stale-but-green PRs landing on top of each other. Widening
+# that ruleset is a repository setting and therefore Edd's to make; this
+# workflow is the part that can live in the repo.
+#
+# It publishes ONE check run, `Base is fresh`, on the PR head:
+#   - when the PR opens or is pushed, and
+#   - again on every push to the branch the PR targets.
+# That second trigger is the whole point. A check that only runs at PR
+# time goes stale the moment the base moves — the same bug in a new coat.
+#
+# The job's own tick says only "a verdict was published". The verdict is
+# the `Base is fresh` check run, and that is the one to read.
+name: Base freshness
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Every branch, because base branches are not knowable in advance and a
+  # hard-coded list would rot into exactly the silence this closes. A push
+  # to a branch no PR targets exits in a second.
+  push:
+    branches: ['**']
+
+concurrency:
+  group: base-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  publish:
+    name: Publish base-freshness
+    runs-on: ubuntu-latest
+    # A fork head cannot carry a writable token, so no verdict can be
+    # published for one; the ruleset is the only cover there.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Judge every pull request this event touches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          EVENT: ${{ github.event_name }}
+          PUSHED_REF: ${{ github.ref_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT" = "pull_request" ]; then
+            targets="$PR_NUMBER"
+          else
+            # A base moved. Every open PR aimed at it is now holding
+            # evidence computed against a tree that no longer exists.
+            # --limit, because gh's default is 30 and it truncates
+            # SILENTLY — a sweep that quietly judges the first thirty
+            # PRs and leaves the rest holding stale verdicts is the
+            # exact lie this workflow exists to close.
+            targets="$(gh pr list --repo "$REPO" --state open --base "$PUSHED_REF" \
+              --limit 200 --json number --jq '.[].number')"
+          fi
+
+          if [ -z "$targets" ]; then
+            echo "No open pull request targets $PUSHED_REF — no verdict to publish."
+            exit 0
+          fi
+
+          # One PR's API failure must not abort the sweep. Under set -e
+          # a single failed call in this loop kills the step, and every
+          # PR after it keeps whatever verdict it had — the same
+          # staleness this workflow exists to close, now caused by it.
+          # So each judgment guards its own calls and skips forward, and
+          # the step exits red at the end so the failure is still seen.
+          failed=0
+          for pr in $targets; do
+            if ! gh pr view "$pr" --repo "$REPO" \
+              --json headRefOid,baseRefName,headRepositoryOwner \
+              --jq '[.headRefOid, .baseRefName, .headRepositoryOwner.login] | @tsv' > pr.tsv; then
+              echo "::error::PR #$pr: lookup failed; its freshness verdict may be stale."
+              failed=1
+              continue
+            fi
+            head_sha="$(cut -f1 pr.tsv)"
+            base_ref="$(cut -f2 pr.tsv)"
+            head_owner="$(cut -f3 pr.tsv)"
+
+            if [ "$head_owner" != "$OWNER" ]; then
+              echo "PR #$pr is fork-headed — skipping (no writable check token)."
+              continue
+            fi
+
+            # GitHub's own arithmetic: commits on the base that the head
+            # does not contain. Non-zero means this PR's checks were
+            # computed against a tree that is not the one it lands on.
+            if ! behind="$(gh api "repos/$REPO/compare/$base_ref...$head_sha" --jq '.behind_by')"; then
+              echo "::error::PR #$pr: compare failed; its freshness verdict may be stale."
+              failed=1
+              continue
+            fi
+            case "$behind" in
+              ''|*[!0-9]*)
+                echo "::error::PR #$pr: compare returned '$behind', not a count."
+                failed=1
+                continue
+                ;;
+            esac
+
+            if [ "$behind" -eq 0 ]; then
+              conclusion=success
+              title="Built on the current $base_ref"
+              printf 'This head contains the tip of %s, so its checks ran against the tree it lands on.\n' \
+                "$base_ref" > summary.md
+            else
+              conclusion=failure
+              title="$behind commit(s) behind $base_ref"
+              {
+                printf 'Every check on this pull request ran against %s as it was %s commit(s) ago, not as it is now. Two pull requests can each be green against an older base and red together on the newer one: that is how this line went red on 10 August with two green ticks behind it.\n\n' \
+                  "$base_ref" "$behind"
+                printf 'Update the branch so the checks run again:\n\n'
+                printf '    gh pr update-branch %s --repo %s\n\n' "$pr" "$REPO"
+                printf 'If the Update branch button is missing, allow_update_branch is off for this repository — merge %s into the head by hand, or ask Edd to turn it on.\n' \
+                  "$base_ref"
+              } > summary.md
+            fi
+
+            jq -n \
+              --arg name 'Base is fresh' \
+              --arg head_sha "$head_sha" \
+              --arg conclusion "$conclusion" \
+              --arg title "$title" \
+              --rawfile summary summary.md \
+              '{name: $name, head_sha: $head_sha, status: "completed",
+                conclusion: $conclusion,
+                output: {title: $title, summary: $summary}}' > payload.json
+
+            # Edit the existing verdict rather than stack a new one beside
+            # it: a column of stale check runs is its own kind of lie.
+            if ! existing="$(gh api \
+              "repos/$REPO/commits/$head_sha/check-runs?check_name=Base%20is%20fresh" \
+              --jq '.check_runs | sort_by(.id) | last | .id // empty')"; then
+              echo "::error::PR #$pr: check-run lookup failed; its freshness verdict may be stale."
+              failed=1
+              continue
+            fi
+            if [ -n "$existing" ]; then
+              gh api -X PATCH "repos/$REPO/check-runs/$existing" --input payload.json >/dev/null \
+                || { echo "::error::PR #$pr: verdict update failed."; failed=1; continue; }
+            else
+              gh api -X POST "repos/$REPO/check-runs" --input payload.json >/dev/null \
+                || { echo "::error::PR #$pr: verdict publish failed."; failed=1; continue; }
+            fi
+            echo "PR #$pr: $conclusion — $title"
+          done
+
+          exit "$failed"
