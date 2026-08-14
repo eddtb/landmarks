@@ -226,6 +226,56 @@ entry. The lists can only shrink. **Never add to a `Quarantined*` list
 to get green**; that is the failure mode these fences exist to stop.
 
 
+# A check that cannot fail is not a check
+
+The August 2026 review found one fault wearing ten different clothes: a
+check that reports success without doing its work. The account is in
+`docs/postmortems/2026-08-12-the-hollow-signal.md`; these are the rules
+it left. One question separates them from every sound check standing
+beside them — **what does this check do when the thing it watches is
+broken?** If the answer is "nothing", it is not a check.
+
+**Never read an exit code through a pipe.** `cmd | tee` reports `tee`'s
+status, and GitHub's default `run:` shell is `bash -e {0}` with no
+`pipefail`. That is exactly how the only required check lost the ability
+to fail on a red suite (#278) — and it was then reproduced by hand twice
+in one afternoon, so knowing about it is not protection. Read the status
+of the command you actually care about: `shell: bash` selects
+`-eo pipefail`, and locally either drop the pipe or read
+`${PIPESTATUS[0]}`.
+
+**A test that has never failed is not a fence.** Revert the fix, watch
+it go red, restore it. #313 did that 22 times and two of the reverts
+found bugs in its own tests. Assert on what the user gets — the rendered
+output, the generated artefact — never on a mock, an input or an
+intermediate: `app-config-test.ts` asserted the SOURCE config while the
+generated plist shipped five capability keys into App Review (#284), and
+`wander-elsewhere-test.tsx` asserted a hidden banner while a fabricated
+central-London feed rendered beside it (#289). Ten more of the same
+shape are open at #312.
+
+**Take both halves of a merge conflict, or neither.** #315: main deleted
+an asset AND the dead component that required it; the resolution took
+the deletions and kept the component, and the app could not bundle.
+Typecheck, lint and 1,010 tests were green over it — `tsc` never
+resolves a `require()` of a PNG, jest stubs everything under `assets/`,
+and nothing in CI bundles the app. Splitting a two-part change is not
+the cautious half; it is the half no check can see.
+
+**Verify a worktree's base before the first edit.**
+`git merge-base --is-ancestor HEAD origin/main` must exit **1**. Agent
+worktrees have silently arrived at `main` while their brief described
+this line — 84 commits apart on 10 August, 97 two days later — with
+whole files from the brief not yet existing. Unchecked, the work lands
+against a tree nobody asked about.
+
+**Green on your branch is not green on the base.** A run measures the
+tree the work was written on, and the base moves under it. When one goes
+red, ask whether the base is already red before assuming the failure is
+yours: #313 and #314 both went red at 14:45 because #311's ratchet
+landed at 14:05, and neither had broken anything.
+
+
 # Do not run `npm audit fix --force`
 
 The remaining advisories are dev/build-time only and none ships in the
