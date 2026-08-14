@@ -8,7 +8,13 @@
 import { render, screen } from '@testing-library/react-native';
 
 import { StoriesMap } from '@/components/stories-map';
+import { Colors } from '@/constants/theme';
 import { HistoryItem } from '@/types/history';
+
+const mockScheme = jest.fn(() => 'light');
+jest.mock('@/hooks/use-color-scheme', () => ({
+  useColorScheme: () => mockScheme(),
+}));
 
 // jest-setup mocks expo-maps globally, but only so screens can render;
 // these tests assert what the native map is HANDED, so they need the
@@ -42,6 +48,7 @@ const story = (pageId: number, title: string, metres: number): HistoryItem => ({
 beforeEach(() => {
   mockMapProps.length = 0;
   jest.clearAllMocks();
+  mockScheme.mockReturnValue('light');
 });
 
 /** What the native map was handed. */
@@ -69,7 +76,24 @@ describe('StoriesMap', () => {
     // from "me" only by having a tail — the glyph is what separates them
     const markers = mapProps().markers as { systemImage: string; tintColor: string }[];
     expect(markers[0].systemImage).toBe('building.columns');
-    expect(markers[0].tintColor).toBeTruthy();
+    // `toBeTruthy()` stood here, which every string but '' satisfies —
+    // the pin could wear ANY colour, the warm accent DESIGN.md reserves
+    // for rarity included, and this test would still be green. The pin
+    // is violet because violet is what Venture draws with; the value is
+    // the palette's, named.
+    expect(markers[0].tintColor).toBe(Colors.light.accent);
+  });
+
+  test('the pin follows the theme, so it is violet in the dark too', async () => {
+    // Read from the theme rather than written down: a literal here
+    // would be right in one scheme and wrong in the other, and #6A4BDB
+    // on a dark map is the wrong violet (2.79:1 against white).
+    mockScheme.mockReturnValue('dark');
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} center={center} />);
+
+    const markers = mapProps().markers as { tintColor: string }[];
+    expect(markers[0].tintColor).toBe(Colors.dark.accent);
+    expect(markers[0].tintColor).not.toBe(Colors.light.accent);
   });
 
   test('tapping a pin opens THAT story — the id is the route parameter', async () => {

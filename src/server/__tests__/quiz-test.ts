@@ -170,9 +170,11 @@ describe('quizPrompt', () => {
   });
 
   test('asks for fun facts a stranger can reason out — never memorised figures', () => {
-    // The first on-phone run asked "how many men are commemorated on
-    // the memorial" — obedient to a prompt that requested "a number".
-    // The register is the product: guessable, delightful, short.
+    // The register is the product: guessable, delightful, short. These
+    // four assertions read the sentences back out of the string the
+    // line above just built, which is all they can do — the prompt is
+    // an instruction, and whether it was OBEYED is asserted against
+    // generated questions in "the register rule, enforced" below.
     const prompt = quizPrompt('Crystal Palace', subjects);
 
     expect(prompt).toContain('tell a friend');
@@ -186,6 +188,78 @@ describe('quizPrompt', () => {
     const long = [subject(1, 'A', 'x'.repeat(50_000)), subject(2, 'B'), subject(3, 'C')];
 
     expect(quizPrompt('Nowhere', long).length).toBeLessThan(10_000);
+  });
+});
+
+/**
+ * The register rule, ENFORCED.
+ *
+ * "NEVER ask for a count, a measurement, or a bare year" was written
+ * into the prompt after the first on-phone run served "how many men are
+ * commemorated on the memorial", and the test that guarded it asserted
+ * `prompt.toContain('NEVER ask for a count…')` — the prompt read back
+ * at itself. Nothing anywhere checked a QUESTION, so the model could
+ * ignore the paragraph (models do) and the failure would ship exactly
+ * as it had before. These ask the served quiz instead.
+ */
+describe('the register rule, enforced against generated questions', () => {
+  const memorial = subject(6, 'Crystal Palace war memorial', 'The memorial names 24 men of 1914-18.');
+  const withMemorial = new Map(allowed).set(6, memorial);
+
+  test('the question that shipped — "how many men" — is dropped', () => {
+    const counted = anchor({
+      pageId: 6,
+      question: 'How many men are commemorated on the memorial?',
+      options: ['24', '36', '48', '60'],
+      answerIndex: 0,
+    });
+
+    expect(cleanQuizQuestion(counted, withMemorial)).toBeNull();
+  });
+
+  test('a hand of bare years is a recall test whatever the question says', () => {
+    const dated = anchor({
+      question: 'When was the Bowl opened?',
+      options: ['1961', '1936', '1854', '1972'],
+    });
+
+    expect(cleanQuizQuestion(dated, allowed)).toBeNull();
+  });
+
+  test('…and so is a hand of measurements, separators and all', () => {
+    expect(
+      cleanQuizQuestion(anchor({ options: ['1,200', '2,400', '3,600', '4,800'] }), allowed)
+    ).toBeNull();
+    expect(
+      cleanQuizQuestion(anchor({ options: ['1790-91', '1812', '1854', '1901'] }), allowed)
+    ).toBeNull();
+  });
+
+  test('a reasonable-out answer survives, figures in its options and all', () => {
+    // "How long did the fire burn" is the register the prompt asks for:
+    // a stranger can reason it out and feel clever being right. The
+    // rule is about bare figures, not about numbers appearing at all.
+    expect(cleanQuizQuestion(anchor(), allowed)).not.toBeNull();
+    expect(
+      cleanQuizQuestion(
+        anchor({ options: ['Five hours', 'Twenty minutes', '3 days', 'A fortnight'] }),
+        allowed
+      )
+    ).not.toBeNull();
+  });
+
+  test('a whole quiz of memorised figures is no quiz at all', async () => {
+    // End to end: whatever the model returns, none of it reaches a
+    // phone — and a broken quiz is null rather than a short one
+    mockResearch.mockResolvedValue(
+      fenced([
+        anchor({ pageId: 1, question: 'How many arches?', options: ['4', '8', '12', '16'] }),
+        anchor({ pageId: 2, options: ['1854', '1865', '1901', '1936'] }),
+        anchor({ pageId: 3, options: ['1956', '1961', '1972', '1984'] }),
+      ])
+    );
+
+    expect(await getQuiz(bowl)).toBeNull();
   });
 });
 

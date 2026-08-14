@@ -41,12 +41,6 @@ export function bearingDegrees(from: Coordinates, to: Coordinates): number {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-const CompassArrows = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'] as const;
-
-/**
- * Which arrow points at the target, given the direction the user is facing.
- * "Relative bearing 0" = straight ahead = ↑.
- */
 const CompassPoints = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 
 /** The bearing as a spoken compass point — "away · NE" on the dial. */
@@ -72,13 +66,4 @@ const CompassWords = [
  */
 export function compassWords(bearing: number): (typeof CompassWords)[number] {
   return CompassWords[Math.round((((bearing % 360) + 360) % 360) / 45) % 8];
-}
-
-export function arrowTowards(
-  from: Coordinates,
-  to: Coordinates,
-  headingDegrees: number
-): string {
-  const relative = (bearingDegrees(from, to) - headingDegrees + 360) % 360;
-  return CompassArrows[Math.round(relative / 45) % 8];
 }
