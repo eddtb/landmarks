@@ -10,11 +10,13 @@
  * exists, so anywhere earlier in the order it would beat the town on
  * every GPS walk-through.
  */
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '@/data/cached-get';
 import { resetAreaNameCacheForTests, useAreaName } from '@/hooks/use-area-name';
+import { resetFeedOriginForTests } from '@/hooks/use-feed-origin';
 import { clearPin, setPin } from '@/hooks/use-pin';
+import { Coordinates } from '@/utils/geo';
 
 const mockReverseGeocodeAsync = jest.fn();
 jest.mock('expo-location', () => ({
@@ -46,9 +48,11 @@ function articlesExist(...titles: string[]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  // Module-level stores — start every test unpinned and unresolved
+  // Module-level stores — start every test unpinned, unresolved and
+  // unanchored (the cascade resolves at the feed's origin now, #323)
   clearPin();
   resetAreaNameCacheForTests();
+  resetFeedOriginForTests();
   // The real geocoder's shape at Dorking: the ward, the county, the town
   mockReverseGeocodeAsync.mockResolvedValue([
     { district: 'Dorking North', subregion: 'Surrey', city: 'Dorking' },
@@ -168,6 +172,30 @@ describe('useAreaName (the article-existence cascade)', () => {
       'Dorking North',
       'Dorking',
     ]);
+  });
+
+  test('the name holds while the reader travels — it names what the feed shows (#323)', async () => {
+    articlesExist('Dorking', 'Greenwich');
+
+    const { result, rerender } = await renderHook(
+      ({ center }: { center: Coordinates }) => useAreaName(center),
+      { initialProps: { center: dorking } }
+    );
+    await waitFor(() =>
+      expect(result.current).toEqual({ name: 'Dorking', label: 'Dorking', settled: true })
+    );
+    const geocodes = mockReverseGeocodeAsync.mock.calls.length;
+    const probes = mockFetchArticleLight.mock.calls.length;
+
+    // The reader rides to Greenwich; the FEED has not moved, so
+    // neither may its name — and nothing is spent finding that out
+    mockReverseGeocodeAsync.mockResolvedValue([{ city: 'Greenwich' }]);
+    await rerender({ center: { latitude: 51.4826, longitude: -0.0077 } });
+    await act(async () => {});
+
+    expect(result.current).toEqual({ name: 'Dorking', label: 'Dorking', settled: true });
+    expect(mockReverseGeocodeAsync.mock.calls.length).toBe(geocodes);
+    expect(mockFetchArticleLight.mock.calls.length).toBe(probes);
   });
 
   test("the searched name only counts at its own pin's bucket", async () => {

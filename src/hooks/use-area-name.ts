@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { fetchNearestArea } from '@/data/area-client';
 import { fetchArticleLight } from '@/data/article-client';
 import { ApiError } from '@/data/cached-get';
+import { useFeedOrigin } from '@/hooks/use-feed-origin';
 import { usePin } from '@/hooks/use-pin';
 import { Coordinates } from '@/utils/geo';
 
@@ -191,12 +192,17 @@ const Nowhere: AreaName = { name: null, label: null, settled: true };
  */
 export function useAreaName(center: Coordinates | null): AreaName {
   const pin = usePin();
-  // ~111m buckets (#205): an area NAME can't change inside one, and
-  // effect deps finer than that re-resolved on every ~10m GPS tick.
-  const latitude = center === null ? null : Number(center.latitude.toFixed(3));
-  const longitude = center === null ? null : Number(center.longitude.toFixed(3));
+  // The name follows the FEED, not the walk (#323): it names what the
+  // feed shows, so it resolves at the feed's origin and moves only
+  // when the origin does — a pull, a pin, "Back to near me". It used
+  // to re-resolve per ~111m bucket the GPS crossed (#205 had already
+  // coarsened it from per-tick), which moved the title over a feed
+  // that is no longer refetching beneath it.
+  const origin = useFeedOrigin(center);
+  const latitude = origin === null ? null : Number(origin.latitude.toFixed(3));
+  const longitude = origin === null ? null : Number(origin.longitude.toFixed(3));
   // The searched name travels with the pin, and counts only while the
-  // center IS that pin (bucket-compared): back on GPS, the label no
+  // origin IS that pin (bucket-compared): back on GPS, the label no
   // longer describes this ground.
   const searched =
     pin?.label &&

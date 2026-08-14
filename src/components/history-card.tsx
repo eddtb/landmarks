@@ -9,6 +9,7 @@ import { useJournalEntry } from '@/data/journal';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
 import { formatDaySince, formatWalkTime, hookEchoesTitle, storyHook } from '@/utils/format';
+import { Coordinates, distanceMeters } from '@/utils/geo';
 
 type Props = {
   item: HistoryItem;
@@ -18,9 +19,16 @@ type Props = {
    * the feed fetched it, and on the saved shelf — possibly another
    * town, another week — it is a lie. */
   saved?: boolean;
+  /** The reader's live position. The feed no longer refetches as they
+   * move (#323), so `distanceMeters` — minted at the feed's origin —
+   * ages as they walk: with `from`, the walk time recomputes from
+   * where they actually are, every render. Absent (the saved shelf,
+   * exploring a pinned place the reader is not at), the compose-time
+   * figure stands. */
+  from?: Coordinates;
 };
 
-export function HistoryCard({ item, archive, saved }: Props) {
+export function HistoryCard({ item, archive, saved, from }: Props) {
   const theme = useTheme();
   // The quiet ledger: a story the reader has read or stood at stops
   // shouting — the hook goes, and a glass tick sits on the photo
@@ -102,7 +110,11 @@ export function HistoryCard({ item, archive, saved }: Props) {
             {/* Same walking estimate as demo mode: ~1.33 m/s */}
             {(saved
               ? item.source
-              : `${formatWalkTime(Math.round(item.distanceMeters / 1.33))} · ${item.source}`) +
+              : `${formatWalkTime(
+                  Math.round(
+                    (from ? distanceMeters(from, item.coordinates) : item.distanceMeters) / 1.33
+                  )
+                )} · ${item.source}`) +
               // The tick on the photo says it; only photoless cards
               // still say it in the meta line
               (journalWord && !item.thumbnailUrl ? ` · ${journalWord}` : '')}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchNearbyHistory, hasCachedFeed, HistoryFetchResult } from '@/data/history-client';
 import { LoadVerdict, loadVerdict } from '@/data/load-verdict';
+import { anchorFeedOrigin, useFeedOrigin } from '@/hooks/use-feed-origin';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
@@ -31,23 +32,31 @@ const DressingUpgradeDelayMs = 4000;
  * revalidate, no upgrade timer. The state stays `loading` and callers
  * must render their own no-location answer BEFORE reading it (#289:
  * the feed used to ask about Charing Cross on everyone's behalf).
+ *
+ * The fetch keys off the feed ORIGIN, not the centre (#323): the
+ * centre moves with every ~10m GPS tick and used to refire a whole
+ * feed fetch per ~111m bucket it crossed — a re-ask every ~8s on a
+ * bus. The origin moves only on a deliberate act (see use-feed-origin
+ * for which acts), so movement alone can never fire a fetch from
+ * here. The raw center keeps flowing to standing-on/distance labels
+ * in the components untouched — stories hold still, distances don't.
  */
 export function useHistory(center: Coordinates | null): {
   state: HistoryState;
   refresh: () => Promise<void>;
 } {
   const [state, setState] = useState<HistoryState>({ status: 'loading' });
-  // Quantized to the server's own 3 dp bucket (~111m): GPS ticks every
-  // ~10m, and effect deps finer than the bucket refired a whole feed
-  // fetch per tick. The raw center never enters this hook — it keeps
-  // flowing to standing-on/distance labels in the components untouched.
-  const latitude = center === null ? null : Number(center.latitude.toFixed(3));
-  const longitude = center === null ? null : Number(center.longitude.toFixed(3));
+  const origin = useFeedOrigin(center);
+  // Quantized to the server's own 3 dp bucket (~111m), as the centre
+  // always was — the server never sees the raw fix.
+  const latitude = origin === null ? null : Number(origin.latitude.toFixed(3));
+  const longitude = origin === null ? null : Number(origin.longitude.toFixed(3));
   const requestId = useRef(0);
-  // The dressing upgrade: EXACTLY one delayed re-ask per bucket visit
-  // (or per pull) — `done` stops a still-dressing upgrade result from
+  // The dressing upgrade: EXACTLY one delayed re-ask per origin (or per
+  // pull) — `done` stops a still-dressing upgrade result from
   // scheduling another, so there is no poll loop; the timer dies with
-  // the bucket (effect cleanup) and with a pull (refresh resets both).
+  // the origin (effect cleanup) and with a pull (the pull's own re-run
+  // resets both). Movement no longer touches it either way.
   const upgradeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const upgradeDone = useRef(false);
   const clearUpgrade = useCallback(() => {
@@ -91,7 +100,7 @@ export function useHistory(center: Coordinates | null): {
         // answers dressed and the new items replace these (the identical-
         // items bail can't swallow it — dressed items are a new array).
         // If the upgrade itself still comes back dressing, it stands
-        // until the bucket changes or the user pulls — never a loop.
+        // until the origin moves or the user pulls — never a loop.
         if (next.dressing && !upgradeDone.current && id === requestId.current) {
           upgradeDone.current = true;
           upgradeTimer.current = setTimeout(() => {
@@ -126,58 +135,98 @@ export function useHistory(center: Coordinates | null): {
     []
   );
 
+  // The pull's claim on a bucket: when refresh() re-anchors the
+  // origin, THIS instance's fetch effect refires for ground the pull
+  // is already fetching — the claim tells it to stand down, once.
+  const lastAskedBucket = useRef<string | null>(null);
+  const pullInFlight = useRef(false);
+  const latestCenter = useRef(center);
+  useEffect(() => {
+    latestCenter.current = center;
+  }, [center]);
+
   useEffect(() => {
     if (latitude === null || longitude === null) {
       return;
     }
-    const id = ++requestId.current;
-    // Loading honesty on a bucket jump: this effect only refires when
-    // the BUCKET changes (walking ticks inside one don't), and if the
-    // new bucket has nothing cached the old area's feed — old-area
-    // distances and all — must not keep painting under the new header
-    // for the fetch window. A cached bucket (adjacent ground while
-    // walking, revisits) still hands over seamlessly, no flash.
-    (async () => {
-      if (!hasCachedFeed({ latitude, longitude })) {
-        setState((prev) => (prev.status === 'loading' ? prev : { status: 'loading' }));
-      }
-      try {
-        const result = await fetchNearbyHistory({ latitude, longitude });
-        await applyResult(id, result, { latitude, longitude });
-      } catch (error) {
-        console.warn('Failed to load history:', error);
-        if (id === requestId.current) {
-          setState({ status: 'error', verdict: loadVerdict(error) });
+    // A moved pull re-anchored the origin and is already asking about
+    // exactly this ground — a second ask here would race it for
+    // requestId and double the spend. The cleanup still returns: the
+    // NEXT origin move must cancel the pull's upgrade like any other.
+    const bucket = `${latitude},${longitude}`;
+    const pullOwnsThisGround = pullInFlight.current && lastAskedBucket.current === bucket;
+    if (!pullOwnsThisGround) {
+      const id = ++requestId.current;
+      lastAskedBucket.current = bucket;
+      // Loading honesty on an origin jump (a pin, mostly): if the new
+      // ground has nothing cached the old area's feed — old-area
+      // distances and all — must not keep painting under the new
+      // header for the fetch window. A cached bucket (revisits) still
+      // hands over seamlessly, no flash.
+      (async () => {
+        if (!hasCachedFeed({ latitude, longitude })) {
+          setState((prev) => (prev.status === 'loading' ? prev : { status: 'loading' }));
         }
-      }
-    })();
-    // Leaving the bucket cancels its pending upgrade — the new bucket
-    // earns its own — and re-arms the one-shot for the next visit
+        try {
+          const result = await fetchNearbyHistory({ latitude, longitude });
+          await applyResult(id, result, { latitude, longitude });
+        } catch (error) {
+          console.warn('Failed to load history:', error);
+          if (id === requestId.current) {
+            setState({ status: 'error', verdict: loadVerdict(error) });
+          }
+        }
+      })();
+    }
+    // A new origin cancels the pending upgrade — the new ask earns
+    // its own — and re-arms the one-shot for the next visit
     return () => {
       clearUpgrade();
       upgradeDone.current = false;
     };
   }, [latitude, longitude, applyResult, clearUpgrade]);
 
+  // The pull: re-anchor to where the reader is NOW — the one promise
+  // the margin line makes ("pull down for here") — and ask directly.
+  // Unmoved ground is the deliberate everything-bypass (fresh=1);
+  // moved ground is a fresh ask about a place the server was never
+  // asked about, exactly like app start's, so no fresh=1 recompose.
   const refresh = useCallback(async () => {
-    if (latitude === null || longitude === null) {
+    const here = latestCenter.current;
+    if (here === null) {
       return;
     }
+    const bucket = {
+      latitude: Number(here.latitude.toFixed(3)),
+      longitude: Number(here.longitude.toFixed(3)),
+    };
+    const key = `${bucket.latitude},${bucket.longitude}`;
+    const moved = lastAskedBucket.current !== key;
     const id = ++requestId.current;
+    // Claim the ground BEFORE re-anchoring: the anchor move refires
+    // the effect above synchronously after this handler, and it must
+    // find the ask already owned
+    lastAskedBucket.current = key;
+    pullInFlight.current = true;
     // A pull is a fresh compose: drop any pending upgrade and let the
     // pull's own result schedule a new one if it arrives undressed
     clearUpgrade();
     upgradeDone.current = false;
+    anchorFeedOrigin(here);
     try {
-      const result = await fetchNearbyHistory({ latitude, longitude }, { forceRefresh: true });
-      await applyResult(id, result, { latitude, longitude });
+      const result = moved
+        ? await fetchNearbyHistory(bucket)
+        : await fetchNearbyHistory(bucket, { forceRefresh: true });
+      await applyResult(id, result, bucket);
     } catch (error) {
       console.warn('Failed to refresh history:', error);
       if (id === requestId.current) {
         setState({ status: 'error', verdict: loadVerdict(error) });
       }
+    } finally {
+      pullInFlight.current = false;
     }
-  }, [latitude, longitude, applyResult, clearUpgrade]);
+  }, [applyResult, clearUpgrade]);
 
   return { state, refresh };
 }

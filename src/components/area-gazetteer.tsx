@@ -52,6 +52,7 @@ import { withoutPullQuote } from '@/utils/pull-quote';
 import { readingProgress } from '@/utils/reading-progress';
 import { useTheme } from '@/hooks/use-theme';
 import { HistoryItem } from '@/types/history';
+import { Coordinates } from '@/utils/geo';
 import { speakAsync, speechAvailable, stopSpeech, usingEnhancedVoice } from '@/utils/speech';
 
 /**
@@ -564,6 +565,7 @@ export function AreaGazetteer({
   tellingItem,
   onReadThreshold,
   chrome,
+  from,
 }: {
   /** The ARTICLE TITLE — every fetch and filter below keys off it. */
   areaName: string | null;
@@ -589,6 +591,13 @@ export function AreaGazetteer({
   stale?: boolean;
   /** When that saved copy was written. */
   savedAt?: number;
+  /** The reader's live position, for the relic cards' walk times —
+   * HistoryCard's own `from` contract (#323): the feed no longer
+   * re-mints distances by refetching as they move, so the cards
+   * recompute from here instead. Callers keep its identity coarse
+   * (GazetteerBody steps it per ~111m bucket): this screen re-renders
+   * when it changes. Absent, compose-time figures stand. */
+  from?: Coordinates;
   /** Rendered in the header under the hero — a place screen's Go row. */
   lead?: ReactNode;
   /**
@@ -1098,7 +1107,7 @@ export function AreaGazetteer({
       case 'relic':
         return (
           <View style={styles.cardWrap}>
-            <HistoryCard item={row.item} archive />
+            <HistoryCard item={row.item} archive from={from} />
           </View>
         );
     }
@@ -1116,6 +1125,7 @@ export function AreaGazetteer({
       articleUrl,
       linkSource,
       record,
+      from,
     ]
   );
 
