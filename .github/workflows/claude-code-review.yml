@@ -16,6 +16,12 @@ concurrency:
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
 
+env:
+  # GitHub validates a workflow against the copy on the DEFAULT branch
+  # before it will hand over a review token, so this file is its own
+  # subject. Named once here; the verdict step reads it back.
+  REVIEW_WORKFLOW_FILE: .github/workflows/claude-code-review.yml
+
 jobs:
   claude-review:
     # Only PRs that can actually hold the token get reviewed. GitHub
@@ -32,7 +38,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      # write, not read. A review that could not run has to be able to
+      # say so on the pull request itself — that comment is the only
+      # signal a reader cannot mistake for a completed review. It is
+      # posted with GITHUB_TOKEN; the action carries its own app token
+      # and gains nothing it did not already have.
+      pull-requests: write
       issues: read
       id-token: write
 
@@ -53,3 +64,230 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
+      # A review that never happened used to be indistinguishable from a
+      # clean one. When the workflow file at the PR head differs from the
+      # copy on the default branch, GitHub refuses the app token, the
+      # action logs "Skipping action due to workflow validation", and
+      # then EXITS SUCCESS — a deliberate security behaviour reported as
+      # a pass. Nine consecutive PRs into this line carried a green
+      # review tick for a review that read nothing (#302 onwards).
+      #
+      # The action leaves exactly one usable trace: it returns early
+      # before setting its `conclusion` output, so an empty conclusion
+      # after a successful step IS the skip. Everything below turns that
+      # into something a person, or an agent reading `gh pr checks`, can
+      # see.
+      - name: Establish whether the review actually ran
+        id: verdict
+        if: steps.claude-review.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REVIEW_CONCLUSION: ${{ steps.claude-review.outputs.conclusion }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$REVIEW_CONCLUSION" ]; then
+            echo "ran=true" >> "$GITHUB_OUTPUT"
+            echo "fatal=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Claude reviewed this pull request"
+              echo
+              echo "The action reported \`$REVIEW_CONCLUSION\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "ran=false" >> "$GITHUB_OUTPUT"
+
+          # Reproduce GitHub's own test rather than guess at it: compare
+          # the blob this file resolves to at three refs. Equal blob SHA
+          # is equal content, which is precisely what validation asks.
+          blob_sha() {
+            gh api "repos/$REPO/contents/$REVIEW_WORKFLOW_FILE?ref=$1" --jq '.sha' 2>/dev/null || true
+          }
+          head_blob="$(blob_sha "$HEAD_SHA")"
+          base_blob="$(blob_sha "$BASE_REF")"
+          default_blob="$(blob_sha "$DEFAULT_BRANCH")"
+
+          # Order is load-bearing, and this chain has already been wrong
+          # once. self-edit is judged by THIS PR's own move — head vs
+          # base — and it outranks drift. The first run of this file
+          # proved why: #320 edited this workflow while its base ALSO
+          # sat ahead of main for fifteen minutes (#319 had landed on
+          # the line; #317 carried it to main a quarter-hour later). The
+          # original chain had no head-vs-base test at all — self-edit
+          # was the residual after drift — so a self-editing PR went red
+          # for a fault it could not fix, in exactly the state this
+          # repo's topology (a long-lived line, periodic catch-ups to
+          # main) re-creates after every workflow change.
+          if [ -z "$default_blob" ]; then
+            cause=absent
+          elif [ "$head_blob" = "$default_blob" ]; then
+            # Validation compares against the default branch and this
+            # head matches it, so whatever stopped the review, it was
+            # not this file. Judged before self-edit so a PR that
+            # restores main's copy is not blamed for the skip.
+            cause=unknown
+          elif [ "$head_blob" != "$base_blob" ]; then
+            cause=self-edit
+          elif [ -n "$base_blob" ] && [ "$base_blob" != "$default_blob" ]; then
+            cause=drift
+          else
+            # head == base and the base is unreadable or missing: not a
+            # state this PR made, and not one the drift notice
+            # describes. Send the reader to the log.
+            cause=unknown
+          fi
+          echo "cause=$cause" >> "$GITHUB_OUTPUT"
+
+          notice="$RUNNER_TEMP/review-skip-notice.md"
+          case "$cause" in
+            self-edit)
+              # Nothing the author can do, nothing to fix, and it clears
+              # itself the moment this lands. Say it and stay green: a
+              # check that can never go green teaches people to ignore red.
+              fatal=false
+              printf '%s\n' \
+                '<!-- claude-review-did-not-run -->' \
+                '### Claude did not review this pull request' \
+                '' \
+                'This PR edits `__WORKFLOW__`, and GitHub will not hand a review' \
+                'token to a workflow that reviews a change to itself. The action' \
+                'stopped before it read a line of the diff — and it stops by' \
+                '*exiting success*, which is why the check above is green.' \
+                '' \
+                'Nothing here is broken and nothing needs fixing: validation passes' \
+                'again once this lands on `__DEFAULT__`. Until then this PR is' \
+                'unreviewed. Read it by hand, or comment `@claude` to run the' \
+                'reviewer from the copy that `__DEFAULT__` already trusts.' \
+                > "$notice"
+              ;;
+            drift)
+              # The standing fault, and the expensive one: not this PR,
+              # but every PR on this line, silently, until someone lands
+              # the workflow on the default branch. Red is the only thing
+              # that gets noticed, and it names a fix somebody can make.
+              fatal=true
+              printf '%s\n' \
+                '<!-- claude-review-did-not-run -->' \
+                '### Claude did not review this pull request — and has not reviewed this branch at all' \
+                '' \
+                '`__WORKFLOW__` on `__BASE__` is not the copy on `__DEFAULT__`.' \
+                'Workflow validation compares the running workflow against the' \
+                'default branch, so **every** pull request into `__BASE__` is' \
+                'skipped before it is read — this one included — and each one exits' \
+                'success and shows a green review tick.' \
+                '' \
+                'This PR did not cause it and cannot fix it. Land `__WORKFLOW__` on' \
+                '`__DEFAULT__`, and reviews on this line run again. Until then,' \
+                'treat every green review tick on this branch as unread.' \
+                > "$notice"
+              ;;
+            absent)
+              fatal=true
+              printf '%s\n' \
+                '<!-- claude-review-did-not-run -->' \
+                '### Claude did not review this pull request' \
+                '' \
+                '`__WORKFLOW__` does not exist on `__DEFAULT__`, so workflow' \
+                'validation can never pass and no pull request in this repository' \
+                'is being reviewed. Land the file on `__DEFAULT__`.' \
+                > "$notice"
+              ;;
+            *)
+              fatal=true
+              printf '%s\n' \
+                '<!-- claude-review-did-not-run -->' \
+                '### Claude did not review this pull request' \
+                '' \
+                'The action exited without a verdict, and `__WORKFLOW__` at this' \
+                'head is identical to the copy on `__DEFAULT__` — so the usual' \
+                'explanation does not hold. Read the job log: something else' \
+                'stopped the review, and it stopped it silently.' \
+                > "$notice"
+              ;;
+          esac
+
+          sed -i \
+            -e "s|__WORKFLOW__|$REVIEW_WORKFLOW_FILE|g" \
+            -e "s|__BASE__|$BASE_REF|g" \
+            -e "s|__DEFAULT__|$DEFAULT_BRANCH|g" \
+            "$notice"
+
+          echo "fatal=$fatal" >> "$GITHUB_OUTPUT"
+          echo "notice=$notice" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Claude did NOT review this pull request"
+            echo
+            echo "Cause: \`$cause\`. A notice has been posted on the PR."
+            echo
+            sed '1d' "$notice"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One sticky comment, edited in place. A fresh comment per push
+      # would bury the diff under repetitions of the same sentence.
+      - name: Say so on the pull request
+        if: steps.verdict.outputs.ran == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NOTICE: ${{ steps.verdict.outputs.notice }}
+        run: |
+          set -euo pipefail
+          # The author filter is not decoration: GITHUB_TOKEN can edit
+          # and delete ANY comment on the PR, and the marker is plain
+          # text anyone can paste. Without the filter, a human quoting
+          # the raw notice would hand this step their comment to
+          # overwrite — and the Withdraw step below, their comment to
+          # delete. Only github-actions[bot] writes notices, so only
+          # its comments are ours to touch.
+          existing="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq '[.[] | select(.user.login == "github-actions[bot]")
+                       | select(.body | startswith("<!-- claude-review-did-not-run -->"))] | .[0].id // empty')"
+          jq -Rs '{body: .}' < "$NOTICE" > "$RUNNER_TEMP/comment.json"
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" --input "$RUNNER_TEMP/comment.json" >/dev/null
+            echo "Updated the existing skip notice ($existing)."
+          else
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" --input "$RUNNER_TEMP/comment.json" >/dev/null
+            echo "Posted a skip notice."
+          fi
+
+      # And withdraw it when a later push does get reviewed — a notice
+      # left standing after the review ran is the same lie pointed the
+      # other way.
+      - name: Withdraw a stale skip notice
+        if: steps.verdict.outputs.ran == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Same author filter as above, and here it is load-bearing:
+          # this is a DELETE, and the token can delete a human's comment
+          # just as easily as the bot's.
+          gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]")
+                      | select(.body | startswith("<!-- claude-review-did-not-run -->")) | .id' \
+          | while read -r id; do
+              gh api -X DELETE "repos/$REPO/issues/comments/$id" >/dev/null
+              echo "Removed a stale skip notice ($id)."
+            done
+
+      # A skip this PR did not cause is a repo fault that disables review
+      # for a whole branch line. It gets a red tick, because a comment
+      # alone is scrollable and `gh pr checks` cannot read comments.
+      - name: Refuse a skip this PR cannot explain
+        if: steps.verdict.outputs.fatal == 'true'
+        env:
+          CAUSE: ${{ steps.verdict.outputs.cause }}
+        run: |
+          echo "::error::Claude did not review this PR (cause: $CAUSE) and this PR did not cause the skip. See the comment on the pull request; this line is unreviewed until the review workflow matches the default branch."
+          exit 1
