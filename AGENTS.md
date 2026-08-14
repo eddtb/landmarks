@@ -117,9 +117,10 @@ with `x-feed-store: ok | off | error` UNCONDITIONALLY, plus
 `x-feed-store-error` in a fixed vocabulary (`off`/`auth`/`timeout`/
 `sql`/`unknown` — never libsql's own text, which names the database
 host on a public header). The postflight asks a feed twice and refuses
-a deploy whose store says anything but `ok`, or that composes both
-times — a store that answers `ok` and never serves a hit is
-remembering nothing.
+a deploy that answers anything but HTTP 200 (curl exits 0 on a 500 —
+only the status line knows), whose store says anything but `ok` on
+EITHER ask, or whose second answer is not a cache hit — a store that
+answers `ok` and never serves one is remembering nothing.
 
 
 # AI call-site audit (keep this table true)
@@ -131,7 +132,7 @@ free-keyed and unmetered — they don't belong in this table.
 
 | Call (kind)          | Cache                    | Cost |
 |----------------------|--------------------------|------|
-| Gemini telling (ungrounded, ~400 tok) | tellings 30d, key `<pageId>:<SHA-256 of the extract>` — a fabricated POST can only poison its own slot. Turso durable store ('telling' kind; survives worker recycles, off without TURSO_DATABASE_URL) + per-process map + device session cache + single-flight per key. NOTE the device cache keys on pageId ALONE, so a changed extract serves the stale telling for the session | free tier; SHARED 300-calls/day breaker |
+| Gemini telling (ungrounded, ~400 tok) | tellings 30d, key `<pageId>:<SHA-256 of the extract, truncated to 96 bits>` — a fabricated POST can only poison its own slot. Turso durable store ('telling' kind; survives worker recycles, off without TURSO_DATABASE_URL) + per-process map + device session cache + single-flight per key. NOTE the device cache keys on pageId ALONE, so a changed extract serves the stale telling for the session | free tier; SHARED 300-calls/day breaker |
 | Gemini retelling (ungrounded, ~4500 tok over ≤24k source chars — **the most expensive call in the app**) | retold 30d told / 7d no-retell verdict, key `v4:<area name>`. No source digest and none needed — the source is fetched server-side, not sent by the client. The key IS attacker-choosable, so the route caps it at 300 chars and refuses anything with no letter in it or a control character in it (#279). Turso ('retold' kind) + per-process map + device session cache, single-flight per key. Refuses below 1500 source chars WITHOUT calling | free tier; SHARED 300-calls/day breaker |
 | Gemini area quiz (ungrounded, ~2048 tok) | quiz 30d told / 7d no-quiz verdict, key `v5:<area name>`. No source digest and none needed — like retold, the material is fetched server-side: `GET /api/quiz?lat=&lng=` resolves the area with `findNearestArea` and takes the nearest twelve named places from `findNearbyHistory` (widening on the feed's own sparse rule). The route carries NO client material, so there is nothing a fabricated request could put in the slot (#303), and the key space is closed — only Wikipedia titles Wikidata classes as areas can become keys, so retold's 300-char cap has nothing to bite on. Turso ('quiz' kind) + per-process map (`{ttlMs: 30d, maxEntries: 1000}` — the LONGER TTL, as retold's is, because pruning is a write rule and the 7-day no-quiz clock is a read rule; 1,000 is one slot per named area now the key is the area alone) + device session cache (keyed on the area) + single-flight. Refuses below 3 usable stories WITHOUT calling. The upstream compose happens only on a cache MISS, so it costs one keyless Wikipedia fan-out per area per 30 days | free tier; SHARED 300-calls/day breaker |
 | Valhalla walking route (FOSSGIS) | routes 24h (per ~27m origin bucket + destination) — per-process map ONLY, no durable store, so on the edge the cache dies with each isolate and the breaker is the real protection | free community server; its OWN 300-calls/day breaker out of politeness |

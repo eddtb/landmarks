@@ -58,3 +58,39 @@ describe('makeGeminiSseDecoder (streamGenerateContent alt=sse framing)', () => {
     );
   });
 });
+
+/**
+ * The cap only means something if every accepted call lands in the
+ * ledger. The streaming transport already records the moment Gemini
+ * accepts ("a stream cut short still burned a call"); the one-shot
+ * transport used to record only after the body parsed, so a 200 whose
+ * body died mid-read spent a quota unit the breaker never saw.
+ */
+describe('generateWithGemini spend recording', () => {
+  test('a call Gemini accepted is recorded even when the body dies mid-read', async () => {
+    const gemini =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@/server/gemini') as typeof import('@/server/gemini');
+    const { generateWithGemini, geminiBudget } = gemini;
+    const before = geminiBudget.todays().calls;
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.reject(new Error('socket died mid-body')),
+    } as unknown as Response);
+    try {
+      await expect(
+        generateWithGemini({
+          apiKey: 'test-key',
+          prompt: 'p',
+          maxTokens: 10,
+          grounded: false,
+          label: 'test',
+        })
+      ).rejects.toThrow('socket died mid-body');
+
+      expect(geminiBudget.todays().calls).toBe(before + 1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+});

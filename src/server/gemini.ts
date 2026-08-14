@@ -102,8 +102,12 @@ export async function generateWithGemini(options: GenerateOptions): Promise<stri
     throw new Error(`Gemini API ${response.status}: ${detail.slice(0, 500)}`);
   }
 
-  const body = (await response.json()) as GeminiResponse;
+  // Recorded the moment Gemini accepts the call — the rule the
+  // streaming transport already keeps ("a stream cut short still
+  // burned a call"): a 200 whose body dies mid-read spent a quota
+  // unit, and an uncounted call is a hole in the cap.
   await budget.record();
+  const body = (await response.json()) as GeminiResponse;
   const today = budget.todays();
   console.log(
     `[gemini] ${options.label}: ${body.usageMetadata?.promptTokenCount ?? 0} in / ` +

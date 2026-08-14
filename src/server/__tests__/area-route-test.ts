@@ -57,4 +57,14 @@ describe('GET /api/area', () => {
     expect((await GET(ask('?lat=51.4826&lng=nowhere'))).status).toBe(400);
     expect(mockFindNearestArea).not.toHaveBeenCalled();
   });
+
+  test('even a refusal reports the store — x-feed-store is unconditional', async () => {
+    // AGENTS.md promises the header on EVERY answer from the
+    // store-backed routes; a postflight probing with a mistyped query
+    // should still learn what the store is doing.
+    const refusal = await GET(ask('?lat=&lng='));
+
+    expect(refusal.status).toBe(400);
+    expect(refusal.headers.get('x-feed-store')).toBe('off');
+  });
 });

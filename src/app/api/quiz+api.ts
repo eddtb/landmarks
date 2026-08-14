@@ -34,7 +34,14 @@ export async function GET(request: Request): Promise<Response> {
   // coordinate route keeps (src/server/params.ts)
   const center = coordinatesParam(url.searchParams);
   if (!center) {
-    return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
+    // The health headers ride refusals too: x-feed-store is
+    // UNCONDITIONAL on the store-backed routes (AGENTS.md), and a
+    // postflight probing with a mistyped query should still learn
+    // what the store is doing.
+    return Response.json(
+      { error: 'Expected lat and lng' },
+      { status: 400, headers: storeHealthHeaders() }
+    );
   }
 
   // Hermetic E2E: the runner's IP gets 429'd by Wikipedia and Wikidata,
