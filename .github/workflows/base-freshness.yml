@@ -70,8 +70,12 @@ jobs:
           else
             # A base moved. Every open PR aimed at it is now holding
             # evidence computed against a tree that no longer exists.
+            # --limit, because gh's default is 30 and it truncates
+            # SILENTLY — a sweep that quietly judges the first thirty
+            # PRs and leaves the rest holding stale verdicts is the
+            # exact lie this workflow exists to close.
             targets="$(gh pr list --repo "$REPO" --state open --base "$PUSHED_REF" \
-              --json number --jq '.[].number')"
+              --limit 200 --json number --jq '.[].number')"
           fi
 
           if [ -z "$targets" ]; then
@@ -79,10 +83,21 @@ jobs:
             exit 0
           fi
 
+          # One PR's API failure must not abort the sweep. Under set -e
+          # a single failed call in this loop kills the step, and every
+          # PR after it keeps whatever verdict it had — the same
+          # staleness this workflow exists to close, now caused by it.
+          # So each judgment guards its own calls and skips forward, and
+          # the step exits red at the end so the failure is still seen.
+          failed=0
           for pr in $targets; do
-            gh pr view "$pr" --repo "$REPO" \
+            if ! gh pr view "$pr" --repo "$REPO" \
               --json headRefOid,baseRefName,headRepositoryOwner \
-              --jq '[.headRefOid, .baseRefName, .headRepositoryOwner.login] | @tsv' > pr.tsv
+              --jq '[.headRefOid, .baseRefName, .headRepositoryOwner.login] | @tsv' > pr.tsv; then
+              echo "::error::PR #$pr: lookup failed; its freshness verdict may be stale."
+              failed=1
+              continue
+            fi
             head_sha="$(cut -f1 pr.tsv)"
             base_ref="$(cut -f2 pr.tsv)"
             head_owner="$(cut -f3 pr.tsv)"
@@ -95,7 +110,18 @@ jobs:
             # GitHub's own arithmetic: commits on the base that the head
             # does not contain. Non-zero means this PR's checks were
             # computed against a tree that is not the one it lands on.
-            behind="$(gh api "repos/$REPO/compare/$base_ref...$head_sha" --jq '.behind_by')"
+            if ! behind="$(gh api "repos/$REPO/compare/$base_ref...$head_sha" --jq '.behind_by')"; then
+              echo "::error::PR #$pr: compare failed; its freshness verdict may be stale."
+              failed=1
+              continue
+            fi
+            case "$behind" in
+              ''|*[!0-9]*)
+                echo "::error::PR #$pr: compare returned '$behind', not a count."
+                failed=1
+                continue
+                ;;
+            esac
 
             if [ "$behind" -eq 0 ]; then
               conclusion=success
@@ -127,13 +153,21 @@ jobs:
 
             # Edit the existing verdict rather than stack a new one beside
             # it: a column of stale check runs is its own kind of lie.
-            existing="$(gh api \
+            if ! existing="$(gh api \
               "repos/$REPO/commits/$head_sha/check-runs?check_name=Base%20is%20fresh" \
-              --jq '.check_runs | sort_by(.id) | last | .id // empty')"
+              --jq '.check_runs | sort_by(.id) | last | .id // empty')"; then
+              echo "::error::PR #$pr: check-run lookup failed; its freshness verdict may be stale."
+              failed=1
+              continue
+            fi
             if [ -n "$existing" ]; then
-              gh api -X PATCH "repos/$REPO/check-runs/$existing" --input payload.json >/dev/null
+              gh api -X PATCH "repos/$REPO/check-runs/$existing" --input payload.json >/dev/null \
+                || { echo "::error::PR #$pr: verdict update failed."; failed=1; continue; }
             else
-              gh api -X POST "repos/$REPO/check-runs" --input payload.json >/dev/null
+              gh api -X POST "repos/$REPO/check-runs" --input payload.json >/dev/null \
+                || { echo "::error::PR #$pr: verdict publish failed."; failed=1; continue; }
             fi
             echo "PR #$pr: $conclusion — $title"
           done
+
+          exit "$failed"

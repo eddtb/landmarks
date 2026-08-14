@@ -113,14 +113,34 @@ jobs:
           base_blob="$(blob_sha "$BASE_REF")"
           default_blob="$(blob_sha "$DEFAULT_BRANCH")"
 
+          # Order is load-bearing, and this chain has already been wrong
+          # once. self-edit is judged by THIS PR's own move — head vs
+          # base — and it outranks drift. The first run of this file
+          # proved why: #320 edited this workflow while its base ALSO
+          # sat ahead of main for fifteen minutes (#319 had landed on
+          # the line; #317 carried it to main a quarter-hour later). The
+          # original chain had no head-vs-base test at all — self-edit
+          # was the residual after drift — so a self-editing PR went red
+          # for a fault it could not fix, in exactly the state this
+          # repo's topology (a long-lived line, periodic catch-ups to
+          # main) re-creates after every workflow change.
           if [ -z "$default_blob" ]; then
             cause=absent
           elif [ "$head_blob" = "$default_blob" ]; then
+            # Validation compares against the default branch and this
+            # head matches it, so whatever stopped the review, it was
+            # not this file. Judged before self-edit so a PR that
+            # restores main's copy is not blamed for the skip.
             cause=unknown
+          elif [ "$head_blob" != "$base_blob" ]; then
+            cause=self-edit
           elif [ -n "$base_blob" ] && [ "$base_blob" != "$default_blob" ]; then
             cause=drift
           else
-            cause=self-edit
+            # head == base and the base is unreadable or missing: not a
+            # state this PR made, and not one the drift notice
+            # describes. Send the reader to the log.
+            cause=unknown
           fi
           echo "cause=$cause" >> "$GITHUB_OUTPUT"
 
@@ -220,8 +240,16 @@ jobs:
           NOTICE: ${{ steps.verdict.outputs.notice }}
         run: |
           set -euo pipefail
+          # The author filter is not decoration: GITHUB_TOKEN can edit
+          # and delete ANY comment on the PR, and the marker is plain
+          # text anyone can paste. Without the filter, a human quoting
+          # the raw notice would hand this step their comment to
+          # overwrite — and the Withdraw step below, their comment to
+          # delete. Only github-actions[bot] writes notices, so only
+          # its comments are ours to touch.
           existing="$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-            --jq '[.[] | select(.body | startswith("<!-- claude-review-did-not-run -->"))] | .[0].id // empty')"
+            --jq '[.[] | select(.user.login == "github-actions[bot]")
+                       | select(.body | startswith("<!-- claude-review-did-not-run -->"))] | .[0].id // empty')"
           jq -Rs '{body: .}' < "$NOTICE" > "$RUNNER_TEMP/comment.json"
           if [ -n "$existing" ]; then
             gh api -X PATCH "repos/$REPO/issues/comments/$existing" --input "$RUNNER_TEMP/comment.json" >/dev/null
@@ -242,8 +270,12 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          # Same author filter as above, and here it is load-bearing:
+          # this is a DELETE, and the token can delete a human's comment
+          # just as easily as the bot's.
           gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-            --jq '.[] | select(.body | startswith("<!-- claude-review-did-not-run -->")) | .id' \
+            --jq '.[] | select(.user.login == "github-actions[bot]")
+                      | select(.body | startswith("<!-- claude-review-did-not-run -->")) | .id' \
           | while read -r id; do
               gh api -X DELETE "repos/$REPO/issues/comments/$id" >/dev/null
               echo "Removed a stale skip notice ($id)."
