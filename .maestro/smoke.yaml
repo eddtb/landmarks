@@ -1,12 +1,21 @@
 # The smoke flow: launch → Nearby renders stories → open one → the
 # story screen shows → History tab shows the gazetteer hero.
 #
+# `location: inuse` is explicit, not left to Maestro's grant-all
+# default: since #307 the feed STANDS DOWN into an invitation when the
+# app has no honest centre — the old flows only stayed green without a
+# grant because the app fabricated a Charing Cross feed, and that bug
+# is gone. A feed flow that doesn't declare its grant is trusting the
+# previous flow not to have revoked it. The simulator's position is
+# pinned to Greenwich by CI (and scripts/e2e-local.sh), so the granted
+# permission resolves to a real fix and the fixture feed renders.
+#
 # Anchors are testIDs (stable), never story titles (data-dependent).
-# Locally: scripts/e2e-local.sh boots the sim, pins location to
-# Greenwich, and runs this against the dev build + running Metro.
 appId: com.eddtb.landmarks
 ---
-- launchApp
+- launchApp:
+    permissions:
+      location: inuse
 # Dev-client link, dev-menu welcome mat — every flow must survive
 # being the FIRST on a fresh install
 - runFlow: subflows/setup.yaml

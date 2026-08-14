@@ -6,12 +6,13 @@
 # exclusion explicit rather than incidental.
 #
 # executionOrder: one-door runs first (it IS the fresh-install path —
-# clearState, dev-client relink, welcome mat, the denied-state
-# fallback). Its `location: never` doesn't leak into later flows:
-# launchApp auto-grants every permission unless told otherwise (see
-# sparse.yaml, which relies on the same recovery mid-suite). The rest
-# run in a fixed order so failures reproduce: without this the order
-# is filesystem-dependent (observed non-alphabetical).
+# clearState, dev-client relink, welcome mat, the door itself via
+# `location: unset`). Since #307 no flow trusts launchApp's grant-all
+# default for location: every flow declares its own standing — unset
+# (one-door), never (sparse), inuse (the feed flows) — so no flow's
+# state can leak into the next and each one names the contract it
+# drives. The rest run in a fixed order so failures reproduce: without
+# this the order is filesystem-dependent (observed non-alphabetical).
 flows:
   - '*.yaml'
 executionOrder:

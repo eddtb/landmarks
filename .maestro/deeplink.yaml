@@ -8,7 +8,11 @@
 # stays device-triage territory.
 appId: com.eddtb.landmarks
 ---
-- launchApp
+# Explicit grant: the feed only renders with an honest centre (#307) —
+# see smoke.yaml for why no feed flow trusts the grant-all default
+- launchApp:
+    permissions:
+      location: inuse
 - runFlow: subflows/setup.yaml
 - extendedWaitUntil:
     visible:

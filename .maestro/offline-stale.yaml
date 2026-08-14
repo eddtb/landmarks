@@ -16,7 +16,11 @@ onFlowComplete:
   # Runs pass or fail: a leaked outage would 503 every later flow
   - runScript: subflows/outage-off.js
 ---
-- launchApp
+# Explicit grant: the feed only renders with an honest centre (#307) —
+# see smoke.yaml for why no feed flow trusts the grant-all default
+- launchApp:
+    permissions:
+      location: inuse
 - runFlow: subflows/setup.yaml
 
 # The feed loads and persists (the "saved stories" this flow relies on)
