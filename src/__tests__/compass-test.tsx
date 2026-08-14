@@ -154,6 +154,99 @@ describe('<Compass />', () => {
   });
 });
 
+/**
+ * Where the needle POINTS.
+ *
+ * Every test above asserts that `compass-needle` is on the screen. None
+ * of them could see which way it faced, so inverting the rotation at
+ * pointer-dial.tsx — one sign — left the compass pointing away from
+ * every destination in the app with the whole file green. A compass
+ * that renders is not a compass that works.
+ *
+ * The dial's rotation is a Reanimated shared value driven on the UI
+ * thread, so it is read with `toHaveAnimatedStyle` rather than off the
+ * style prop (which holds the value the needle STARTED at).
+ */
+describe('the needle points AT the target', () => {
+  /** The rotation eases over 300ms, so the dial is asked once it has
+   *  arrived — never mid-swing. */
+  const TurnMs = 300;
+
+  beforeEach(() => {
+    // Its own position, explicitly: the mocks above are module-level
+    // and the last case in the file leaves the reader standing ON the
+    // target, where the needle deliberately rests
+    mockUseLocation.mockReturnValue({ coordinates: User });
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Paint the compass and let the needle finish turning. */
+  async function settled(heading: number) {
+    mockUseHeading.mockReturnValue(heading);
+    await render(<Compass target={Target} />);
+    await act(async () => {
+      jest.advanceTimersByTime(TurnMs + 1);
+    });
+  }
+
+  /** The angle the needle has settled on, as the reader sees it. */
+  const needleAt = (degrees: number) =>
+    expect(screen.getByTestId('compass-needle')).toHaveAnimatedStyle({
+      transform: [{ rotate: `${degrees}deg` }],
+    });
+
+  test('facing the target, the needle rests at the top', async () => {
+    // Target is due north of the user; the phone faces north
+    await settled(0);
+
+    needleAt(0);
+  });
+
+  test('facing east with the target due north, the needle points LEFT', async () => {
+    // Relative bearing 270°, taken the short way round: -90
+    await settled(90);
+
+    needleAt(-90);
+  });
+
+  test('facing west with the target due north, the needle points RIGHT', async () => {
+    await settled(270);
+
+    needleAt(90);
+  });
+
+  test('facing away from the target, the needle points back at the reader', async () => {
+    await settled(180);
+
+    needleAt(180);
+  });
+
+  test('arrived: the needle comes home to the top instead of chasing noise', async () => {
+    // ~8m from the target, facing east — a bearing computed between two
+    // nearly identical points is noise, so the needle rests
+    mockUseLocation.mockReturnValue({
+      coordinates: { latitude: 51.50629, longitude: -0.0906 },
+    });
+    await settled(90);
+
+    needleAt(0);
+  });
+
+  test('the cardinal card counter-rotates, so N stays pinned to the world', async () => {
+    await settled(90);
+
+    // The card turns the opposite way to the needle: the letters follow
+    // the earth while the needle follows the destination
+    expect(screen.getByTestId('cardinal-card')).toHaveAnimatedStyle({
+      transform: [{ rotate: '-90deg' }],
+    });
+  });
+});
+
 describe('<PointerDial compact /> (Go’s sheet dial)', () => {
   test('stays a bare needle-and-number: no ticks, no cardinals, no coach line', async () => {
     mockUseHeading.mockReturnValue(90);
