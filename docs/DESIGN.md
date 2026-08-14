@@ -136,6 +136,14 @@ answers that screen's question.
    **modal** — bearing, distance, the violet needle. Vanished palaces
    have coordinates too; the compass is destination-agnostic.
 
+   **Two doors to the same walk, on purpose** (#250, decided
+   2026-08-14). The compass is the glance — bearing and distance,
+   dismissed in a second, mid-story. Go is the journey — the route,
+   the steps, the dial embedded. They overlap by design and the
+   overlap is the feature; neither replaces the other, and the next
+   reviewer who notices the redundancy is reading this sentence
+   instead of filing the issue again.
+
 **The telling is the product.** Spoken narration, about a minute,
 written once per story by the free-tier model and cached for 30 days.
 The voice contract: open with the most surprising true detail — the
