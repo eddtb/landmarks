@@ -247,3 +247,54 @@ describe('diskBackedMap forgetting', () => {
     expect(disk.has('live')).toBe(true);
   });
 });
+
+/**
+ * The fold makes two WRITERS merge instead of clobber; this fence is
+ * for the READER. Two dev servers share .ai-cache, each hydrates and
+ * folds from the same path at moments of its own choosing, and
+ * writeFileSync is not atomic — a reader landing mid-write parses a
+ * torn file, hydrates empty, and the writer's entries leave the disk
+ * for good the moment that reader flushes. rename() on one filesystem
+ * is atomic: old file or new file, never half of either.
+ */
+describe('diskBackedMap atomic flush', () => {
+  const name = 'test-atomic-cache';
+  const dir = process.env.AI_CACHE_DIR as string;
+  const path = `${dir}/${name}.json`;
+
+  afterAll(() => {
+    if (existsSync(path)) {
+      rmSync(path);
+    }
+  });
+
+  test('the flush lands by rename — the shared path is never written in place', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as {
+      writeFileSync: (target: string, data: string) => void;
+      readdirSync: (target: string) => string[];
+    };
+    const realWrite = fs.writeFileSync;
+    const written: string[] = [];
+    const spy = jest.spyOn(fs, 'writeFileSync').mockImplementation((target, data) => {
+      written.push(String(target));
+      return realWrite.call(fs, target as string, data as string);
+    });
+    try {
+      const map = diskBackedMap<{ at: number }>(name);
+      map.set('k', { at: Date.now() });
+      flushDiskMapsForTests();
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Every byte went to a scratch file; the shared path only ever
+    // receives complete files, by rename
+    expect(written).not.toContain(path);
+    expect(written.some((target) => target.startsWith(`${path}.tmp-`))).toBe(true);
+    expect(diskEntries(path).has('k')).toBe(true);
+    // …and the scratch is gone: renamed, not abandoned
+    const leftovers = fs.readdirSync(dir).filter((entry) => entry.startsWith(`${name}.json.tmp-`));
+    expect(leftovers).toEqual([]);
+  });
+});

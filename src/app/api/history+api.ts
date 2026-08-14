@@ -145,7 +145,12 @@ export async function GET(request: Request) {
   // same Null Island by a narrower door
   const center = coordinatesParam(url.searchParams);
   if (!center) {
-    return Response.json({ error: 'Expected lat and lng' }, { status: 400 });
+    // Refusals report the store too — x-feed-store is UNCONDITIONAL
+    // on the store-backed routes (AGENTS.md)
+    return Response.json(
+      { error: 'Expected lat and lng' },
+      { status: 400, headers: storeHealthHeaders() }
+    );
   }
 
   // Hermetic E2E: recorded payloads instead of upstreams — runner IPs

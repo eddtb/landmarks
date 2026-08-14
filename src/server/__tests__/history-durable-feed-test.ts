@@ -190,6 +190,13 @@ describe('the feed s durable cache', () => {
     expect(response.headers.get('x-feed-store')).toBe('off');
   });
 
+  test('even a refusal says what the store is doing — the header is unconditional', async () => {
+    const refusal = await GET(new Request('http://localhost/api/history'));
+
+    expect(refusal.status).toBe(400);
+    expect(refusal.headers.get('x-feed-store')).toBe('ok');
+  });
+
   test('with the store off, the route behaves exactly as it did before it existed', async () => {
     storeGet.mockResolvedValue(undefined); // absent config answers like a miss
     storePut.mockRejectedValue(new Error('should never be awaited unguarded'));

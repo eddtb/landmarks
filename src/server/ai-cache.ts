@@ -39,6 +39,7 @@ type FsModule = {
   writeFileSync: (path: string, data: string) => void;
   mkdirSync: (path: string, options: { recursive: boolean }) => void;
   existsSync: (path: string) => boolean;
+  renameSync: (from: string, to: string) => void;
 };
 
 let fs: FsModule | null = null;
@@ -277,7 +278,18 @@ export function diskBackedMap<V>(name: string, options: DiskMapOptions = {}): Ma
       }
       pruneExpired();
       evictOverCap();
-      fs!.writeFileSync(path, JSON.stringify([...map.entries()]));
+      // Write-then-rename, never write-in-place. The fold above makes
+      // two writers merge rather than clobber, but it cannot help a
+      // READER: the other dev server hydrates and folds from this
+      // exact path at moments of its own choosing, and writeFileSync
+      // is not atomic — a reader landing mid-write parses a torn file,
+      // hydrates empty, and this process's entries leave the disk for
+      // good the moment that reader flushes. rename() on one
+      // filesystem is atomic: a reader sees the old file or the new
+      // one, never half of either.
+      const scratch = `${path}.tmp-${process.pid}`;
+      fs!.writeFileSync(scratch, JSON.stringify([...map.entries()]));
+      fs!.renameSync(scratch, path);
       // Enacted: disk no longer holds them, so a later fold can only
       // find them if another process wrote them back — which is an
       // add, and adds are allowed

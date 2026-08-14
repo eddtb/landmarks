@@ -49,8 +49,12 @@ function plausibleArea(area: string): boolean {
     return false;
   }
   // At least one letter in any script — Wikipedia titles are not all
-  // Latin — and no control characters anywhere in it.
-  return /\p{L}/u.test(area) && !/[\u0000-\u001f\u007f]/.test(area);
+  // Latin — and no control characters anywhere in it. \p{Cc} is the
+  // whole control category: the old C0+DEL range missed C1
+  // (U+0080-U+009F), which %C2%9B decodes straight into. Cc only,
+  // never \p{C} — ZWJ is Cf, and place names in joining scripts
+  // (Sinhala, Arabic) legitimately carry it.
+  return /\p{L}/u.test(area) && !/\p{Cc}/u.test(area);
 }
 
 export async function GET(request: Request) {
@@ -58,10 +62,13 @@ export async function GET(request: Request) {
   // key we write, and " Greenwich " must not buy a second Turso row
   const area = (new URL(request.url).searchParams.get('area') ?? '').trim();
   if (!area) {
-    return Response.json({ error: 'Expected area' }, { status: 400 });
+    return Response.json({ error: 'Expected area' }, { status: 400, headers: storeHealthHeaders() });
   }
   if (!plausibleArea(area)) {
-    return Response.json({ error: 'Not an area name' }, { status: 400 });
+    return Response.json(
+      { error: 'Not an area name' },
+      { status: 400, headers: storeHealthHeaders() }
+    );
   }
 
   // Hermetic E2E: recorded retelling; missing keeps today's 404

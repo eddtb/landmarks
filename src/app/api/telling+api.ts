@@ -21,35 +21,51 @@ const MaxBodyBytes = 64 * 1024;
 export async function POST(request: Request): Promise<Response> {
   const declaredBytes = Number(request.headers.get('content-length'));
   if (Number.isFinite(declaredBytes) && declaredBytes > MaxBodyBytes) {
-    return Response.json({ error: 'Body too large' }, { status: 413 });
+    return Response.json({ error: 'Body too large' }, { status: 413, headers: storeHealthHeaders() });
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return Response.json(
+      { error: 'Invalid JSON body' },
+      { status: 400, headers: storeHealthHeaders() }
+    );
   }
   if (typeof body !== 'object' || body === null) {
-    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return Response.json(
+      { error: 'Invalid JSON body' },
+      { status: 400, headers: storeHealthHeaders() }
+    );
   }
   const { pageId, title, extract, source, area } = body as Record<string, unknown>;
 
-  // The area's own telling: no pageId, cached by name
-  const areaName = typeof area === 'string' && area.trim() ? area.slice(0, MaxTitleChars) : null;
+  // The area's own telling: no pageId, cached by name. Trimmed before
+  // it becomes a key — the same rule /api/retold keeps (#304): the key
+  // we accept is the key we write, and " Greenwich " must not buy a
+  // second Turso row for the identical telling.
+  const areaName =
+    typeof area === 'string' && area.trim() ? area.trim().slice(0, MaxTitleChars) : null;
   if (
     (typeof pageId !== 'number' && !areaName) ||
     typeof title !== 'string' ||
     typeof extract !== 'string'
   ) {
-    return Response.json({ error: 'pageId (or area), title and extract are required' }, { status: 400 });
+    return Response.json(
+      { error: 'pageId (or area), title and extract are required' },
+      { status: 400, headers: storeHealthHeaders() }
+    );
   }
   if (!extract.trim()) {
     // No source text, no telling — the model must never write from nothing
-    return Response.json({ error: 'This story has no source text to tell from' }, { status: 422 });
+    return Response.json(
+      { error: 'This story has no source text to tell from' },
+      { status: 422, headers: storeHealthHeaders() }
+    );
   }
   if (title.length > MaxTitleChars || extract.length > MaxExtractChars) {
-    return Response.json({ error: 'Body too large' }, { status: 413 });
+    return Response.json({ error: 'Body too large' }, { status: 413, headers: storeHealthHeaders() });
   }
 
   try {
