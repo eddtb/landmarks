@@ -170,6 +170,22 @@ describe('<HistoryDetailScreen />', () => {
     expect(isSaved(42)).toBe(false);
   });
 
+  test('the journey controls clear 44pt — a primary button is not a 36pt target', async () => {
+    // 8pt of padding around a 20pt label was a 36pt Go button
+    // (DESIGN.md: every tap target clears 44pt)
+    mockUseLocalSearchParams.mockReturnValue({ pageId: '42' });
+    await render(<HistoryDetailScreen />);
+
+    await screen.findByTestId('save-button');
+    for (const control of [
+      screen.getByText(/^Go( · )?/).parent,
+      screen.getByTestId('compass-button'),
+      screen.getByTestId('save-button'),
+    ]) {
+      expect(control).toHaveStyle({ minHeight: 44 });
+    }
+  });
+
   test('without a live fix the button says Go alone — no fabricated walk time', async () => {
     // Denied location: the feed's distanceMeters was measured from the
     // fallback pin, and quoting it would be the lie the shelf card

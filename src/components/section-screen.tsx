@@ -391,6 +391,19 @@ export function StoriesScreen() {
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
+          {/* The island renders FIRST in JSX (#296): VoiceOver reads
+              subviews in source order, and with the feed first a blind
+              reader swiped ~150 cards before hearing the screen's own
+              name or reaching the ⋯ menu. It still paints ABOVE the
+              feed — the island's anchor carries zIndex 10, so paint
+              order never depended on source order. A DIRECT child of
+              the screen surface — never inside a SafeAreaView, which is
+              the arrangement useIslandInset assumes and the island's
+              own default `top` matches. */}
+          <GlassIslandHeader onHeight={setIslandHeight}>
+            <SectionHeader {...gate} eyebrow="Nearby" refusedCopy={NearbyRefusedCopy} overflow />
+            <FeedCountLine center={gate.center} />
+          </GlassIslandHeader>
           {/* The body keeps the horizontal edges — the TOP one is the
               island's business now, and paid once by useIslandInset. */}
           <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -402,14 +415,6 @@ export function StoriesScreen() {
               topInset={topInset}
             />
           </SafeAreaView>
-          {/* After the body so it paints above; the feed slides under.
-              A DIRECT child of the screen surface — never inside a
-              SafeAreaView, which is the arrangement useIslandInset
-              assumes and the island's own default `top` matches. */}
-          <GlassIslandHeader onHeight={setIslandHeight}>
-            <SectionHeader {...gate} eyebrow="Nearby" refusedCopy={NearbyRefusedCopy} overflow />
-            <FeedCountLine center={gate.center} />
-          </GlassIslandHeader>
         </ThemedView>
       )}
     </LocationGate>

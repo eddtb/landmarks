@@ -65,9 +65,20 @@ export function QuizRun({
 }) {
   const [index, setIndex] = useState(0);
   const [results, setResults] = useState<RunResult[]>([]);
+  // The finale, FROZEN at the moment the run begins (#293). `pointing`
+  // is re-derived from the live GPS centre on every tick, so mid-run it
+  // used to re-pick the nearest story: the target changed under a
+  // locked guess and the verdict was judged against a place nobody was
+  // asked about — and if the reader walked inside 100m of the last
+  // eligible story it went null and the question vanished into the
+  // score screen unanswered. A question, once asked, stays asked.
+  const [runPointing, setRunPointing] = useState<DirectionQuestion | null>(null);
 
   const written = quiz.questions.length;
-  const total = written + (pointing ? 1 : 0);
+  // Before the run the start card previews the LIVE finale; once begun,
+  // only the frozen one exists.
+  const finale = begun ? runPointing : pointing;
+  const total = written + (finale ? 1 : 0);
   const question = quiz.questions[index];
 
   const advance = (result: RunResult) => {
@@ -79,7 +90,7 @@ export function QuizRun({
   // honest: every surface this component can render is named here once.
   const stage: RunStage = !begun
     ? 'start'
-    : question || (pointing && index === written)
+    : question || (finale && index === written)
       ? 'question'
       : 'results';
   useEffect(() => {
@@ -87,7 +98,16 @@ export function QuizRun({
   }, [stage, onStage]);
 
   if (!begun) {
-    return <StartCard quiz={quiz} total={total} onBegin={onBegin} />;
+    return (
+      <StartCard
+        quiz={quiz}
+        total={total}
+        onBegin={() => {
+          setRunPointing(pointing);
+          onBegin();
+        }}
+      />
+    );
   }
 
   if (question) {
@@ -103,15 +123,19 @@ export function QuizRun({
     );
   }
 
-  if (pointing && index === written) {
+  if (finale && index === written) {
     return (
       <View style={styles.run} testID="quiz-run">
         <Progress label={areaLabel} index={index} total={total} />
         <QuizDirection
-          question={pointing}
+          // Keyed by target: if the frozen question is ever replaced
+          // (a new round from a new spot), the dial remounts and no
+          // stale guess survives it
+          key={finale.pageId}
+          question={finale}
           last
           onAnswered={(correct) =>
-            advance({ label: `Point at ${pointing.title}`, right: correct, pageId: pointing.pageId })
+            advance({ label: `Point at ${finale.title}`, right: correct, pageId: finale.pageId })
           }
         />
       </View>
@@ -128,6 +152,9 @@ export function QuizRun({
       onAgain={() => {
         setIndex(0);
         setResults([]);
+        // A fresh round asks from where the reader NOW stands — the
+        // freeze is per-run, not per-mount
+        setRunPointing(pointing);
       }}
     />
   );
@@ -442,7 +469,11 @@ function Reveal({ pageId, title, onNext }: { pageId: number; title: string; onNe
       {/* The citation IS the invitation — go and read it */}
       <Pressable
         accessibilityRole="button"
+        // The › is drawn, not spoken (#186): without a label VoiceOver
+        // read "single right-pointing angle quotation mark" at the end
+        accessibilityLabel={`Read the story — ${title}`}
         testID="quiz-source"
+        style={styles.tapLine}
         onPress={() =>
           router.push({ pathname: '/history/[pageId]', params: { pageId: String(pageId) } })
         }>
@@ -480,13 +511,14 @@ function Results({
 
   // On mount, exactly once per finished run: "Another round" unmounts
   // this screen, so the next completion records itself again. An effect,
-  // not a render-time call — recording writes to disk.
+  // not a render-time call — recording writes to disk. The deps are the
+  // honest ones: none of them can change while one finished run is on
+  // screen, so this still fires once per mount — and the eslint-disable
+  // that used to stand here bailed the WHOLE component out of the React
+  // Compiler (AGENTS.md; the quarantine entry died with it).
   useEffect(() => {
     recordRun(areaName, score, total);
-    // A results screen shows ONE finished run — none of these change
-    // while it is on screen
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [areaName, score, total]);
 
   return (
     <View style={styles.run} testID="quiz-done">
@@ -537,6 +569,8 @@ function Results({
         <Pressable
           key={resultIndex}
           accessibilityRole="button"
+          // Everything the row shows, minus the drawn › (#186)
+          accessibilityLabel={`${result.right ? 'Right' : 'Missed'} — ${result.label}. Read the story`}
           testID={`quiz-result-${resultIndex}`}
           onPress={() =>
             router.push({
@@ -695,10 +729,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.one,
   },
+  // A word on the page is still a tap target: 44pt (DESIGN.md)
+  tapLine: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: Spacing.two,
+    minHeight: 44,
     paddingVertical: Spacing.two,
     borderTopWidth: 1,
   },

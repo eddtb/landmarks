@@ -65,13 +65,16 @@ class QuizGuard extends Component<
           <Pressable
             accessibilityRole="button"
             testID="quiz-crash-retry"
+            style={styles.tapLine}
             onPress={() => {
               this.setState({ error: null });
               // A fresh FETCH, not a re-render of the same broken data —
               // re-mounting identical children just crashes identically
               this.props.onRetry?.();
             }}>
-            <ThemedText type="linkPrimary">Try again</ThemedText>
+            {/* The verb of the thing, never "Try again" (#291's rule —
+                this boundary was the one surface #314 missed) */}
+            <ThemedText type="linkPrimary">Set the quiz again</ThemedText>
           </Pressable>
         </View>
       );
@@ -146,10 +149,17 @@ function QuizBody({
 
   // Adjust-during-render (the Gazetteer's own pattern): walking into a
   // new area must not leave the last area's quiz on screen while its own
-  // is being set.
-  const [askedFor, setAskedFor] = useState<string | null>(null);
-  if (askKey && askedFor !== askKey) {
-    setAskedFor(askKey);
+  // is being set. The ask is captured WHOLE — key, name and the centre
+  // handed to the server — so the fetch effect below can depend on it
+  // honestly: a GPS tick changes `center` but not `ask`, so a few paces
+  // is the same area and the same quiz (#280), with no
+  // eslint-disable to say so (one disable bailed this whole component
+  // out of the React Compiler — AGENTS.md, and #293's footnote).
+  const [ask, setAsk] = useState<{ key: string; areaName: string; center: Coordinates } | null>(
+    null
+  );
+  if (askKey && areaName && center && ask?.key !== askKey) {
+    setAsk({ key: askKey, areaName, center });
     setPhase('loading');
     setQuiz(null);
     // A new area's quiz opens on its start card, not mid-run
@@ -158,14 +168,11 @@ function QuizBody({
   }
 
   useEffect(() => {
-    // center is non-null wherever askKey is (see `denied`), but the ask
-    // says so itself rather than leaning on that: the route's contract
-    // is two finite numbers, and this is where they are handed over.
-    if (!askKey || !areaName || !center) {
+    if (!ask) {
       return;
     }
     let active = true;
-    fetchQuiz(areaName, center)
+    fetchQuiz(ask.areaName, ask.center)
       .then((next) => {
         if (!active) {
           return;
@@ -182,12 +189,7 @@ function QuizBody({
     return () => {
       active = false;
     };
-    // askKey carries the area — the only thing that changes what quiz
-    // this is. The center rides along to name the ground to the server,
-    // and deliberately does NOT re-trigger: a few paces is the same
-    // area, and the same quiz (#280).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [askKey]);
+  }, [ask]);
 
   // The pointing finale, derived here rather than served: the bearing is
   // measured from where the reader IS, and a bearing baked into a 30-day
@@ -222,6 +224,40 @@ function QuizBody({
     // horizontal ones. Without ThemedView the screen loses its themed
     // background in dark mode.
     <ThemedView style={styles.screen}>
+      {/* The island renders FIRST in JSX (#296): VoiceOver reads
+          subviews in source order, and chrome announced last meant the
+          screen's own name arrived after every question card. Paint
+          order is the anchor's zIndex 10, not source order. Still a
+          DIRECT child of the screen surface — the one arrangement
+          useIslandInset assumes. */}
+      {islandStands && (
+        <GlassIslandHeader onHeight={setIslandHeight}>
+          <View style={styles.island} testID="quiz-island">
+            {/* A pinned place is a mode the chrome must admit, exactly
+                as Nearby's does: accent eyebrow, and the worded way
+                home. The eyebrow is the TAB's name — the nameplate
+                grammar wants it there, and the start card already says
+                what the run is. */}
+            <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
+              {exploring ? 'Exploring · Quiz' : 'Quiz'}
+            </ThemedText>
+            <IslandTitle
+              title={denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
+              hollow={Boolean(exploring) || denied}
+            />
+            <QuizStanding areaName={areaName} />
+            {exploring && (
+              <Pressable
+                accessibilityRole="button"
+                testID="quiz-back-to-near-me"
+                onPress={onBackToNearMe}
+                hitSlop={Spacing.two}>
+                <ThemedText type="linkPrimary">Back to near me</ThemedText>
+              </Pressable>
+            )}
+          </View>
+        </GlassIslandHeader>
+      )}
       <SafeAreaView style={styles.screen} edges={['left', 'right']}>
         <ScrollView
           contentContainerStyle={[
@@ -287,36 +323,6 @@ function QuizBody({
           )}
         </ScrollView>
       </SafeAreaView>
-      {/* After the body so it paints above, and a DIRECT child of the
-          screen surface — the one arrangement useIslandInset assumes. */}
-      {islandStands && (
-        <GlassIslandHeader onHeight={setIslandHeight}>
-          <View style={styles.island} testID="quiz-island">
-            {/* A pinned place is a mode the chrome must admit, exactly
-                as Nearby's does: accent eyebrow, and the worded way
-                home. The eyebrow is the TAB's name — the nameplate
-                grammar wants it there, and the start card already says
-                what the run is. */}
-            <ThemedText type="eyebrow" themeColor={exploring ? 'accent' : 'textSecondary'}>
-              {exploring ? 'Exploring · Quiz' : 'Quiz'}
-            </ThemedText>
-            <IslandTitle
-              title={denied ? 'wherever you are' : (areaLabel ?? 'this ground')}
-              hollow={Boolean(exploring) || denied}
-            />
-            <QuizStanding areaName={areaName} />
-            {exploring && (
-              <Pressable
-                accessibilityRole="button"
-                testID="quiz-back-to-near-me"
-                onPress={onBackToNearMe}
-                hitSlop={Spacing.two}>
-                <ThemedText type="linkPrimary">Back to near me</ThemedText>
-              </Pressable>
-            )}
-          </View>
-        </GlassIslandHeader>
-      )}
     </ThemedView>
   );
 }
@@ -360,6 +366,11 @@ const styles = StyleSheet.create({
   },
   emptyCopy: {
     textAlign: 'center',
+  },
+  // A word on the page is still a tap target: 44pt (DESIGN.md)
+  tapLine: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
   // The screen already pads its content; the panel's own margins would
   // double it, so this cancels them back out
