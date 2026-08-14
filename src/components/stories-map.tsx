@@ -36,7 +36,19 @@ const MaxPins = 12;
 /** The same 220pt card the route map uses — one map shape in the app. */
 const MapHeight = 220;
 
-export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Coordinates }) {
+export function StoriesMap({
+  items,
+  origin,
+}: {
+  items: HistoryItem[];
+  /** Where the feed was asked from — NOT the live position (#323). The
+   * camera frames this ground because the pins are its answer: anchored
+   * here, the map re-cameras exactly when the feed changes and never as
+   * the reader travels. It used to take the raw centre and re-camera on
+   * every ~10m GPS tick. The reader's own dot still moves live —
+   * `isMyLocationEnabled` draws it natively, no prop churn needed. */
+  origin: Coordinates;
+}) {
   const theme = useTheme();
   // The camera has to fit the card, so it needs the card's real size.
   // The window width is the opening estimate; onLayout corrects it once,
@@ -76,10 +88,10 @@ export function StoriesMap({ items, center }: { items: HistoryItem[]; center: Co
     );
   };
 
-  // Frame your position AND the pins, so the map opens on the walk
+  // Frame the feed's origin AND the pins, so the map opens on the walk
   // rather than on an arbitrary centre
   const camera = cameraForPins({
-    points: [center, ...pinned.map((item) => item.coordinates)],
+    points: [origin, ...pinned.map((item) => item.coordinates)],
     widthPixels: frame.width,
     heightPixels: frame.height,
   });
