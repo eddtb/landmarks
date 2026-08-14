@@ -2,6 +2,12 @@
 // Disk caches: tests get their own dir, never the dev ledgers
 process.env.AI_CACHE_DIR = '.ai-cache-test';
 require('react-native-reanimated').setUpTests();
+// Gesture-handler is native: without its official jest setup a
+// GestureHandlerRootView THROWS at render ("RNGestureHandlerModule
+// .install is not a function"), which had left the ImageViewer — the
+// one screen wrapped in it — unrenderable under test and therefore
+// untested.
+require('react-native-gesture-handler/jestSetup');
 
 // AsyncStorage is native — the official in-memory mock keeps the
 // persisted client caches (src/data/persisted-cache.ts) alive in tests

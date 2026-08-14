@@ -92,6 +92,37 @@ export default function GoScreen() {
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/* The chrome renders FIRST in JSX (#296): VoiceOver reads
+          subviews in source order, and Close must be reachable before
+          the journey, not after it. The overlay's zIndex keeps it
+          painting above the map wherever it sits in source. */}
+      <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
+        <GlassPanel style={styles.topCard} interactive>
+          {/* Close is a word, and violet — the compass modal's exact
+              treatment (the grey ✕ broke both halves of the rule);
+              16pt slop on the 20px label clears the 44pt target */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            onPress={() => router.back()}
+            hitSlop={Spacing.three}>
+            <ThemedText type="smallBold" themeColor="accent">
+              Close
+            </ThemedText>
+          </Pressable>
+          <View style={styles.topText}>
+            <ThemedText type="smallBold" numberOfLines={1}>
+              {item.title}
+            </ThemedText>
+            {route && (
+              <ThemedText type="small" themeColor="textSecondary">
+                {formatWalkTime(route.seconds)} · {formatDistance(route.meters)}
+              </ThemedText>
+            )}
+          </View>
+        </GlassPanel>
+      </SafeAreaView>
+
       {route ? (
         <RouteMap route={route} destination={target} fullscreen />
       ) : (
@@ -171,33 +202,6 @@ export default function GoScreen() {
         </View>
       )}
 
-      <SafeAreaView style={styles.overlay} edges={['top']} pointerEvents="box-none">
-        <GlassPanel style={styles.topCard} interactive>
-          {/* Close is a word, and violet — the compass modal's exact
-              treatment (the grey ✕ broke both halves of the rule);
-              16pt slop on the 20px label clears the 44pt target */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            onPress={() => router.back()}
-            hitSlop={Spacing.three}>
-            <ThemedText type="smallBold" themeColor="accent">
-              Close
-            </ThemedText>
-          </Pressable>
-          <View style={styles.topText}>
-            <ThemedText type="smallBold" numberOfLines={1}>
-              {item.title}
-            </ThemedText>
-            {route && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {formatWalkTime(route.seconds)} · {formatDistance(route.meters)}
-              </ThemedText>
-            )}
-          </View>
-        </GlassPanel>
-      </SafeAreaView>
-
       {guidance && coordinates && (
         <SafeAreaView style={styles.sheetArea} edges={['bottom']} pointerEvents="box-none">
           <GlassPanel style={styles.sheet} interactive>
@@ -238,9 +242,15 @@ export default function GoScreen() {
                   Steps
                 </ThemedText>
               </View>
-              {stepsOpen &&
-                route &&
-                route.maneuvers.map((maneuver, index) => (
+            </Pressable>
+            {/* OUTSIDE the toggle's Pressable (#296): an explicit label
+                on an accessible container replaces its children on iOS,
+                so a list inside the toggle announced "expanded" and
+                then had nothing to read. As a sibling, each step is its
+                own element under VoiceOver. */}
+            {stepsOpen && route && (
+              <View style={styles.stepsList}>
+                {route.maneuvers.map((maneuver, index) => (
                   <ThemedText
                     key={`${index}-${maneuver.instruction}`}
                     type="small"
@@ -249,7 +259,8 @@ export default function GoScreen() {
                     {maneuver.meters > 0 ? ` · ${formatDistance(maneuver.meters)}` : ''}
                   </ThemedText>
                 ))}
-            </Pressable>
+              </View>
+            )}
           </GlassPanel>
         </SafeAreaView>
       )}
@@ -285,6 +296,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    // The chrome now precedes the map in source (#296); zIndex keeps it
+    // painting above, the way the island and the chips already do.
+    zIndex: 10,
   },
   topCard: {
     flexDirection: 'row',
@@ -313,6 +327,13 @@ const styles = StyleSheet.create({
   },
   sheetPress: {
     padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  // The maneuvers, as the Pressable's sibling: same inner geometry the
+  // sheet press gave them, minus the top edge the header already paid
+  stepsList: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.three,
     gap: Spacing.two,
   },
   sheetHeader: {

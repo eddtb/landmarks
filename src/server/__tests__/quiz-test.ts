@@ -248,6 +248,45 @@ describe('the register rule, enforced against generated questions', () => {
     ).not.toBeNull();
   });
 
+  test('a unit word does not launder a figure — nor does "c."', () => {
+    // "52 feet / 62 feet / …" is the measurement recall test in a
+    // longer coat, and "1854 AD" is the bare-year hand wearing an era.
+    expect(
+      cleanQuizQuestion(anchor({ options: ['52 feet', '62 feet', '72 feet', '82 feet'] }), allowed)
+    ).toBeNull();
+    expect(
+      cleanQuizQuestion(anchor({ options: ['1854 AD', '1865 AD', '1901 AD', '1936 AD'] }), allowed)
+    ).toBeNull();
+    expect(
+      cleanQuizQuestion(anchor({ options: ['c. 1745', 'c. 1850', 'c. 1901', 'c. 1920'] }), allowed)
+    ).toBeNull();
+  });
+
+  test('"which year" is a bare-year ask whatever the options wear', () => {
+    // The options rule alone could be dressed past ("the year of the
+    // Great Exhibition" as a wrong option); the stem cannot.
+    expect(
+      cleanQuizQuestion(
+        anchor({
+          question: 'In which year did the palace burn down?',
+          options: ['1936', 'The year war broke out', '1901', 'The year of the Festival'],
+        }),
+        allowed
+      )
+    ).toBeNull();
+  });
+
+  test('ordinals lead names, and a hand of names survives', () => {
+    // "1st Foot Guards" is a regiment, not a figure — the rule must
+    // never eat a legitimate question to catch a lazy one.
+    expect(
+      cleanQuizQuestion(
+        anchor({ options: ['1st Foot Guards', '3rd Hussars', '2nd Dragoons', '7th Lancers'] }),
+        allowed
+      )
+    ).not.toBeNull();
+  });
+
   test('a whole quiz of memorised figures is no quiz at all', async () => {
     // End to end: whatever the model returns, none of it reaches a
     // phone — and a broken quiz is null rather than a short one

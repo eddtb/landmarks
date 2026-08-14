@@ -13,12 +13,15 @@ import {
   ViewToken,
 } from 'react-native';
 import Animated, {
-  runOnJS,
   useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
 } from 'react-native-reanimated';
+// scheduleOnRN, not the deprecated runOnJS (Reanimated 4.3): same hop
+// off the UI thread, spelled the way the worklets runtime spells it —
+// animated-icon.tsx set the precedent.
+import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExternalLink } from '@/components/external-link';
@@ -437,6 +440,17 @@ async function askRetold(
   }
 }
 
+/** The hero's meta line — and the tail of its accessible label, so the
+ * two cannot drift apart. */
+export function heroMeta(retold: Retold | null): string {
+  return retold
+    ? `${retold.parts.length} parts · about ${retold.minutes} min · retold from Wikipedia`
+    : // No retelling (yet): the body below is the telling, about a
+      // minute — the article's own minutes and chapter count described
+      // a body the screen no longer shows (caught on the simulator)
+      'about a minute';
+}
+
 function Hero({
   areaName,
   article,
@@ -463,7 +477,7 @@ function Hero({
           cachePolicy="memory-disk"
         />
       )}
-      <View style={[StyleSheet.absoluteFill, styles.heroShade]} />
+      <View style={[StyleSheet.absoluteFill, styles.heroShade]} testID="hero-scrim" />
       {lead && (
         <ThemedText
           type="caption"
@@ -483,13 +497,7 @@ function Hero({
           {areaName}
         </ThemedText>
         <ThemedText type="small" style={styles.heroDim} maxFontSizeMultiplier={1.4}>
-          {retold
-            ? `${retold.parts.length} parts · about ${retold.minutes} min · retold from Wikipedia`
-            : // No retelling (yet): the body below is the telling, about a
-              // minute — the article's own minutes and chapter count
-              // described a body the screen no longer shows, and "1
-              // chapters" was wrong twice over (caught on the simulator)
-              'about a minute'}
+          {heroMeta(retold)}
         </ThemedText>
       </View>
     </View>
@@ -668,7 +676,7 @@ export function AreaGazetteer({
     () => heroCleared.get(),
     (cleared, previous) => {
       if (cleared !== previous) {
-        runOnJS(setIslandShown)(cleared === 1);
+        scheduleOnRN(setIslandShown, cleared === 1);
       }
     }
   );
@@ -686,7 +694,7 @@ export function AreaGazetteer({
     heroCleared.set(event.contentOffset.y > heroClearAt ? 1 : 0);
     if (onReadThreshold && progress >= ReadThreshold && !readMarked.get()) {
       readMarked.set(true);
-      runOnJS(onReadThreshold)();
+      scheduleOnRN(onReadThreshold);
     }
   });
   const fillStyle = useAnimatedStyle(() => ({
@@ -1144,6 +1152,86 @@ export function AreaGazetteer({
 
   return (
     <View style={styles.wrap}>
+    {/* The chrome renders FIRST in JSX (#296): UIKit derives VoiceOver's
+        reading order from subview traversal, and with the list first a
+        blind reader swiped through the whole article before finding the
+        way out — on a story screen the back button was the LAST element.
+        Paint order is unaffected: both chrome roots carry zIndex 10, so
+        they draw above the list wherever they sit in source. */}
+    {/* A story screen's standing chrome: back and the ⋯, floating as
+        glass chips over the full-bleed hero — the native header's job,
+        rehoused (Edd's ask). They stand down when the island arrives
+        and carries the back button itself.
+
+        The material follows what it sits ON (DESIGN.md, Glass). With a
+        hero the chips sit on a photograph and pin dark under white
+        glyphs; with no article there is no photograph, and a dark disc
+        with a white chevron floating on a white page is the rule read
+        backwards. On the page they take the island's rendering: theme
+        glass, theme ink, and the ⋯ drawn for a theme surface. */}
+    {chrome && !islandShown && (
+      <View
+        style={[styles.chipRow, { top: insets.top + Spacing.two }]}
+        pointerEvents="box-none">
+        <StoryBackChip
+          backLabel={chrome.backLabel}
+          over={onPhoto ? 'photo' : 'page'}
+          onPress={chrome.onBack}
+        />
+        {(onPhoto ? chrome.menuOnPhoto : chrome.menu) && (
+          <GlassChip circle over={onPhoto ? 'photo' : 'page'}>
+            {onPhoto ? chrome.menuOnPhoto : chrome.menu}
+          </GlassChip>
+        )}
+      </View>
+    )}
+    {/* The arriving island (direction B, #300): an island exists to
+        carry a title the screen can no longer show, so it arrives on
+        the hero clearing and on NOTHING ELSE. It used to be gated on
+        `islandShown && retold`, which meant an area Wikipedia never
+        retold scrolled forever with no chrome and no title — not "late",
+        never. The gate belongs on the hero, not on whether the AI had
+        something to say.
+
+        The tab gets the same one professional row minus the chevron,
+        which the tab pill makes unnecessary, and the reading bar lives
+        along its base — the app's one progress idiom, with one home. */}
+    {islandShown && (
+      <GlassIslandHeader onHeight={noHeight} passThrough={!chrome}>
+        <View style={styles.islandInner} testID="gazetteer-island">
+          {/* One professional row (Edd, 22:25): chevron · title · count
+              · menu, with the reading bar along the base */}
+          <View style={styles.islandRow}>
+            {chrome && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Back to ${chrome.backLabel}`}
+                testID="story-back"
+                onPress={chrome.onBack}
+                hitSlop={Spacing.two}>
+                <ThemedText type="title" style={styles.chevron}>
+                  ‹
+                </ThemedText>
+              </Pressable>
+            )}
+            <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
+              The story of {areaLabel ?? areaName}
+            </ThemedText>
+            <ThemedText type="eyebrow" themeColor="textSecondary" testID="island-counter">
+              {islandCounter}
+            </ThemedText>
+            {chrome?.menu}
+          </View>
+          <View
+            style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}
+            pointerEvents="none">
+            <Animated.View
+              style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
+            />
+          </View>
+        </View>
+      </GlassIslandHeader>
+    )}
     <Animated.FlatList
       ref={listRef}
       testID="gazetteer-list"
@@ -1176,7 +1264,15 @@ export function AreaGazetteer({
           <View>
             <Pressable
               accessibilityRole="imagebutton"
-              accessibilityLabel="Open the cover photo"
+              // The hero is the ONLY place the story's name renders
+              // before the island arrives, and an explicit label on an
+              // accessible container REPLACES the children's text on
+              // iOS — "Open the cover photo, image button" was the
+              // whole screen to VoiceOver, and which story it was never
+              // arrived (#296). The label now carries what the hero
+              // shows; the tap is the hint.
+              accessibilityLabel={`The story of ${areaLabel ?? areaName}. ${heroMeta(retold)}`}
+              accessibilityHint="Opens the cover photo"
               onPress={() => (article.images ?? []).length > 0 && setViewerIndex(0)}>
               <Hero
                 areaName={areaLabel ?? areaName}
@@ -1260,80 +1356,6 @@ export function AreaGazetteer({
         )
       }
     />
-    {/* A story screen's standing chrome: back and the ⋯, floating as
-        glass chips over the full-bleed hero — the native header's job,
-        rehoused (Edd's ask). They stand down when the island arrives
-        and carries the back button itself.
-
-        The material follows what it sits ON (DESIGN.md, Glass). With a
-        hero the chips sit on a photograph and pin dark under white
-        glyphs; with no article there is no photograph, and a dark disc
-        with a white chevron floating on a white page is the rule read
-        backwards. On the page they take the island's rendering: theme
-        glass, theme ink, and the ⋯ drawn for a theme surface. */}
-    {chrome && !islandShown && (
-      <View
-        style={[styles.chipRow, { top: insets.top + Spacing.two }]}
-        pointerEvents="box-none">
-        <StoryBackChip
-          backLabel={chrome.backLabel}
-          over={onPhoto ? 'photo' : 'page'}
-          onPress={chrome.onBack}
-        />
-        {(onPhoto ? chrome.menuOnPhoto : chrome.menu) && (
-          <GlassChip circle over={onPhoto ? 'photo' : 'page'}>
-            {onPhoto ? chrome.menuOnPhoto : chrome.menu}
-          </GlassChip>
-        )}
-      </View>
-    )}
-    {/* The arriving island (direction B, #300): an island exists to
-        carry a title the screen can no longer show, so it arrives on
-        the hero clearing and on NOTHING ELSE. It used to be gated on
-        `islandShown && retold`, which meant an area Wikipedia never
-        retold scrolled forever with no chrome and no title — not "late",
-        never. The gate belongs on the hero, not on whether the AI had
-        something to say.
-
-        The tab gets the same one professional row minus the chevron,
-        which the tab pill makes unnecessary, and the reading bar lives
-        along its base — the app's one progress idiom, with one home. */}
-    {islandShown && (
-      <GlassIslandHeader onHeight={noHeight} passThrough={!chrome}>
-        <View style={styles.islandInner} testID="gazetteer-island">
-          {/* One professional row (Edd, 22:25): chevron · title · count
-              · menu, with the reading bar along the base */}
-          <View style={styles.islandRow}>
-            {chrome && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Back to ${chrome.backLabel}`}
-                testID="story-back"
-                onPress={chrome.onBack}
-                hitSlop={Spacing.two}>
-                <ThemedText type="title" style={styles.chevron}>
-                  ‹
-                </ThemedText>
-              </Pressable>
-            )}
-            <ThemedText type="smallBold" style={styles.islandTitle} numberOfLines={1}>
-              The story of {areaLabel ?? areaName}
-            </ThemedText>
-            <ThemedText type="eyebrow" themeColor="textSecondary" testID="island-counter">
-              {islandCounter}
-            </ThemedText>
-            {chrome?.menu}
-          </View>
-          <View
-            style={[styles.islandTrack, { backgroundColor: theme.accentSoft }]}
-            pointerEvents="none">
-            <Animated.View
-              style={[styles.progressFill, { backgroundColor: theme.accent }, fillStyle]}
-            />
-          </View>
-        </View>
-      </GlassIslandHeader>
-    )}
     <ImageViewer
       images={article?.images ?? []}
       initialIndex={viewerIndex}
@@ -1736,8 +1758,18 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     backgroundColor: '#31406B',
   },
+  // The widget's four-stop scrim, ported (#298). A flat 0.35 guaranteed
+  // nothing: over a bright sky it composited to ~#A6A6A6 and the white
+  // largeTitle read at 2.44:1, the credit at 1.92:1 — content-dependent
+  // and invisible in testing. The gradient keeps the photograph bright
+  // where no text sits and darkens its foot to >=0.78 where every line
+  // lives, the exact recipe area-stories.tsx wears with the comment
+  // "Photographs are unpredictable". CSS-gradient style, not a package:
+  // RN 0.76+ draws this natively on the new architecture, which
+  // Reanimated 4 already makes a hard requirement of this app.
   heroShade: {
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    experimental_backgroundImage:
+      'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.35) 35%, rgba(0,0,0,0.78) 70%, rgba(0,0,0,0.95) 100%)',
   },
   heroText: {
     padding: Spacing.four,
@@ -1747,9 +1779,11 @@ const styles = StyleSheet.create({
   heroLight: {
     color: '#FFFFFF',
   },
+  // Full white, no opacity dim: 0.85 and 0.7 subtracted from a contrast
+  // margin the scrim now exists to guarantee (#298). Hierarchy comes
+  // from the type ramp, not from thinning the ink.
   heroDim: {
     color: '#FFFFFF',
-    opacity: 0.85,
   },
   // Bottom-right, where photo credits live — the top edge belongs to
   // the clock, the chips and the notch (Edd's phone, 22:10 and 22:18:
@@ -1760,7 +1794,6 @@ const styles = StyleSheet.create({
     right: Spacing.three,
     maxWidth: '55%',
     color: '#FFFFFF',
-    opacity: 0.7,
   },
   gallery: {
     marginTop: Spacing.three,
@@ -1833,17 +1866,6 @@ const styles = StyleSheet.create({
   },
   haltedWrap: {
     paddingBottom: Spacing.two,
-  },
-  article: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  articleLabel: {
-    marginBottom: Spacing.three,
-  },
-  sourceLink: {
-    marginTop: Spacing.three,
-    marginBottom: Spacing.three,
   },
   partWrap: {
     paddingHorizontal: Spacing.four,

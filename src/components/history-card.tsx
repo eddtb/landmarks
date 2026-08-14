@@ -77,7 +77,15 @@ export function HistoryCard({ item, archive, saved, from }: Props) {
           // It is a worded mark on a photograph, so it takes the photo
           // material at the label's lighter weight.
           <GlassChip over="photo" style={styles.glassTick} testID="read-tick">
-            <ThemedText type="captionBold" style={styles.glassTickText}>
+            {/* The label excludes the mark (#296, DESIGN.md:78): the ✓
+                may be DRAWN beside the word, but VoiceOver saying
+                "check mark Visited 3 days ago" is a glyph reaching an
+                accessible name. The card aggregates its children's
+                labels, so this one carries the word alone. */}
+            <ThemedText
+              type="captionBold"
+              style={styles.glassTickText}
+              accessibilityLabel={journalWord}>
               ✓&ensp;{journalWord}
             </ThemedText>
           </GlassChip>

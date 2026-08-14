@@ -116,14 +116,6 @@ afterEach(async () => {
   await act(async () => {});
 });
 
-// The gazetteer is a VirtualizedList, which schedules its own cell work
-// on a timer. Unmount first, then let that timer land, or it fires
-// inside the NEXT test's render and collides with its act() scope.
-afterEach(async () => {
-  cleanup();
-  await act(async () => {});
-});
-
 describe('the ten-second read', () => {
   test('the brief is a card a reader can actually read', async () => {
     serve(readyRetelling);

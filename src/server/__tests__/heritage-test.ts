@@ -116,6 +116,50 @@ describe('buildPlaqueItems', () => {
       expect(plaqueSubjectName('J.L. Garvin C.H. 1868 - 1947 for thirty-four years Editor of The Observer')).toBe(
         'J.L. Garvin C.H.'
       );
+      // Shouting is judged per WORD: initials beside a shouted surname
+      // used to fail the whole-name test and ship half-shouting
+      expect(plaqueSubjectName('W.H. SMITH 1825-1891 bookseller and statesman lived here')).toBe(
+        'W.H. Smith'
+      );
+      expect(plaqueSubjectName('CAPTAIN W.E. JOHNS 1893-1968 creator of Biggles lived here')).toBe(
+        'Captain W.E. Johns'
+      );
+      // A regnal numeral is not shouting
+      expect(plaqueSubjectName('KING WILLIAM IV 1765-1837 lived here as Duke of Clarence')).toBe(
+        'King William IV'
+      );
+      // Accented capitals are still capitals
+      expect(plaqueSubjectName('JOSÉ RIZAL 1861-1896 writer and national hero lived here')).toBe(
+        'José Rizal'
+      );
+      expect(plaqueSubjectName('Dáithí Ó Conaill 1938-1991 republican lived here')).toBe(
+        'Dáithí Ó Conaill'
+      );
+    });
+
+    test('a Title-Case dedication clause is about the doing, not a name', () => {
+      // The adversarial probes that made the rule guess (review, Aug
+      // 2026): old plaques set whole clauses in Title Case, and each of
+      // these came back as the "subject" — "Founded Here", "Restored By
+      // The Parish", "Opened By Queen Victoria". A dedication verb
+      // opens a preamble now, and the rule abstains.
+      expect(plaqueSubjectName('Founded Here 1897 the first free library in the borough')).toBeNull();
+      expect(plaqueSubjectName('Restored By The Parish 1901 in memory of the fallen')).toBeNull();
+      expect(
+        plaqueSubjectName('Opened By Queen Victoria 1887 for the people of this borough')
+      ).toBeNull();
+      expect(plaqueSubjectName('Rebuilt 1877 after the great fire destroyed the hall')).toBeNull();
+      expect(plaqueSubjectName('Unveiled 1922 by the Mayor of Lewisham')).toBeNull();
+    });
+
+    test('a building named before its year is still the subject', () => {
+      // The guard above must not eat legitimate place subjects
+      expect(plaqueSubjectName("King's Cross Station 1852 designed by Lewis Cubitt")).toBe(
+        "King's Cross Station"
+      );
+      expect(plaqueSubjectName('War Memorial 1914-1918 to the men of this parish')).toBe(
+        'War Memorial'
+      );
     });
 
     test('anything less certain than that is not claimed', () => {

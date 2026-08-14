@@ -164,14 +164,36 @@ const LifespanYear = /(?:^|\D)(?:1\d{3}|20\d{2})(?:\D|$)/;
 const MaxNameWords = 4;
 // A clause that opens with one of these is a preamble, not a name — "In
 // September 1767 Olaudah Equiano c.1745-1797" names the man second.
+// The dedication VERBS are here too: old plaques set whole clauses in
+// Title Case, and "Founded Here 1897", "Restored By The Parish 1901"
+// and "Opened By Queen Victoria 1887" all read as capitalised-words-
+// then-a-year. A clause that opens with what was DONE is about the
+// doing, not a name — reviewed adversarially, these three were the
+// probes that made the rule guess.
 const PreambleWords = new Set([
   'in', 'on', 'at', 'to', 'of', 'the', 'this', 'these', 'near', 'here',
   'from', 'by', 'a', 'an', 'and', 'site', 'erected', 'memory', 'honour',
+  'founded', 'built', 'rebuilt', 'opened', 'restored', 'unveiled',
+  'established', 'dedicated', 'remembered',
 ]);
 const startsCapital = (word: string) => /^[^\p{L}]*\p{Lu}/u.test(word);
-// Shouting, and safe to quiet: every word is two or more capitals and
-// nothing else. "J.L. Garvin C.H." is initials and keeps its own case.
-const allShouting = /^\p{Lu}{2,}(?: \p{Lu}{2,})*$/u;
+// A WORD that shouts: two or more capitals, letters only. Judged per
+// word, not per name — "W.H. SMITH" and "CAPTAIN W.E. JOHNS" mix
+// initials with shouting, and the old whole-name test waved both
+// through untouched. Dotted initials ("W.H.", "C.H.") and regnal
+// numerals ("GEORGE IV"'s IV) keep their own case.
+const shoutingWord = /^\p{Lu}{2,}$/u;
+const romanNumeral = /^[IVXLCDM]+$/;
+
+/** Quiet the shouting words, one by one, and leave the rest alone. */
+function quietShouting(name: string): string {
+  return name
+    .split(' ')
+    .map((word) =>
+      shoutingWord.test(word) && !romanNumeral.test(word) ? titleCaseName(word) : word
+    )
+    .join(' ');
+}
 
 export function plaqueSubjectName(inscription: string): string | null {
   const words = collapse(inscription).split(' ').filter(Boolean);
@@ -191,7 +213,7 @@ export function plaqueSubjectName(inscription: string): string | null {
         !PreambleWords.has(opener)
       ) {
         const name = run.join(' ').replace(/[,;:]+$/, '');
-        return allShouting.test(name) ? titleCaseName(name) : name;
+        return quietShouting(name);
       }
       run = [];
       continue;

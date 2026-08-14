@@ -4,12 +4,15 @@ import { FlatList, Modal, Pressable, ScrollView, StyleSheet, useWindowDimensions
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
-  runOnJS,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+// scheduleOnRN, not the deprecated runOnJS (Reanimated 4.3) — the
+// worklets runtime's own spelling, as animated-icon.tsx already uses.
+import { scheduleOnRN } from 'react-native-worklets';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -38,6 +41,10 @@ export function ImageViewer({
   const indexRef = useRef(initialIndex ?? 0);
   const [zoomed, setZoomed] = useState(false);
   const dragY = useSharedValue(0);
+  // Reduce Motion (#298): the drag itself is the reader's own hand and
+  // stays, but the app-driven travel — the exit slide, the snap-back
+  // spring — jumps instead of tweening.
+  const reducedMotion = useReducedMotion();
 
   // A fresh open starts from rest — the last exit left dragY at height
   useEffect(() => {
@@ -59,12 +66,18 @@ export function ImageViewer({
   }
 
   // The dismissal finishes the story the drag started: photo continues
-  // off-screen, backdrop to nothing, THEN unmount — no snap, no flash
+  // off-screen, backdrop to nothing, THEN unmount — no snap, no flash.
+  // Under Reduce Motion there is no story to finish: close, immediately.
   const animateOut = () => {
-    // eslint-disable-next-line react-hooks/immutability
+    if (reducedMotion) {
+      // eslint-disable-next-line react-hooks/immutability
+      dragY.value = height;
+      onClose();
+      return;
+    }
     dragY.value = withTiming(height, { duration: 180 }, (finished) => {
       if (finished) {
-        runOnJS(onClose)();
+        scheduleOnRN(onClose);
       }
     });
   };
@@ -84,16 +97,23 @@ export function ImageViewer({
     .onEnd((event) => {
       'worklet';
       if (dragY.value > 120 || event.velocityY > 900) {
+        if (reducedMotion) {
+          // Reduce Motion: no exit slide — the photo leaves and the
+          // modal closes in the same beat
+          // eslint-disable-next-line react-hooks/immutability
+          dragY.value = height;
+          scheduleOnRN(onClose);
+          return;
+        }
         // Finish the story the drag started: photo continues off-screen,
         // backdrop reaches nothing, THEN unmount — no snap, no flash
-        // eslint-disable-next-line react-hooks/immutability
         dragY.value = withTiming(height, { duration: 180 }, (finished) => {
           if (finished) {
-            runOnJS(onClose)();
+            scheduleOnRN(onClose);
           }
         });
       } else {
-        dragY.value = withSpring(0);
+        dragY.value = reducedMotion ? 0 : withSpring(0);
       }
     });
 
