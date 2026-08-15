@@ -128,8 +128,16 @@ FINGERPRINT_JSON="$(npx eas-cli fingerprint:generate --platform "$PLATFORM" \
 
 FINGERPRINT="$(printf '%s' "$FINGERPRINT_JSON" | python3 -c '
 import json, sys
+raw = sys.stdin.read()
+# With --environment, eas-cli prints an env-loading banner to stdout
+# BEFORE the JSON (observed 2026-08-15: the banner names the loaded
+# variables, then the object follows). Parse from the first brace;
+# no brace at all is still a refusal, not a guess.
+start = raw.find("{")
+if start < 0:
+    sys.exit("fingerprint:generate printed no JSON object at all")
 try:
-    result = json.load(sys.stdin)
+    result = json.loads(raw[start:])
 except Exception as error:
     sys.exit(f"fingerprint:generate did not print JSON: {error}")
 value = result.get("hash") if isinstance(result, dict) else None
