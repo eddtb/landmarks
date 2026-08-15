@@ -63,8 +63,21 @@ const UsedBonjourServices = new Set([]);
 const NeverRequestedPermissions = [
   'NSLocationAlwaysUsageDescription',
   'NSLocationAlwaysAndWhenInUseUsageDescription',
-  'NSMotionUsageDescription',
 ];
+
+/**
+ * NSMotionUsageDescription cannot be stripped, and build 13 proved it:
+ * ITMS-90683 rejected the delivery because expo-location's binary links
+ * CoreMotion (activity-based location this app never enables), and
+ * Apple's scan requires the key whenever the SYMBOL is referenced —
+ * usage is not the test. Build 11 passed only because it still carried
+ * Expo's generic default, which claims the app detects motion. It does
+ * not. So the key stays, and the honesty moves into the string: the app
+ * never requests this permission, and the text says so.
+ */
+const HonestMotionDescription =
+  'Venture does not read motion or fitness data and never asks for it. ' +
+  'This notice is required because a location library links the Motion framework.';
 
 /**
  * Local-network discovery is a capability a development client earns and a
@@ -104,6 +117,8 @@ module.exports = function withHonestCapabilities(config) {
     for (const permission of NeverRequestedPermissions) {
       delete plist[permission];
     }
+
+    plist.NSMotionUsageDescription = HonestMotionDescription;
 
     if (!isDevelopmentVariant()) {
       keepOnlyUsed(plist, 'NSBonjourServices', UsedBonjourServices);
