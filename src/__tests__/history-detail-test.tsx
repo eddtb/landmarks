@@ -26,8 +26,17 @@ jest.mock('expo-router', () => {
   };
 });
 
-jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
-const mockExpoFetch = jest.requireMock('expo/fetch').fetch as jest.Mock;
+// The tile store is absent here (manifest 404s → the baked feed road
+// throws → the API road these tests script takes over), so the mock's
+// queued responses are consumed by the asks the tests actually mean.
+const mockInnerFetch = jest.fn();
+jest.mock('expo/fetch', () => ({
+  fetch: (...args: unknown[]) =>
+    String(args[0]).includes('/venture-tiles/')
+      ? Promise.resolve({ ok: false, status: 404 })
+      : mockInnerFetch(...args),
+}));
+const mockExpoFetch = mockInnerFetch;
 
 jest.mock('@/data/article-client', () => ({
   // A light miss, said the way the server says it: a 404. These clients
