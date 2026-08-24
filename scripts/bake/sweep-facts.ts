@@ -38,7 +38,15 @@ const Endpoint = 'https://www.wikidata.org/w/api.php';
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function api(params: Record<string, string>): Promise<Record<string, unknown>> {
-  const body = new URLSearchParams({ action: 'wbgetentities', format: 'json', maxlag: '5', ...params });
+  // No maxlag here, deliberately. Wikidata folds the SPARQL query
+  // service's updater backlog into its maxlag figure (probed 24 Aug
+  // 2026: replicas at 0.35 s, "type: wikibase-queryservice,
+  // queryserviceLag: 518") — a brake meant for EDITING bots, so the
+  // updater can catch up. A read-only wbgetentities sweep adds nothing
+  // to that backlog and stalled for an hour honouring it. Concurrency
+  // stays modest and Retry-After is honoured; that is the politeness a
+  // read owes. (sweep-extracts keeps maxlag: enwiki's is DB lag only.)
+  const body = new URLSearchParams({ action: 'wbgetentities', format: 'json', ...params });
   let lastFailure = 'no attempt made';
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(Endpoint, {
