@@ -16,7 +16,9 @@ complement the versioned-docs rule above; they don't replace it.
 This repo's own runbooks, encoded: `verifier-simulator` (UI evidence
 via Maestro — use before any UI PR), `record-caches` (the REPLAY_ONLY-
 off recording session; needs Edd's go), `device-triage` (Edd's phone
-findings → diagnosed, verified, merged PRs), `perf-audit`. Prefer
+findings → diagnosed, verified, merged PRs), `perf-audit`,
+`bake-tiles` (the local tile-bake and publish — there is no CI job for
+it by decision, docs/adr/0003). Prefer
 invoking these over rediscovering their contents.
 
 `skill-creator` is installed to author and improve these — use it
