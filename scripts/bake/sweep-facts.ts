@@ -39,6 +39,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function api(params: Record<string, string>): Promise<Record<string, unknown>> {
   const body = new URLSearchParams({ action: 'wbgetentities', format: 'json', maxlag: '5', ...params });
+  let lastFailure = 'no attempt made';
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(Endpoint, {
       method: 'POST',
@@ -48,20 +49,37 @@ async function api(params: Record<string, string>): Promise<Record<string, unkno
     }).catch((error: Error) => error);
 
     let retryAfterMs = 0;
+    if (response instanceof Error) {
+      lastFailure = `${response.name}: ${response.message}${response.cause ? ` (${String(response.cause)})` : ''}`;
+    } else if (!response.ok) {
+      lastFailure = `HTTP ${response.status}`;
+    }
     if (!(response instanceof Error)) {
       if (response.ok) {
         const parsed = (await response.json()) as { error?: { code?: string } };
         if (!parsed.error) {
           return parsed as Record<string, unknown>;
         }
+        // Every API error retries, not just maxlag: Wikidata throws
+        // transient internal_api_error under load, and one of those
+        // killed a 40-minute sweep at chunk 1082. The attempt cap below
+        // still turns a persistent error into a loud failure.
         if (parsed.error.code !== 'maxlag') {
-          throw new Error(`Wikidata error ${parsed.error.code}`);
+          console.warn(`[facts] retrying after Wikidata error ${parsed.error.code}`);
         }
+        lastFailure = `API error ${parsed.error.code}`;
       }
       retryAfterMs = Number(response.headers.get('retry-after') ?? 0) * 1000;
     }
     if (attempt >= 8) {
-      throw new Error('Wikidata still failing after 8 attempts');
+      throw new Error(
+        `Wikidata still failing after 8 attempts — last failure: ${lastFailure}; params: ${
+          (params.titles ?? params.ids ?? '').slice(0, 120)
+        }`
+      );
+    }
+    if (attempt >= 2) {
+      console.warn(`[facts] attempt ${attempt + 1} failed (${lastFailure}), backing off`);
     }
     await sleep(Math.min(Math.max(retryAfterMs, 1000 * 2 ** attempt), 60_000));
   }
