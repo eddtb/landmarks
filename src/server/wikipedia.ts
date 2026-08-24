@@ -1,6 +1,7 @@
 import { UserAgent } from '@/server/user-agent';
 import { HistoryItem } from '@/types/history';
 import { Coordinates, distanceMeters } from '@/utils/geo';
+import { BroadAreaCategories, isStoryTitle } from '@/utils/story-title';
 
 /**
  * Server-side only. Finds the Wikipedia article for a place by searching
@@ -169,29 +170,11 @@ type BatchPage = {
   categories?: { title: string }[];
 };
 
-const BroadAreaCategories = [
-  'Category:Areas of London',
-  'Category:District centres of London',
-  'Category:Districts of London on the River Thames',
-];
 
-/**
- * Register gate: geosearch mixes genuine stories (vanished palaces,
- * a nuclear reactor in the Naval College) with infrastructure that
- * merely has an article — stations, plain streets, piers. Those read
- * identically in a list and dilute the treasure, so they're gated by
- * title pattern — the same spirit as the venue lists' two-photo rule.
- * (Measured near Greenwich: 20 items → 4 gated, all noise.)
- */
-const NoiseTitlePatterns = [
-  / stations?$/i, // "Cutty Sark for Maritime Greenwich DLR station"
-  / (Street|Road|Walk|Lane|Avenue|Approach|Roundabout)$/, // plain street articles
-  / Pier$/,
-];
-
-export function isStoryTitle(title: string): boolean {
-  return !NoiseTitlePatterns.some((pattern) => pattern.test(title));
-}
+// The noise-title gate moved to @/utils/story-title so the tile bake
+// (plain node, no path aliases) can share it; re-exported to keep this
+// module the one place callers import Wikipedia logic from.
+export { isStoryTitle };
 
 /** Pure assembly step, unit-testable without network. */
 export function buildHistoryItems(
