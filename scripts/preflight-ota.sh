@@ -128,10 +128,18 @@ FINGERPRINT_JSON="$(npx eas-cli fingerprint:generate --platform "$PLATFORM" \
 
 FINGERPRINT="$(printf '%s' "$FINGERPRINT_JSON" | python3 -c '
 import json, sys
+# eas-cli writes banners to STDOUT too now (the ★ upgrade notice landed
+# there in 22.x, past the 2>-redirect that catches the rest) — read past
+# any preamble to the JSON, but a reply with NO JSON still refuses: a
+# banner alone is a blank stare with decoration.
+text = sys.stdin.read()
+start = min((i for i in (text.find("{"), text.find("[")) if i != -1), default=-1)
+if start == -1:
+    sys.exit("fingerprint:generate printed no JSON at all: " + text[:200])
 try:
-    result = json.load(sys.stdin)
+    result = json.loads(text[start : max(text.rfind("}"), text.rfind("]")) + 1])
 except Exception as error:
-    sys.exit(f"fingerprint:generate did not print JSON: {error}")
+    sys.exit(f"fingerprint:generate did not print parseable JSON: {error}")
 value = result.get("hash") if isinstance(result, dict) else None
 if not isinstance(value, str) or not value:
     sys.exit("fingerprint:generate printed JSON with no usable \"hash\" field")
@@ -152,10 +160,16 @@ BUILDS_JSON="$(npx eas-cli build:list --channel "$CHANNEL" --platform "$PLATFORM
 
 RUNTIMES="$(printf '%s' "$BUILDS_JSON" | python3 -c '
 import json, sys
+# Same stdout-banner tolerance as the fingerprint read above — and the
+# same refusal when there is no JSON to find.
+text = sys.stdin.read()
+start = min((i for i in (text.find("{"), text.find("[")) if i != -1), default=-1)
+if start == -1:
+    sys.exit("build:list printed no JSON at all: " + text[:200])
 try:
-    builds = json.load(sys.stdin)
+    builds = json.loads(text[start : max(text.rfind("}"), text.rfind("]")) + 1])
 except Exception as error:
-    sys.exit(f"build:list did not print JSON: {error}")
+    sys.exit(f"build:list did not print parseable JSON: {error}")
 if not isinstance(builds, list):
     sys.exit("build:list printed JSON that is not a list of builds")
 seen = []
