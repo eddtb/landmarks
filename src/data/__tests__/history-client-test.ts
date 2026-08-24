@@ -5,7 +5,15 @@ import { HistoryItem } from '@/types/history';
 const mockFetch = jest.fn();
 
 jest.mock('expo/fetch', () => ({
-  fetch: (...args: unknown[]) => mockFetch(...args),
+  // The tile store is absent throughout this suite — its manifest 404s,
+  // so fetchNearbyHistory's baked road throws and the API road (whose
+  // behaviour these tests describe) takes over. The baked road has its
+  // own suite (tiles-client-test.ts); mockFetch therefore only ever
+  // sees the API asks, keeping every call-count assertion honest.
+  fetch: (...args: unknown[]) =>
+    String(args[0]).includes('/venture-tiles/')
+      ? Promise.resolve({ ok: false, status: 404 })
+      : mockFetch(...args),
 }));
 
 jest.mock('expo-constants', () => ({
