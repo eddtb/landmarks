@@ -1,0 +1,75 @@
+# A PR that moves the native fingerprint must SAY SO before it merges.
+#
+# On 10 Aug, #306 edited a config plugin — a native change; its own body
+# said "moves the fingerprint, needs a build". It merged, and ~25
+# JS-only PRs then merged behind it over five days: every one OTA-able
+# work made unreachable, because no build matching the new fingerprint
+# existed, and NOTHING made that state visible. The publish-time
+# preflight catches it (too late to help the queue); the fingerprint
+# runtimeVersion policy protects phones (correctly); the gap was at
+# MERGE time. This closes it.
+#
+# The job computes the iOS fingerprint at the PR's base and at its head
+# and publishes one of two verdicts:
+#   green — "Native fingerprint unchanged — this PR can ride OTA."
+#   red   — which files moved it, and the consequence: merging closes
+#           the OTA road for every PR behind it until a build ships.
+#
+# The red is ADVISORY, deliberately NOT in the protect-main ruleset's
+# required checks: a deliberate native change merges past it with open
+# eyes — WITH a build plan (see AGENTS.md, "Shipping"). Making it
+# required is a repository setting and therefore Edd's call.
+#
+# Keyless by construction, like all of CI: this compares base-vs-head,
+# which needs only the repo. "Does a finished build exist for this
+# fingerprint?" needs EAS credentials and lives in
+# scripts/preflight-ota.sh, where credentials exist.
+name: Fingerprint fence
+
+on:
+  # No branch filter: PRs target main AND the long-lived stack branches
+  # the work actually happens on, and a hard-coded list would rot into
+  # exactly the silence this closes (base-freshness.yml precedent).
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: fingerprint-fence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fence:
+    # This name is the check context a ruleset would require. It is a
+    # claim, like `Base is fresh`: red means the claim is false.
+    name: Native fingerprint unchanged
+    runs-on: ubuntu-latest
+    steps:
+      # The default pull_request checkout is the MERGE of head into
+      # base — the right "head" for this question, because it is the
+      # tree the base becomes if the PR merges.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # depth-1 checkout has no other commits; the base tip is fetched
+      # by SHA. base.sha is the base tip when the event fired — if the
+      # base moves later, base-freshness.yml is the fence for that.
+      - name: Fetch the PR base
+        run: git fetch --depth=1 origin ${{ github.event.pull_request.base.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The script shares this install across both fingerprint runs
+      # when package-lock.json is identical between the refs, and runs
+      # its own `npm ci` per side when it is not — see the script
+      # header for why both are correct.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compare fingerprints (base vs head)
+        env:
+          EXPO_NO_TELEMETRY: '1'
+        run: scripts/fingerprint-fence.sh ${{ github.event.pull_request.base.sha }} HEAD

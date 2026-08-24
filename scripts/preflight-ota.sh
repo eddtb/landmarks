@@ -128,10 +128,12 @@ FINGERPRINT_JSON="$(npx eas-cli fingerprint:generate --platform "$PLATFORM" \
 
 FINGERPRINT="$(printf '%s' "$FINGERPRINT_JSON" | python3 -c '
 import json, sys
-# eas-cli writes banners to STDOUT too now (the ★ upgrade notice landed
-# there in 22.x, past the 2>-redirect that catches the rest) — read past
-# any preamble to the JSON, but a reply with NO JSON still refuses: a
-# banner alone is a blank stare with decoration.
+# eas-cli writes banners to STDOUT ahead of the JSON — the env-loading
+# banner that --environment prints (observed 2026-08-15, naming the
+# loaded variables) and, from 22.x, the ★ upgrade notice — past the
+# 2>-redirect that catches the rest. Read past any preamble to the JSON,
+# but a reply with NO JSON still refuses: a banner alone is a blank
+# stare with decoration.
 text = sys.stdin.read()
 start = min((i for i in (text.find("{"), text.find("[")) if i != -1), default=-1)
 if start == -1:

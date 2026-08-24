@@ -11,6 +11,7 @@ import { ReactNode } from 'react';
 
 import { AreaGazetteer } from '@/components/area-gazetteer';
 import { resetAreaNameCacheForTests, useAreaName } from '@/hooks/use-area-name';
+import { resetFeedOriginForTests } from '@/hooks/use-feed-origin';
 import { clearPin } from '@/hooks/use-pin';
 import { HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
@@ -106,6 +107,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   clearPin();
   resetAreaNameCacheForTests();
+  // The feed-origin store is module-level too: an anchor left by one
+  // test would name the LAST test's ground (#323's cascade now keys
+  // off the origin, not the centre)
+  resetFeedOriginForTests();
 });
 
 describe('the Dorking case (ward 404 → the cascade finds the town)', () => {

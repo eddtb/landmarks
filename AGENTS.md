@@ -96,6 +96,33 @@ anyone to remember: change the runtime and old binaries stop being
 offered the update instead of crashing on it. When a phone stops
 receiving updates, the answer is a new build — never a looser policy.
 
+**A native change merges only WITH a build plan.** #306 proved the
+gap: a config-plugin edit whose own body said "moves the fingerprint,
+needs a build" merged on 10 Aug, and for five days ~25 JS-only PRs
+merged behind it — every one OTA-able, none receivable, because no
+build matching the new fingerprint existed and nothing said so. The
+preflight catches this at publish time, too late for the queue; the
+runtimeVersion policy protects phones, a different job. The merge-time
+gap is `fingerprint-fence.yml`'s: every PR computes the iOS
+fingerprint at its base and its head (`scripts/fingerprint-fence.sh`),
+and one that moves it goes red naming the files that moved it. The red
+is ADVISORY — not a required check; making it one is Edd's ruleset
+call — and a deliberate native change merges past it with open eyes:
+the build cut the same day, or the change held on its branch. JS work
+never queues behind an unbuilt native change. The invariant: the
+production channel always holds a finished build matching the tip's
+fingerprint — remembering a finished build is necessary, but only a
+binary ON PHONES reopens the road.
+
+**The release branch is the standing answer.** `release-<build>`
+always tracks the SHIPPED binary's native surface. A JS-only fix
+cherry-picks onto it and publishes OTA at any time, regardless of what
+native work is on main — that is the always-OTA-able guarantee. Native
+changes ride main; when their binary ships, the release branch re-cuts
+from that build's commit. The fingerprint is a conservative proxy —
+#306's change was in fact JS-compatible — which is exactly why the
+release-branch route can republish this week's JS to the old binaries.
+
 Server-side API routes are a third road entirely: they reach every
 client at once, binary or not. The command is:
 

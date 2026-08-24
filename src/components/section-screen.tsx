@@ -29,6 +29,7 @@ import { DrawingWanderLine, WanderLine } from '@/components/wander-line';
 import { BrandWarmInk, Spacing } from '@/constants/theme';
 import { useAreaName } from '@/hooks/use-area-name';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useFeedOrigin } from '@/hooks/use-feed-origin';
 import { useHistory } from '@/hooks/use-history';
 import { useLocation } from '@/hooks/use-location';
 import { useAreaWidget } from '@/hooks/use-area-widget';
@@ -104,6 +105,16 @@ function invitationCopy(
 /** One identity for "no feed yet", so a loading render can't re-fire
  * the widget effect with a fresh [] on every tick. */
 const NoItems: HistoryItem[] = [];
+
+/** How far the reader travels from the feed's origin before the margin
+ * says so (#323). A third of the feed's ~1.5km reach: past it, the
+ * nearest stories on screen have stopped being the nearest stories
+ * there are — the near half of the promised ground is ground the
+ * reader has visibly left. Well above one ~111m bucket, which urban
+ * GPS scatter crosses standing still; well inside the radius, because
+ * waiting for the feed to be fully wrong before admitting drift helps
+ * nobody. */
+export const MovedSinceFetchMeters = 500;
 
 /**
  * Nearby = things you can visit AND recognise: a subject photo and no
@@ -380,6 +391,19 @@ export function StoriesScreen() {
     <LocationGate>
       {(gate) => (
         <ThemedView style={styles.container}>
+          {/* The island renders FIRST in JSX (#296): VoiceOver reads
+              subviews in source order, and with the feed first a blind
+              reader swiped ~150 cards before hearing the screen's own
+              name or reaching the ⋯ menu. It still paints ABOVE the
+              feed — the island's anchor carries zIndex 10, so paint
+              order never depended on source order. A DIRECT child of
+              the screen surface — never inside a SafeAreaView, which is
+              the arrangement useIslandInset assumes and the island's
+              own default `top` matches. */}
+          <GlassIslandHeader onHeight={setIslandHeight}>
+            <SectionHeader {...gate} eyebrow="Nearby" refusedCopy={NearbyRefusedCopy} overflow />
+            <FeedCountLine center={gate.center} />
+          </GlassIslandHeader>
           {/* The body keeps the horizontal edges — the TOP one is the
               island's business now, and paid once by useIslandInset. */}
           <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -391,14 +415,6 @@ export function StoriesScreen() {
               topInset={topInset}
             />
           </SafeAreaView>
-          {/* After the body so it paints above; the feed slides under.
-              A DIRECT child of the screen surface — never inside a
-              SafeAreaView, which is the arrangement useIslandInset
-              assumes and the island's own default `top` matches. */}
-          <GlassIslandHeader onHeight={setIslandHeight}>
-            <SectionHeader {...gate} eyebrow="Nearby" refusedCopy={NearbyRefusedCopy} overflow />
-            <FeedCountLine center={gate.center} />
-          </GlassIslandHeader>
         </ThemedView>
       )}
     </LocationGate>
@@ -506,6 +522,19 @@ function GazetteerBody({
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
   const { name: areaName, label: areaLabel, settled: areaSettled } = useAreaName(center);
+  // Bucket-stepped live position for the relic cards — see the prop
+  // comment below for why it is not the raw tick.
+  const relicFromLatitude =
+    center !== null && !exploring ? Number(center.latitude.toFixed(3)) : null;
+  const relicFromLongitude =
+    center !== null && !exploring ? Number(center.longitude.toFixed(3)) : null;
+  const relicFrom = useMemo(
+    () =>
+      relicFromLatitude === null || relicFromLongitude === null
+        ? undefined
+        : { latitude: relicFromLatitude, longitude: relicFromLongitude },
+    [relicFromLatitude, relicFromLongitude]
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -562,6 +591,13 @@ function GazetteerBody({
       allStories={state.items}
       refreshing={refreshing}
       onRefresh={onRefresh}
+      // Live ground for the relic walk times (#323): the feed no longer
+      // re-mints distances by refetching, so the position rides in — at
+      // the ~111m grain the bucket refetch used to give them, because
+      // the gazetteer is memo'd (the app's heaviest screen) and a prop
+      // that changed identity per ~10m GPS tick would re-render it per
+      // tick. Not while exploring: the pin is the origin and holds.
+      from={relicFrom}
       lead={
         // The mode admission, in the flow rather than in chrome that no
         // longer stands at rest — the slot Nearby's offline line uses.
@@ -628,9 +664,13 @@ export function StandingOnIt({ item, center }: { item: HistoryItem; center: Coor
 export function FeaturedRail({
   items,
   excludePageId,
+  from,
 }: {
   items: HistoryItem[];
   excludePageId?: number;
+  /** Live position for the walk times — same contract as HistoryCard's
+   * `from` (#323): without it the compose-time figure stands. */
+  from?: Coordinates;
 }) {
   const theme = useTheme();
   const featured = featuredStories(items, excludePageId);
@@ -680,7 +720,9 @@ export function FeaturedRail({
               themeColor="textSecondary"
               style={styles.featuredMeta}
               maxFontSizeMultiplier={1.4}>
-              {formatWalkTimeForMeters(item.distanceMeters)}
+              {formatWalkTimeForMeters(
+                from ? distanceMeters(from, item.coordinates) : item.distanceMeters
+              )}
             </ThemedText>
           </Pressable>
         ))}
@@ -717,6 +759,9 @@ export function HistoryBody({
   const theme = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const { state, refresh } = useHistory(center);
+  // Where the feed was asked from (#323): the map camera anchors to it,
+  // and the margin line measures the reader's drift against it.
+  const origin = useFeedOrigin(center);
   // The widget and the cold-load copy both SHOW this name, so both take
   // the spoken form: "Crystal Palace", not "Crystal Palace, London"
   const { label: areaLabel } = useAreaName(center);
@@ -787,12 +832,23 @@ export function HistoryBody({
       ? standingOn(state.items.filter((item) => !item.area), center)
       : null;
 
+  // Live position for the card walk times (#323): the feed's stories
+  // hold still now, so the distances must not — they were minted at
+  // the origin and age as the reader walks. While exploring the pin
+  // IS the origin and does not move, so the minted figures stand;
+  // live-from-GPS there would measure the reader's distance TO
+  // Alnwick, not Alnwick's own geography.
+  const liveFrom = exploring ? undefined : center;
+
   return (
     <>
       <FlatList
+        // Named so a test can reach the pull — the margin line's remedy
+        // is this list's own RefreshControl (#323)
+        testID="nearby-feed"
         data={items}
         keyExtractor={(item) => String(item.pageId)}
-        renderItem={({ item }) => <HistoryCard item={item} />}
+        renderItem={({ item }) => <HistoryCard item={item} from={liveFrom} />}
         // Featured scrolls away with the listings (Edd's call) — it's
         // the list's header, not the screen's. The negative margin
         // cancels the list padding so the rail bleeds edge to edge.
@@ -812,14 +868,31 @@ export function HistoryBody({
                 </ThemedText>
               </View>
             )}
-            {/* The map draws a centre the screen believes in — a real
-                fix or a place the reader pinned. It used to be fenced
-                off the fallback by hand (simulator-caught); the
-                fallback is gone, so the fence went with it. */}
+            {/* In the margin (#323): the feed no longer follows the
+                reader, so once they have moved meaningfully since it
+                was fetched, one grey line says what is showing and
+                offers the remedy — the offline line's idiom (#314),
+                never a panel. Not while exploring: the pin is
+                deliberately elsewhere and the header already admits
+                it. */}
+            {!exploring &&
+              origin !== null &&
+              distanceMeters(center, origin) >= MovedSinceFetchMeters && (
+                <View style={styles.controlLine}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Showing stories from where you were — pull down for here.
+                  </ThemedText>
+                </View>
+              )}
+            {/* The map draws the ground the screen is ABOUT — the
+                feed's origin, never the travelling fix (#323). It used
+                to be fenced off the fallback by hand (simulator-
+                caught); the fallback is gone, so the fence went with
+                it. */}
             <View style={styles.mapCard}>
-              <StoriesMap items={items} center={center} />
+              <StoriesMap items={items} origin={origin ?? center} />
             </View>
-            <FeaturedRail items={state.items} excludePageId={underfoot?.pageId} />
+            <FeaturedRail items={state.items} excludePageId={underfoot?.pageId} from={liveFrom} />
           </View>
         }
         // The deep feed can run to ~150 stories — render the first

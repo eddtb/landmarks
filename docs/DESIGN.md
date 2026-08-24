@@ -107,11 +107,28 @@ Lists scroll under the translucent tab bar but pad their bottom by the
 safe-area inset: the last card must always be able to rest fully above
 the bar.
 
-**Location-first caching (standing rule).** Every server cache is keyed
-by place (area bucket or story id): TTLs govern re-asking about the SAME
-thing, never about a new one — as the user moves, results change,
-always. Distances and sorting recompute from live GPS on-device. Cost
-optimisation may never freeze the user's position.
+**The reader decides when the feed re-asks (standing rule, amended
+August 2026).** The feed is fetched where the app starts and re-fetched
+only by a deliberate act: a pull-to-refresh, a searched pin, "Back to
+near me". Movement never refetches, at any speed — this repeals the
+older rule's "as the user moves, results change, always", which at the
+~111m bucket made walking re-ask every ~90s and a bus re-ask every ~8s,
+the map re-cameraing and the title moving with it, out from under the
+reader (#323). Everything anchored to the feed moves only when the feed
+does: the map camera frames the feed's origin, the area name names what
+the feed shows.
+
+What survives of location-first, unrepealed: every cache is still keyed
+by place (area bucket or story id), so a cache can never serve a
+DIFFERENT place's answer; TTLs govern re-asking about the SAME place,
+never about a new one; and distances stay live — walk times recompute
+on-device from real GPS while the stories hold still, because a frozen
+"2 min walk" is #289's lie reborn. (List order is the origin's order:
+re-sorting a feed under a moving reader is the same churn in another
+coat.) A pin still may not outlive the process. And when the reader has
+moved meaningfully from where the feed was asked (~500m — a third of
+its reach), the margin says so and offers the pull: one grey `small`
+line in the #314 idiom, never a panel.
 
 ## Screen grammar
 

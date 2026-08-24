@@ -51,8 +51,10 @@ export const SanctionedColours: readonly SanctionedColour[] = [
   },
   {
     file: 'src/components/area-gazetteer.tsx',
-    value: 'rgba(0,0,0,0.35)',
-    reason: 'The hero shade itself — the scrim that makes the white legible.',
+    value:
+      'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.35) 35%, rgba(0,0,0,0.78) 70%, rgba(0,0,0,0.95) 100%)',
+    reason:
+      'The hero scrim (#298): the widget’s four-stop gradient, ported. A flat 0.35 read at 2.44:1 over a bright sky; the gradient guarantees the text zone >=0.78 while the photograph stays bright where no text sits.',
   },
   {
     file: 'src/components/history-card.tsx',
@@ -188,24 +190,9 @@ export const QuarantinedControlNames: readonly {
   glyph: string;
   fix: string;
 }[] = [
-  {
-    file: 'src/components/quiz-run.tsx',
-    name: 'Read the story — {title} ›',
-    glyph: '›',
-    fix: 'drop the › (the label is already a full sentence) or give the Pressable accessibilityLabel="Read the story"',
-  },
-  {
-    file: 'src/components/quiz-run.tsx',
-    name: "{result.right ? 'Right' : 'Missed'} {result.label} Story ›",
-    glyph: '›',
-    fix: 'accessibilityLabel="Read the story" on the result row’s Pressable',
-  },
-  {
-    file: 'src/components/quiz-direction.tsx',
-    name: 'Read {question.title} ›',
-    glyph: '›',
-    fix: 'drop the › or give the Pressable accessibilityLabel="Read this story"',
-  },
+  // The three › entries are FIXED, not forgiven: each Pressable now
+  // carries an accessibilityLabel that says everything the row shows
+  // minus the drawn glyph (#296 closed the set).
 ];
 
 /**
@@ -228,16 +215,7 @@ export const QuarantinedCompilerBails: readonly {
     category: 'Immutability',
     fix: 'dragY is mutated after being used as an effect dependency — move the mutation before the useEffect, or hold it in a ref the effect does not depend on.',
   },
-  {
-    file: 'src/components/quiz-run.tsx',
-    component: 'Results',
-    category: 'Suppression',
-    fix: 'remove the `eslint-disable-next-line react-hooks/exhaustive-deps` and satisfy the dependency array; one disable de-optimises the whole component.',
-  },
-  {
-    file: 'src/components/quiz-screen.tsx',
-    component: 'QuizBody',
-    category: 'Suppression',
-    fix: 'remove the `eslint-disable-next-line react-hooks/exhaustive-deps` and satisfy the dependency array.',
-  },
+  // Results and QuizBody are FIXED: their exhaustive-deps disables are
+  // gone (Results depends on the run it records; QuizBody captures the
+  // ask whole, so a GPS tick re-triggers nothing) and both compile.
 ];

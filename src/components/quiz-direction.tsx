@@ -74,6 +74,7 @@ export function QuizDirection({
         <Pressable
           accessibilityRole="button"
           testID="quiz-direction-skip"
+          style={styles.tapLine}
           onPress={() => onAnswered(false)}>
           <ThemedText type="linkPrimary">{last ? 'See the score' : 'Next question'}</ThemedText>
         </Pressable>
@@ -141,7 +142,10 @@ export function QuizDirection({
           </ThemedText>
           <Pressable
             accessibilityRole="button"
+            // The › is drawn, not spoken (#186)
+            accessibilityLabel={`Read ${question.title}`}
             testID="quiz-direction-source"
+            style={styles.tapLine}
             onPress={() =>
               router.push({
                 pathname: '/history/[pageId]',
@@ -153,6 +157,7 @@ export function QuizDirection({
           <Pressable
             accessibilityRole="button"
             testID="quiz-direction-next"
+            style={styles.tapLine}
             onPress={() => onAnswered(right)}>
             <ThemedText type="linkPrimary">{last ? 'See the score' : 'Next question'}</ThemedText>
           </Pressable>
@@ -206,5 +211,10 @@ const styles = StyleSheet.create({
   },
   verdict: {
     gap: Spacing.two,
+  },
+  // A word on the page is still a tap target: 44pt (DESIGN.md)
+  tapLine: {
+    minHeight: 44,
+    justifyContent: 'center',
   },
 });

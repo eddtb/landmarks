@@ -142,7 +142,14 @@ describe('the generated plist declares only what the app does', () => {
     // already cost 1.0(3).
     expect('NSLocationAlwaysUsageDescription' in plist).toBe(false);
     expect('NSLocationAlwaysAndWhenInUseUsageDescription' in plist).toBe(false);
-    expect('NSMotionUsageDescription' in plist).toBe(false);
+
+    // NSMotionUsageDescription is the one key that must STAY: build 13
+    // was rejected with ITMS-90683 for its absence, because expo-location
+    // links CoreMotion and Apple requires the string whenever the symbol
+    // is referenced. The honesty lives in the wording — Expo's default
+    // claims the app detects motion; ours says it never asks.
+    expect(plist.NSMotionUsageDescription).toContain('never asks');
+    expect(plist.NSMotionUsageDescription).not.toContain('$(PRODUCT_NAME)');
 
     // expo-dev-client: no dev frameworks are embedded in the IPA, so this
     // is a declared and unusable capability.
@@ -179,9 +186,11 @@ describe('the generated plist declares only what the app does', () => {
     expect(plist.NSBonjourServices).toEqual(['_expo._tcp']);
     expect(typeof plist.NSLocalNetworkUsageDescription).toBe('string');
 
-    // The location and motion claims are false in every variant.
+    // The Always-location claim is false in every variant; the motion key
+    // must exist in every variant (ITMS-90683) but always with our
+    // never-asks wording, not Expo's motion-detecting default.
     expect('NSLocationAlwaysUsageDescription' in plist).toBe(false);
-    expect('NSMotionUsageDescription' in plist).toBe(false);
+    expect(plist.NSMotionUsageDescription).toContain('never asks');
     expect('UIBackgroundModes' in plist).toBe(false);
   });
 });

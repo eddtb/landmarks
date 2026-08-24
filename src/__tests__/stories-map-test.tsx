@@ -58,7 +58,7 @@ describe('StoriesMap', () => {
   test('one pin per story, carrying the pageId that opens it', async () => {
     const items = [story(1, 'Crystal Palace Bowl', 161), story(2, 'Crystal Palace Park', 222)];
 
-    await render(<StoriesMap items={items} center={center} />);
+    await render(<StoriesMap items={items} origin={center} />);
 
     const markers = mapProps().markers as { id: string; title: string }[];
     expect(markers).toHaveLength(2);
@@ -70,7 +70,7 @@ describe('StoriesMap', () => {
   });
 
   test('a story pin is not mistakable for the position dot', async () => {
-    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} center={center} />);
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} origin={center} />);
 
     // The dot is the same brand accent, so a bare violet pin differed
     // from "me" only by having a tail — the glyph is what separates them
@@ -89,7 +89,7 @@ describe('StoriesMap', () => {
     // would be right in one scheme and wrong in the other, and #6A4BDB
     // on a dark map is the wrong violet (2.79:1 against white).
     mockScheme.mockReturnValue('dark');
-    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} center={center} />);
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} origin={center} />);
 
     const markers = mapProps().markers as { tintColor: string }[];
     expect(markers[0].tintColor).toBe(Colors.dark.accent);
@@ -97,7 +97,7 @@ describe('StoriesMap', () => {
   });
 
   test('tapping a pin opens THAT story — the id is the route parameter', async () => {
-    await render(<StoriesMap items={[story(4242, 'Crystal Palace Dinosaurs', 300)]} center={center} />);
+    await render(<StoriesMap items={[story(4242, 'Crystal Palace Dinosaurs', 300)]} origin={center} />);
 
     const onMarkerClick = mapProps().onMarkerClick as (marker: { id?: string }) => void;
     onMarkerClick({ id: '4242' });
@@ -109,7 +109,7 @@ describe('StoriesMap', () => {
   });
 
   test('a pin with no id routes nowhere rather than to a broken screen', async () => {
-    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} center={center} />);
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 222)]} origin={center} />);
 
     (mapProps().onMarkerClick as (marker: { id?: string }) => void)({});
 
@@ -119,7 +119,7 @@ describe('StoriesMap', () => {
   test('the nearest dozen only: the deep feed must not zoom the map to a smudge', async () => {
     const deep = Array.from({ length: 150 }, (_, i) => story(i + 1, `Story ${i + 1}`, 50 + i * 20));
 
-    await render(<StoriesMap items={deep} center={center} />);
+    await render(<StoriesMap items={deep} origin={center} />);
 
     const markers = mapProps().markers as { id: string }[];
     expect(markers).toHaveLength(12);
@@ -128,8 +128,8 @@ describe('StoriesMap', () => {
     expect(markers[11].id).toBe('12');
   });
 
-  test('your own position is on the map, and the camera frames it with the pins', async () => {
-    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 900)]} center={center} />);
+  test("your position is on the map; the camera frames the feed's ORIGIN with the pins (#323)", async () => {
+    await render(<StoriesMap items={[story(1, 'Crystal Palace Park', 900)]} origin={center} />);
 
     const properties = mapProps().properties as {
       isMyLocationEnabled: boolean;
@@ -140,13 +140,15 @@ describe('StoriesMap', () => {
     // after returning from the story (caught on the simulator)
     expect(properties.selectionEnabled).toBe(false);
     const camera = mapProps().cameraPosition as { coordinates: { latitude: number }; zoom: number };
-    // Centred BETWEEN you and the story, not on either one
+    // Centred BETWEEN the origin and the story, not on either one —
+    // and it is the ORIGIN the camera frames: the live position moves
+    // with every GPS tick and must never steer the camera (#323)
     expect(camera.coordinates.latitude).toBeGreaterThan(center.latitude);
     expect(camera.zoom).toBeGreaterThan(0);
   });
 
   test('no stories, no map — an empty frame would just be a grey box', async () => {
-    await render(<StoriesMap items={[]} center={center} />);
+    await render(<StoriesMap items={[]} origin={center} />);
 
     expect(screen.queryByTestId('stories-map')).toBeNull();
     expect(mockMapProps).toHaveLength(0);

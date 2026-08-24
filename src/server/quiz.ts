@@ -93,24 +93,39 @@ const MaxTitleChars = 70;
  *
  * Two signals, both of them about the ANSWER a reader must produce:
  *
- *  - every option is a bare figure. A hand of "1854 / 1865 / 1901 /
- *    1936", or "24 / 36 / 48 / 60", is a recall test whatever the
- *    question says. Separators count as figure, so "1790-91" and
- *    "1,200" are caught; "Five hours" and "A fortnight" are not, and
- *    "how long did the fire burn" stays a perfectly good question.
- *  - the question asks "how many". There is no reading of that phrase
- *    which is not a count.
+ *  - every option is a figure. A hand of "1854 / 1865 / 1901 / 1936",
+ *    or "24 / 36 / 48 / 60", is a recall test whatever the question
+ *    says. Separators count as figure, so "1790-91" and "1,200" are
+ *    caught — and so is a figure wearing a single unit word, because
+ *    "52 feet / 62 feet / …" and "1854 AD / 1865 AD / …" are the same
+ *    recall test in a longer coat. "Five hours" and "A fortnight" are
+ *    not figures, so "how long did the fire burn" stays a perfectly
+ *    good question; ordinals lead NAMES ("1st Foot", "20th Century")
+ *    and are left alone — the rule must never eat a legitimate hand.
+ *  - the question asks "how many", or "which/what year". There is no
+ *    reading of those phrases which is not a count or a bare year.
  *
  * Dropped, not rewritten — the file's standing rule. A shorter quiz
  * beats a question that tests memory instead of the ground.
  */
-const BareFigure = /^[\d][\d,.–—/-]*$/;
+const FigureStems = /\bhow many\b|\b(?:which|what) year\b/i;
+/** Leads that dress a figure without changing what it is. */
+const CircaLead = /^(?:c\.|circa|about|around|roughly)\s*/i;
+/** An ordinal opens a name, not a figure: "1st Foot", "20th Century". */
+const OrdinalLead = /^\d+(?:st|nd|rd|th)/i;
+/** Digits and separators, then at most one short unit word. */
+const Figure = /^[\d][\d,.–—/-]*\p{L}{0,8}\.?$/u;
+
+function isFigureAnswer(option: string): boolean {
+  const bare = option.trim().replace(CircaLead, '').replace(/\s/g, '');
+  return !OrdinalLead.test(bare) && Figure.test(bare);
+}
 
 function asksForAFigure(question: string, options: string[]): boolean {
-  if (/\bhow many\b/i.test(question)) {
+  if (FigureStems.test(question)) {
     return true;
   }
-  return options.every((option) => BareFigure.test(option.replace(/\s/g, '')));
+  return options.every(isFigureAnswer);
 }
 
 /** A name is not a sentence that ran out of room. */

@@ -3,6 +3,7 @@ import Animated, {
   SharedValue,
   useAnimatedReaction,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
@@ -54,6 +55,12 @@ export function useShortestArc(
   angleFrom: (degrees: number) => number | null
 ) {
   const rotation = useSharedValue(0);
+  // Reduce Motion (#298): a full-screen dial tweening on every 2° tick
+  // — needle AND counter-rotating cardinal card — is precisely the
+  // vestibular trigger the setting exists for, and the compass modal is
+  // the whole screen. Honouring it means the dial JUMPS to each new
+  // angle instead of animating through the arc.
+  const reducedMotion = useReducedMotion();
   useAnimatedReaction(
     () => angleFrom(heading.value),
     (next, previous) => {
@@ -65,7 +72,9 @@ export function useShortestArc(
       let delta = target - current;
       if (delta > 180) delta -= 360;
       if (delta < -180) delta += 360;
-      rotation.value = withTiming(rotation.value + delta, { duration: 300 });
+      rotation.value = reducedMotion
+        ? rotation.value + delta
+        : withTiming(rotation.value + delta, { duration: 300 });
     }
   );
   return useAnimatedStyle(() => ({

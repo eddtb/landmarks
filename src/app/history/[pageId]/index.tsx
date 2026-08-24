@@ -339,12 +339,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
   },
+  // minHeight 44: "every tap target clears 44pt" (DESIGN.md) — 8pt of
+  // padding around a 20pt label was a 36pt primary control
   go: {
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.four,
     borderRadius: Spacing.six,
   },
   compass: {
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.four,
     borderRadius: Spacing.six,
