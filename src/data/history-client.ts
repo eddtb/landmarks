@@ -3,6 +3,7 @@ import { fetch } from 'expo/fetch';
 import { apiUrl } from '@/data/api';
 import { ApiError } from '@/data/cached-get';
 import { persistedMap } from '@/data/persisted-cache';
+import { fetchTileFeed } from '@/data/tiles-client';
 import { feedBucketKey, HistoryFeed, HistoryItem } from '@/types/history';
 import { Coordinates } from '@/utils/geo';
 
@@ -168,6 +169,20 @@ async function requestFeed(
   key: string,
   options?: HistoryFetchOptions
 ): Promise<HistoryFetchResult> {
+  // The baked road first: the feed as static tiles off the CDN — one
+  // round trip, no compose. Any failure there (offline, store absent,
+  // a broken tile) falls through to the API road below, which still
+  // knows how to compose live and how to serve saved stories offline.
+  // The fallback comes out with the compose path once tiles have
+  // proven themselves on-device — see the precompute plan.
+  try {
+    const feed = await fetchTileFeed(center);
+    listCache.set(key, feed);
+    return feed;
+  } catch {
+    // fall through — the API road throws its own honest errors
+  }
+
   const params = new URLSearchParams({
     lat: String(center.latitude),
     lng: String(center.longitude),
