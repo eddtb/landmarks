@@ -25,6 +25,7 @@ function flag(name: string, fallback: string): string {
 
 const coordsPath = flag('coords', '.bake/uk-pages.ndjson');
 const pagesPath = flag('pages', '.bake/pages.ndjson');
+const factsPath = flag('facts', '.bake/facts.ndjson');
 const outDir = flag('out', '.bake/tiles');
 
 const MaxStoriesPerTile = 200;
@@ -40,6 +41,19 @@ function readLines<T>(file: string): T[] {
 const coords = new Map(
   readLines<{ p: number; lat: number; lng: number }>(coordsPath).map((c) => [c.p, c])
 );
+
+// Existence verdicts, keyed by title. Optional input but never silently
+// so: a bake without facts ships events into Nearby and strips every
+// pastTag, and the manifest + log both say it happened.
+type Fact = { title: string; tag?: string; event?: true; area?: true };
+const facts = fs.existsSync(factsPath)
+  ? new Map(readLines<Fact>(factsPath).map((fact) => [fact.title, fact]))
+  : null;
+if (!facts) {
+  console.warn(
+    `[tiles] WARNING: no facts file at ${factsPath} — baking WITHOUT existence tags or event verdicts`
+  );
+}
 
 type SweptPage = Omit<TileStory, 'coordinates'>;
 
@@ -59,6 +73,7 @@ for (const page of readLines<SweptPage>(pagesPath)) {
     continue;
   }
   placed.add(page.pageId);
+  const fact = facts?.get(page.title);
   const story: TileStory = {
     pageId: page.pageId,
     title: page.title,
@@ -66,7 +81,11 @@ for (const page of readLines<SweptPage>(pagesPath)) {
     ...(page.extract ? { extract: page.extract } : {}),
     ...(page.thumbnailUrl ? { thumbnailUrl: page.thumbnailUrl } : {}),
     url: page.url,
-    ...(page.area ? { area: true as const } : {}),
+    ...(fact?.tag ? { pastTag: fact.tag } : {}),
+    ...(fact?.event ? { event: true as const } : {}),
+    // Two area signals, either wins: the London category gate from the
+    // extract sweep, and Wikidata's district/town classes from facts
+    ...(page.area || fact?.area ? { area: true as const } : {}),
   };
   const cell = tileKey(story.coordinates);
   const bucket = tiles.get(cell);
