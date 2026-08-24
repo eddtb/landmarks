@@ -71,7 +71,16 @@ async function api(params: Record<string, string>): Promise<Record<string, unkno
       }
       retryAfterMs = Number(response.headers.get('retry-after') ?? 0) * 1000;
     }
-    if (attempt >= 8) {
+    // maxlag is not a failure, it is Wikidata saying "wait": during a
+    // replication-lag spike every request answers maxlag for minutes,
+    // and an attempt cap turns that into a dead sweep (it did, twice).
+    // Lag waits are unbounded and honour Retry-After; real errors keep
+    // the cap so a persistent fault still fails loudly.
+    const lagged = lastFailure === 'API error maxlag';
+    if (lagged) {
+      attempt = Math.min(attempt, 3); // hold the backoff at ~8 s, never escalate to a minute
+    }
+    if (attempt >= 8 && !lagged) {
       throw new Error(
         `Wikidata still failing after 8 attempts — last failure: ${lastFailure}; params: ${
           (params.titles ?? params.ids ?? '').slice(0, 120)
