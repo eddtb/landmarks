@@ -72,6 +72,11 @@ export type TileStory = {
   extract?: string;
   thumbnailUrl?: string;
   url: string;
+  /** Wikidata existence fact — "Demolished 1936", "Former hospital" —
+   * or absent: honest silence (baked by scripts/bake/sweep-facts.ts). */
+  pastTag?: string;
+  /** The article is ABOUT an event — History archive, never Nearby. */
+  event?: true;
   /** Broad-area article (History Gazetteer, never a Nearby card). */
   area?: true;
 };

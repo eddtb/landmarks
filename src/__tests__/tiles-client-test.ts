@@ -122,6 +122,28 @@ describe('fetchTileFeed', () => {
     await expect(fetchTileFeed(Center)).rejects.toThrow();
   });
 
+  it('carries the baked existence facts through to the feed item', async () => {
+    // The whole reason the facts stage exists: pastTag decorates the
+    // card and event keeps a crash out of Nearby — both must survive
+    // the tile → HistoryItem conversion untouched
+    const palace = {
+      ...story(7, { latitude: 51.4826, longitude: -0.0077 }, 'Placentia Palace'),
+      pastTag: 'Demolished 1694',
+    };
+    const crash = {
+      ...story(8, { latitude: 51.4815, longitude: -0.0095 }, 'A rail crash'),
+      event: true as const,
+    };
+    serveTiles([...denseGround(), palace, crash]);
+
+    const feed = await fetchTileFeed(Center);
+
+    const gotPalace = feed.items.find((i) => i.pageId === 7);
+    const gotCrash = feed.items.find((i) => i.pageId === 8);
+    expect(gotPalace?.pastTag).toBe('Demolished 1694');
+    expect(gotCrash?.event).toBe(true);
+  });
+
   it('throws when the store itself is absent, so all-404s never read as empty ground', async () => {
     // Every cell 404s exactly as an unpublished Pages site would —
     // only the missing manifest tells this apart from the open sea
