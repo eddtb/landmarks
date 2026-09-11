@@ -5,7 +5,12 @@
 # down, the viewer must close.
 appId: com.eddtb.landmarks
 ---
-- launchApp
+# Explicit grant: the gazetteer is written about a place, and with no
+# centre the History tab stands down into an invitation (#307) — see
+# smoke.yaml for why no feed flow trusts the grant-all default
+- launchApp:
+    permissions:
+      location: inuse
 # Alphabetically this flow can run before smoke on a fresh install —
 # the shared setup keeps the boot guards ahead of its first tap
 - runFlow: subflows/setup.yaml

@@ -1,15 +1,19 @@
-# Sparse-area honesty with location denied: the denied banner offers
-# the search box, a faraway search serves the sparse-area recording,
-# and the count line admits the server looked further.
+# Determined-denied, and the honest remedies: `location: never` is the
+# iOS value that actually denies (not `deny`), so LocationGate reads
+# REFUSED — the one standing that is told anything is off, offered
+# Settings (the only door iOS leaves open), and NOT offered the in-app
+# ask. That last assertion is the #290 split, driven: never-asked and
+# refused stopped sharing a sentence, and this flow fails if they ever
+# share one again. The never-asked half lives in one-door.yaml.
 #
-# launchApp silently grants ALL permissions unless `permissions:` is
-# given — and the iOS value that actually denies location is `never`,
-# not `deny`.
+# Then the refused reader's way forward: the invitation's field stands
+# open, a faraway search serves the sparse-area recording, and the
+# count line admits the server looked further.
 #
-# The search itself geocodes on-device (Apple's geocoder, keyless) —
-# the one non-fixture network touch in the suite; it has no rate-limit
-# history on runners. The resulting faraway coords make /api/history
-# serve e2e-fixtures/history-sparse.json (recorded at Dungeness, Kent).
+# The search geocodes on-device (Apple's geocoder, keyless) — the one
+# non-fixture network touch in the suite. The faraway coords make
+# /api/history serve e2e-fixtures/history-sparse.json (recorded at
+# Dungeness, Kent).
 appId: com.eddtb.landmarks
 ---
 - launchApp:
@@ -17,10 +21,21 @@ appId: com.eddtb.landmarks
       location: never
 - runFlow: subflows/setup.yaml
 
-# Denied: the honest banner and the search escape hatch
+# Refused: the banner names what is off and where it turns back on
 - extendedWaitUntil:
-    visible: '.*Location is off.*'
+    visible: '.*Location is off for Venture.*'
     timeout: 45000
+- assertVisible:
+    id: 'open-settings'
+# …and never the ask — iOS will not prompt again, so offering the ask
+# would be the old false sentence back
+- assertNotVisible:
+    id: 'ask-for-location'
+# Determined state: the door must not stand
+- assertNotVisible:
+    id: 'one-door'
+
+# The field IS the way forward for refused, so it is already open
 - tapOn:
     id: 'place-search'
 - inputText: 'Dungeness, Kent'

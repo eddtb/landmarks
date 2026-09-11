@@ -5,7 +5,11 @@
 # pinned by unit tests (the chip's target index), not E2E.
 appId: com.eddtb.landmarks
 ---
-- launchApp
+# Explicit grant: the gazetteer needs a centre to be written about
+# (#307) — see smoke.yaml for why no feed flow trusts the default
+- launchApp:
+    permissions:
+      location: inuse
 - runFlow: subflows/setup.yaml
 
 - runFlow: subflows/open-history-tab.yaml

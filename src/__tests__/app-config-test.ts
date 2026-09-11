@@ -119,6 +119,45 @@ describe('app.json survives the tooling', () => {
   });
 });
 
+describe('the E2E manifest escape hatch stays an escape hatch', () => {
+  // app.config.js may substitute a static runtimeVersion ONLY under
+  // E2E_FIXTURES=1 — the flag the E2E workflow sets on Metro so the
+  // dev-client manifest answers inside its ~10s timeout instead of
+  // fingerprinting the native project per request (47s measured; the
+  // suite was red from the night main carried expo-updates). Real
+  // roads — builds, updates, the preflight — never set the flag, and
+  // this fence fails if the static string ever leaks into them.
+  const dynamicConfig = jest.requireActual<
+    (ctx: { config: typeof config }) => {
+      ios: { runtimeVersion?: unknown };
+      android?: { runtimeVersion?: unknown };
+    }
+  >('../../app.config.js');
+  const e2eFlag = process.env.E2E_FIXTURES;
+
+  afterEach(() => {
+    if (e2eFlag === undefined) {
+      delete process.env.E2E_FIXTURES;
+    } else {
+      process.env.E2E_FIXTURES = e2eFlag;
+    }
+  });
+
+  test('without the flag, both platforms keep the fingerprint policy', () => {
+    delete process.env.E2E_FIXTURES;
+    const resolved = dynamicConfig({ config });
+    expect(resolved.ios.runtimeVersion).toEqual({ policy: 'fingerprint' });
+    expect(resolved.android?.runtimeVersion).toEqual({ policy: 'fingerprint' });
+  });
+
+  test('with the flag, both platforms answer statically — no fingerprint spawn', () => {
+    process.env.E2E_FIXTURES = '1';
+    const resolved = dynamicConfig({ config });
+    expect(resolved.ios.runtimeVersion).toBe('e2e-fixtures-only');
+    expect(resolved.android?.runtimeVersion).toBe('e2e-fixtures-only');
+  });
+});
+
 describe('the generated plist declares only what the app does', () => {
   const variant = process.env.APP_VARIANT;
 
